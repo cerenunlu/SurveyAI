@@ -1,0 +1,51 @@
+package com.yourcompany.surveyai.survey.api;
+
+import com.yourcompany.surveyai.survey.application.dto.request.CreateSurveyRequest;
+import com.yourcompany.surveyai.survey.application.dto.response.SurveyResponseDto;
+import com.yourcompany.surveyai.survey.application.service.SurveyService;
+import jakarta.validation.Valid;
+import java.net.URI;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/companies/{companyId}/surveys")
+public class SurveyController {
+
+    private final SurveyService surveyService;
+
+    public SurveyController(SurveyService surveyService) {
+        this.surveyService = surveyService;
+    }
+
+    @PostMapping
+    public ResponseEntity<SurveyResponseDto> createSurvey(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody CreateSurveyRequest request
+    ) {
+        SurveyResponseDto response = surveyService.createSurvey(companyId, request);
+
+        return ResponseEntity.created(URI.create("/api/v1/companies/" + companyId + "/surveys/" + response.id()))
+                .body(response);
+    }
+
+    @GetMapping("/{surveyId}")
+    public ResponseEntity<SurveyResponseDto> getSurveyById(
+            @PathVariable UUID companyId,
+            @PathVariable UUID surveyId
+    ) {
+        return ResponseEntity.ok(surveyService.getSurveyById(companyId, surveyId));
+    }
+
+    @GetMapping
+    public ResponseEntity<List<SurveyResponseDto>> listSurveysByCompany(@PathVariable UUID companyId) {
+        return ResponseEntity.ok(surveyService.listSurveysByCompany(companyId));
+    }
+}

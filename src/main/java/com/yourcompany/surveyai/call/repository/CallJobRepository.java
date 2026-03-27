@@ -1,0 +1,24 @@
+package com.yourcompany.surveyai.call.repository;
+
+import com.yourcompany.surveyai.call.domain.entity.CallJob;
+import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface CallJobRepository extends JpaRepository<CallJob, UUID> {
+
+    List<CallJob> findAllByCompany_IdAndStatusAndAvailableAtBeforeAndDeletedAtIsNull(
+            UUID companyId,
+            CallJobStatus status,
+            OffsetDateTime availableAt
+    );
+
+    List<CallJob> findAllByCampaign_IdAndDeletedAtIsNull(UUID campaignId);
+
+    List<CallJob> findAllByCampaignContact_IdAndDeletedAtIsNull(UUID campaignContactId);
+
+    Optional<CallJob> findByIdempotencyKeyAndDeletedAtIsNull(String idempotencyKey);
+}
