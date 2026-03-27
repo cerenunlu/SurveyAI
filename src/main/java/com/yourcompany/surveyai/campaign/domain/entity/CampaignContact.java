@@ -74,4 +74,120 @@ public class CampaignContact extends CompanyScopedEntity {
 
     @OneToMany(mappedBy = "campaignContact")
     private Set<SurveyResponse> surveyResponses = new LinkedHashSet<>();
+
+    public Campaign getCampaign() {
+        return campaign;
+    }
+
+    public void setCampaign(Campaign campaign) {
+        this.campaign = campaign;
+    }
+
+    public String getExternalRef() {
+        return externalRef;
+    }
+
+    public void setExternalRef(String externalRef) {
+        this.externalRef = externalRef;
+    }
+
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
+    public String getFirstName() {
+        return firstName;
+    }
+
+    public void setFirstName(String firstName) {
+        this.firstName = firstName;
+    }
+
+    public String getLastName() {
+        return lastName;
+    }
+
+    public void setLastName(String lastName) {
+        this.lastName = lastName;
+    }
+
+    public Integer getAge() {
+        return age;
+    }
+
+    public void setAge(Integer age) {
+        this.age = age;
+    }
+
+    public String getGender() {
+        return gender;
+    }
+
+    public void setGender(String gender) {
+        this.gender = gender;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getMetadataJson() {
+        return metadataJson;
+    }
+
+    public void setMetadataJson(String metadataJson) {
+        this.metadataJson = metadataJson;
+    }
+
+    public CampaignContactStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(CampaignContactStatus status) {
+        this.status = status;
+    }
+
+    public Integer getRetryCount() {
+        return retryCount;
+    }
+
+    public void setRetryCount(Integer retryCount) {
+        this.retryCount = retryCount;
+    }
+
+    public OffsetDateTime getLastCallAt() {
+        return lastCallAt;
+    }
+
+    public void setLastCallAt(OffsetDateTime lastCallAt) {
+        this.lastCallAt = lastCallAt;
+    }
+
+    public OffsetDateTime getNextRetryAt() {
+        return nextRetryAt;
+    }
+
+    public void setNextRetryAt(OffsetDateTime nextRetryAt) {
+        this.nextRetryAt = nextRetryAt;
+    }
+
+    public Set<CallJob> getCallJobs() {
+        return callJobs;
+    }
+
+    public Set<CallAttempt> getCallAttempts() {
+        return callAttempts;
+    }
+
+    public Set<SurveyResponse> getSurveyResponses() {
+        return surveyResponses;
+    }
 }

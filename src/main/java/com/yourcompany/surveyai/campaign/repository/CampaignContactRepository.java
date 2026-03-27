@@ -12,6 +12,8 @@ public interface CampaignContactRepository extends JpaRepository<CampaignContact
 
     List<CampaignContact> findAllByCampaign_IdAndDeletedAtIsNull(UUID campaignId);
 
+    List<CampaignContact> findAllByCampaign_IdAndCompany_IdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID campaignId, UUID companyId);
+
     List<CampaignContact> findAllByCampaign_IdAndStatusAndDeletedAtIsNull(UUID campaignId, CampaignContactStatus status);
 
     List<CampaignContact> findAllByCompany_IdAndNextRetryAtBeforeAndDeletedAtIsNull(UUID companyId, OffsetDateTime nextRetryAt);
