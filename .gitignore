@@ -1,7 +1,37 @@
-# Java
+# Java / Maven
 target/
-*.log
+build/
+out/
 .m2/
+*.lastUpdated
+
+# Frontend / Next.js
+frontend/.next/
+frontend/node_modules/
+frontend/.turbo/
+frontend/coverage/
+frontend/.eslintcache
+frontend/out/
+frontend/.vercel/
+frontend/.npm/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+# Logs / runtime
+logs/
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Temp / cache
+*.tmp
+*.temp
+*.cache
+*.swp
+*.swo
 
 # IDE
 .vscode/
@@ -11,14 +41,10 @@ target/
 .DS_Store
 Thumbs.db
 
-# Env
+# Local environment files
 .env
-
-# Docker
-*.pid
-
-# Build
-build/
-out/
-frontend/.next/
-frontend/node_modules/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
