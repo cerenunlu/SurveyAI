@@ -38,7 +38,7 @@ export default async function SurveyDetailPage({ params }: SurveyDetailPageProps
         <SectionCard title="Survey health" description="Core performance metrics and chart placeholder.">
           <ChartPlaceholder
             title="Completion and engagement"
-            subtitle={`Audience: ${survey.audience} • ${survey.questions} questions`}
+            subtitle={`Audience: ${survey.audience} / ${survey.questions} questions`}
             values={[22, 34, 48, 40, 54, 66, 70, 64, 75, 78, 81, 86]}
           />
         </SectionCard>

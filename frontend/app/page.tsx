@@ -99,7 +99,7 @@ export default function DashboardPage() {
                 <div>
                   <strong>{contact.name}</strong>
                   <span>
-                    {contact.company} � {contact.role}
+                    {contact.company} / {contact.role}
                   </span>
                 </div>
                 <StatusBadge status={contact.status} />
@@ -111,3 +111,4 @@ export default function DashboardPage() {
     </PageContainer>
   );
 }
+

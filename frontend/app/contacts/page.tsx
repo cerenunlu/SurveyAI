@@ -15,7 +15,7 @@ const columns: TableColumn<(typeof contacts)[number]>[] = [
       <div>
         <div className="table-title">{contact.name}</div>
         <div className="table-subtitle">
-          {contact.company} · {contact.role}
+          {contact.company} / {contact.role}
         </div>
       </div>
     ),
@@ -70,7 +70,7 @@ export default function ContactsPage() {
                 <span className="filter-tab">Paused</span>
                 <span className="filter-tab">Completed</span>
               </div>
-              <span className="table-meta">4 mock contacts • premium audience workspace foundation</span>
+              <span className="table-meta">4 mock contacts / premium audience workspace foundation</span>
             </>
           }
         />

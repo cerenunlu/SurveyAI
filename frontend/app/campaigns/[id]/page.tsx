@@ -38,7 +38,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
         <SectionCard title="Performance curve" description="Mock chart block for pacing, reach, and conversion.">
           <ChartPlaceholder
             title="Engagement performance"
-            subtitle={`${campaign.survey} • ${campaign.reach} current reach`}
+            subtitle={`${campaign.survey} / ${campaign.reach} current reach`}
             values={[24, 30, 36, 50, 55, 62, 58, 72, 76, 80, 84, 90]}
           />
         </SectionCard>
@@ -78,7 +78,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
               ["Risk segment", "Low-intent trial accounts in week-two inactivity"],
               ["Best responding segment", "Renewal-stage champions with prior NPS feedback"],
             ].map(([label, value]) => (
-              <div key={label} className="list-item">
+              <div className="detail-row" key={label}>
                 <strong>{label}</strong>
                 <span>{value}</span>
               </div>

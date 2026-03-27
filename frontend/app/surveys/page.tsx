@@ -83,7 +83,7 @@ export default function SurveysPage() {
           rows={surveys}
           toolbar={
             <>
-              <span className="table-meta">4 surveys • updated continuously in mock mode</span>
+              <span className="table-meta">4 surveys / updated continuously in mock mode</span>
               <button className="button-secondary">Export List</button>
             </>
           }

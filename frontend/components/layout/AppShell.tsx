@@ -129,14 +129,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
 
             <div className="topbar-actions">
-              <label className="search-field">
+              <label className="search-field topbar-search">
                 <SearchIcon className="nav-icon" />
                 <input placeholder="Search surveys, campaigns, contacts..." />
               </label>
-              <button className="icon-button" style={{ padding: "12px" }} aria-label="Notifications">
+              <button className="icon-button notification-button" style={{ padding: "12px" }} aria-label="Notifications">
                 <BellIcon className="nav-icon" />
               </button>
-              <button className="button-primary desktop-only">
+              <button className="button-primary topbar-cta desktop-only">
                 <SparkIcon className="nav-icon" />
                 New Workflow
               </button>
@@ -149,3 +149,4 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
