@@ -41,4 +41,8 @@ public abstract class AuditableEntity extends BaseEntity {
     public OffsetDateTime getDeletedAt() {
         return deletedAt;
     }
+
+    public void setDeletedAt(OffsetDateTime deletedAt) {
+        this.deletedAt = deletedAt;
+    }
 }

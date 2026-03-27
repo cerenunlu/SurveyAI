@@ -17,4 +17,6 @@ public interface CampaignRepository extends JpaRepository<Campaign, UUID> {
     List<Campaign> findAllByCompany_IdAndScheduledAtBeforeAndDeletedAtIsNull(UUID companyId, OffsetDateTime scheduledAt);
 
     Optional<Campaign> findByIdAndCompany_IdAndDeletedAtIsNull(UUID id, UUID companyId);
+
+    boolean existsBySurvey_IdAndDeletedAtIsNull(UUID surveyId);
 }

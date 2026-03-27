@@ -14,4 +14,10 @@ public interface SurveyQuestionRepository extends JpaRepository<SurveyQuestion, 
     List<SurveyQuestion> findAllByCompany_IdAndQuestionTypeAndDeletedAtIsNull(UUID companyId, QuestionType questionType);
 
     Optional<SurveyQuestion> findBySurvey_IdAndCodeAndDeletedAtIsNull(UUID surveyId, String code);
+
+    Optional<SurveyQuestion> findByIdAndSurvey_IdAndCompany_IdAndDeletedAtIsNull(UUID id, UUID surveyId, UUID companyId);
+
+    Optional<SurveyQuestion> findBySurvey_IdAndCode(UUID surveyId, String code);
+
+    Optional<SurveyQuestion> findBySurvey_IdAndQuestionOrder(UUID surveyId, Integer questionOrder);
 }

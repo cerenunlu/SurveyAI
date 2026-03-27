@@ -13,4 +13,8 @@ public interface SurveyAnswerRepository extends JpaRepository<SurveyAnswer, UUID
     List<SurveyAnswer> findAllBySurveyQuestion_IdAndValidAndDeletedAtIsNull(UUID surveyQuestionId, boolean valid);
 
     Optional<SurveyAnswer> findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(UUID surveyResponseId, UUID surveyQuestionId);
+
+    boolean existsBySurveyQuestion_IdAndDeletedAtIsNull(UUID surveyQuestionId);
+
+    boolean existsBySelectedOption_IdAndDeletedAtIsNull(UUID optionId);
 }
