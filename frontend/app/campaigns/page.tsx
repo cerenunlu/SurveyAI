@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ChartPlaceholder } from "@/components/ui/ChartPlaceholder";
@@ -5,10 +8,10 @@ import { DataTable } from "@/components/ui/DataTable";
 import { HeroPanel } from "@/components/ui/HeroPanel";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { TableColumn } from "@/lib/types";
-import { campaigns } from "@/mock/data";
+import { fetchCompanyCampaigns } from "@/lib/campaigns";
+import { Campaign, TableColumn } from "@/lib/types";
 
-const columns: TableColumn<(typeof campaigns)[number]>[] = [
+const columns: TableColumn<Campaign>[] = [
   {
     key: "campaign",
     label: "Campaign",
@@ -51,6 +54,38 @@ const columns: TableColumn<(typeof campaigns)[number]>[] = [
 ];
 
 export default function CampaignsPage() {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadCampaigns() {
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+        const nextCampaigns = await fetchCompanyCampaigns(undefined, { signal: controller.signal });
+        setCampaigns(nextCampaigns);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : "Failed to load campaigns.";
+        setErrorMessage(message);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadCampaigns();
+
+    return () => controller.abort();
+  }, []);
+
   return (
     <PageContainer>
       <HeroPanel
@@ -66,21 +101,46 @@ export default function CampaignsPage() {
         chips={["Voice AI outreach", "Email + SMS orchestration", "Status-aware detail views"]}
       />
 
-      <SectionCard title="Campaign inventory" description="Reusable analytics table for campaign tracking and drill-down.">
-        <DataTable
-          columns={columns}
-          rows={campaigns}
-          toolbar={
-            <>
-              <span className="table-meta">3 active mock records with premium table styling</span>
-              <div className="filter-tabs">
-                <span className="filter-tab is-active">All stages</span>
-                <span className="filter-tab">Active</span>
-                <span className="filter-tab">Paused</span>
-              </div>
-            </>
-          }
-        />
+      <SectionCard title="Campaign inventory" description="Live campaign inventory powered by the backend API.">
+        {errorMessage ? (
+          <div className="list-item">
+            <div>
+              <strong>Unable to load campaigns</strong>
+              <span>{errorMessage}</span>
+            </div>
+          </div>
+        ) : isLoading ? (
+          <div className="list-item">
+            <div>
+              <strong>Loading campaigns</strong>
+              <span>Fetching the latest campaign inventory from the backend.</span>
+            </div>
+          </div>
+        ) : campaigns.length === 0 ? (
+          <div className="list-item">
+            <div>
+              <strong>No campaigns yet</strong>
+              <span>No campaign records were returned for this company.</span>
+            </div>
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={campaigns}
+            toolbar={
+              <>
+                <span className="table-meta">
+                  {campaigns.length} campaign{campaigns.length === 1 ? "" : "s"} / synced from backend
+                </span>
+                <div className="filter-tabs">
+                  <span className="filter-tab is-active">All stages</span>
+                  <span className="filter-tab">Active</span>
+                  <span className="filter-tab">Paused</span>
+                </div>
+              </>
+            }
+          />
+        )}
       </SectionCard>
 
       <div className="two-column-grid">

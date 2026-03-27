@@ -1,9 +1,5 @@
+import { API_BASE_URL, DEFAULT_COMPANY_ID } from "@/lib/api";
 import { Survey } from "@/lib/types";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
-
-// Hardcoded for the initial backend integration. Keep in sync with DataInitializer.
-export const SURVEYS_COMPANY_ID = "9119faf4-b33f-3632-97eb-076f69115099";
 
 type SurveyApiResponse = {
   id: string;
@@ -21,7 +17,7 @@ type SurveyApiResponse = {
 };
 
 export async function fetchCompanySurveys(
-  companyId: string = SURVEYS_COMPANY_ID,
+  companyId: string = DEFAULT_COMPANY_ID,
   init?: RequestInit,
 ): Promise<Survey[]> {
   const response = await fetch(`${API_BASE_URL}/api/v1/companies/${companyId}/surveys`, {

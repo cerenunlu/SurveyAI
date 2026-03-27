@@ -32,7 +32,7 @@ export type Survey = {
 export type Campaign = {
   id: string;
   name: string;
-  status: "Active" | "Paused" | "Completed";
+  status: "Active" | "Paused" | "Completed" | "Draft" | "Cancelled";
   survey: string;
   budget: string;
   reach: string;
@@ -41,6 +41,15 @@ export type Campaign = {
   owner: string;
   channels: string[];
   summary: string;
+};
+
+export type CampaignContact = {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  status: "Active" | "Completed" | "Failed" | "Retry" | "Invalid" | "Pending";
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Contact = {

@@ -754,14 +754,19 @@ img {
 }
 
 .status-draft,
-.status-paused {
+.status-paused,
+.status-pending,
+.status-retry {
   color: #fde7a6;
   background: rgba(251, 191, 36, 0.12);
   border-color: rgba(251, 191, 36, 0.22);
 }
 
 .status-archived,
-.status-stopped {
+.status-stopped,
+.status-cancelled,
+.status-failed,
+.status-invalid {
   color: #f9b5c0;
   background: rgba(251, 113, 133, 0.12);
   border-color: rgba(251, 113, 133, 0.22);
@@ -1101,4 +1106,5 @@ img {
     scroll-behavior: auto !important;
   }
 }
+
 
