@@ -171,7 +171,10 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
     }
 
     private void ensureQuestionCodeAvailable(UUID surveyId, String code, UUID currentQuestionId) {
-        surveyQuestionRepository.findBySurvey_IdAndCode(surveyId, requireTrimmed(code, "Question code is required"))
+        surveyQuestionRepository.findBySurvey_IdAndCodeAndDeletedAtIsNull(
+                surveyId,
+                requireTrimmed(code, "Question code is required")
+        )
                 .ifPresent(existing -> {
                     if (!existing.getId().equals(currentQuestionId)) {
                         throw new ValidationException("Question code already exists in this survey");
@@ -180,7 +183,7 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
     }
 
     private void ensureQuestionOrderAvailable(UUID surveyId, Integer questionOrder, UUID currentQuestionId) {
-        surveyQuestionRepository.findBySurvey_IdAndQuestionOrder(surveyId, questionOrder)
+        surveyQuestionRepository.findBySurvey_IdAndQuestionOrderAndDeletedAtIsNull(surveyId, questionOrder)
                 .ifPresent(existing -> {
                     if (!existing.getId().equals(currentQuestionId)) {
                         throw new ValidationException("Question order already exists in this survey");

@@ -10,8 +10,6 @@ public interface SurveyQuestionOptionRepository extends JpaRepository<SurveyQues
 
     List<SurveyQuestionOption> findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(UUID surveyQuestionId);
 
-    Optional<SurveyQuestionOption> findBySurveyQuestion_IdAndOptionCodeAndDeletedAtIsNull(UUID surveyQuestionId, String optionCode);
-
     Optional<SurveyQuestionOption> findByIdAndSurveyQuestion_IdAndSurveyQuestion_Survey_IdAndSurveyQuestion_Company_IdAndDeletedAtIsNull(
             UUID id,
             UUID surveyQuestionId,
@@ -19,7 +17,13 @@ public interface SurveyQuestionOptionRepository extends JpaRepository<SurveyQues
             UUID companyId
     );
 
-    Optional<SurveyQuestionOption> findBySurveyQuestion_IdAndOptionCode(UUID surveyQuestionId, String optionCode);
+    Optional<SurveyQuestionOption> findBySurveyQuestion_IdAndOptionCodeAndDeletedAtIsNull(
+            UUID surveyQuestionId,
+            String optionCode
+    );
 
-    Optional<SurveyQuestionOption> findBySurveyQuestion_IdAndOptionOrder(UUID surveyQuestionId, Integer optionOrder);
+    Optional<SurveyQuestionOption> findBySurveyQuestion_IdAndOptionOrderAndDeletedAtIsNull(
+            UUID surveyQuestionId,
+            Integer optionOrder
+    );
 }

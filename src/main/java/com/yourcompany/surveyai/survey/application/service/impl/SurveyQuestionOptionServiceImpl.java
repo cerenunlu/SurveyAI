@@ -183,7 +183,7 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
     }
 
     private void ensureOptionCodeAvailable(UUID questionId, String optionCode, UUID currentOptionId) {
-        surveyQuestionOptionRepository.findBySurveyQuestion_IdAndOptionCode(
+        surveyQuestionOptionRepository.findBySurveyQuestion_IdAndOptionCodeAndDeletedAtIsNull(
                 questionId,
                 requireTrimmed(optionCode, "Option code is required")
         ).ifPresent(existing -> {
@@ -194,7 +194,7 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
     }
 
     private void ensureOptionOrderAvailable(UUID questionId, Integer optionOrder, UUID currentOptionId) {
-        surveyQuestionOptionRepository.findBySurveyQuestion_IdAndOptionOrder(questionId, optionOrder)
+        surveyQuestionOptionRepository.findBySurveyQuestion_IdAndOptionOrderAndDeletedAtIsNull(questionId, optionOrder)
                 .ifPresent(existing -> {
                     if (!existing.getId().equals(currentOptionId)) {
                         throw new ValidationException("Option order already exists for this question");
