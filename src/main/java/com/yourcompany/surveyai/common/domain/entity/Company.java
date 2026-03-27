@@ -9,8 +9,12 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "company")
@@ -29,8 +33,9 @@ public class Company extends AuditableEntity {
     @Column(name = "timezone", length = 60)
     private String timezone;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata_json", nullable = false, columnDefinition = "jsonb")
-    private String metadataJson;
+    private Map<String, Object> metadataJson = new LinkedHashMap<>();
 
     @OneToMany(mappedBy = "company")
     private Set<AppUser> users = new LinkedHashSet<>();
@@ -73,11 +78,11 @@ public class Company extends AuditableEntity {
         this.timezone = timezone;
     }
 
-    public String getMetadataJson() {
+    public Map<String, Object> getMetadataJson() {
         return metadataJson;
     }
 
-    public void setMetadataJson(String metadataJson) {
+    public void setMetadataJson(Map<String, Object> metadataJson) {
         this.metadataJson = metadataJson;
     }
 }

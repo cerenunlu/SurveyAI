@@ -15,6 +15,7 @@ import com.yourcompany.surveyai.survey.domain.enums.SurveyStatus;
 import com.yourcompany.surveyai.survey.repository.SurveyQuestionOptionRepository;
 import com.yourcompany.surveyai.survey.repository.SurveyQuestionRepository;
 import com.yourcompany.surveyai.survey.repository.SurveyRepository;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,7 +64,7 @@ public class DataInitializer implements CommandLineRunner {
         company.setSlug(COMPANY_SLUG);
         company.setStatus(CompanyStatus.ACTIVE);
         company.setTimezone("Europe/Istanbul");
-        company.setMetadataJson("{\"seeded\":true}");
+        company.setMetadataJson(Map.of("seeded", true));
         company = companyRepository.save(company);
 
         AppUser user = new AppUser();
