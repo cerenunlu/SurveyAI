@@ -1,6 +1,7 @@
 # Java
 target/
 *.log
+.m2/
 
 # IDE
 .vscode/
@@ -19,3 +20,5 @@ Thumbs.db
 # Build
 build/
 out/
+frontend/.next/
+frontend/node_modules/
