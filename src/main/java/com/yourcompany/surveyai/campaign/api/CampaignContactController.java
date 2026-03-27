@@ -24,7 +24,7 @@ public class CampaignContactController {
         this.campaignContactService = campaignContactService;
     }
 
-    @PostMapping("/upload")
+    @PostMapping
     public ResponseEntity<List<CampaignContactResponseDto>> uploadContacts(
             @PathVariable UUID companyId,
             @PathVariable UUID campaignId,
