@@ -1,229 +1,224 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { AvatarStack } from "@/components/ui/AvatarStack";
-import { KpiCard } from "@/components/ui/KpiCard";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import {
-  campaigns,
-  contactUploadQueue,
-  dashboardAlerts,
-  dashboardKpis,
-  nextStepActions,
-  recentActivity,
-  recentOperators,
-  surveys,
-  surveysNeedingAttention,
-} from "@/mock/data";
+import { fetchCampaignContacts, fetchCompanyCampaigns } from "@/lib/campaigns";
+import { fetchCompanySurveys } from "@/lib/surveys";
+import { CampaignContact } from "@/lib/types";
 
-const performanceSnapshot = [
-  ["Published surveys", "7 live / 5 draft"],
-  ["Average survey completion time", "4m 32s across active studies"],
-  ["Best performing campaign", "CX Activation Spring 2026 at 18.2% conversion"],
-  ["Contacts ready for activation", "3,640 validated records"],
-];
+type DashboardContact = CampaignContact & {
+  campaignName: string;
+};
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const [surveysResult, campaignsResult] = await Promise.allSettled([
+    fetchCompanySurveys(),
+    fetchCompanyCampaigns(),
+  ]);
+
+  const surveys = surveysResult.status === "fulfilled" ? surveysResult.value : [];
+  const campaigns = campaignsResult.status === "fulfilled" ? campaignsResult.value : [];
+
+  const contactResults = campaigns.length
+    ? await Promise.allSettled(
+        campaigns.map(async (campaign) => ({
+          campaignName: campaign.name,
+          contacts: await fetchCampaignContacts(campaign.id),
+        })),
+      )
+    : [];
+
+  const contacts = contactResults.flatMap((result): DashboardContact[] => {
+    if (result.status !== "fulfilled") {
+      return [];
+    }
+
+    return result.value.contacts.map((contact) => ({
+      ...contact,
+      campaignName: result.value.campaignName,
+    }));
+  });
+
+  const unavailableSections = [
+    surveysResult.status === "rejected" ? "surveys" : null,
+    campaignsResult.status === "rejected" ? "campaigns" : null,
+    contactResults.some((result) => result.status === "rejected") ? "contacts" : null,
+  ].filter((value): value is string => value !== null);
+
   return (
     <PageContainer>
       <section className="overview-hero panel-card interactive-panel">
         <div className="overview-header">
           <div className="overview-copy">
-            <div className="eyebrow">Operations Overview</div>
-            <h2 className="overview-title">Today&apos;s research operations at a glance</h2>
+            <div className="eyebrow">Product Overview</div>
+            <h2 className="overview-title">A clean dashboard built from live product records</h2>
             <p className="overview-text">
-              Active fieldwork is running across 12 campaigns. Attention is needed on survey approvals, contact validation, and the EMEA calling queue before the next shift handoff.
+              This overview only surfaces backend-backed inventory for surveys, campaigns, and contacts so the dashboard stays useful without drifting into demo metrics.
             </p>
           </div>
 
           <div className="overview-actions">
             <Link href="/surveys" className="button-primary">
-              New Survey
+              Open Surveys
             </Link>
             <Link href="/campaigns" className="button-secondary">
-              New Campaign
+              Open Campaigns
             </Link>
             <Link href="/contacts" className="button-secondary">
-              Upload Contacts
+              Open Contacts
             </Link>
           </div>
         </div>
 
         <div className="overview-strip">
           <div className="overview-strip-item">
-            <span className="overview-strip-label">System state</span>
-            <strong>Stable with 3 priority issues</strong>
+            <span className="overview-strip-label">Surveys</span>
+            <strong>{surveys.length} synced</strong>
           </div>
           <div className="overview-strip-item">
-            <span className="overview-strip-label">Owner coverage</span>
-            <AvatarStack names={recentOperators} />
+            <span className="overview-strip-label">Campaigns</span>
+            <strong>{campaigns.length} synced</strong>
           </div>
           <div className="overview-strip-item">
-            <span className="overview-strip-label">Next operational checkpoint</span>
-            <strong>17:30 coordinator review</strong>
+            <span className="overview-strip-label">Contacts</span>
+            <strong>{contacts.length} synced</strong>
           </div>
         </div>
       </section>
 
-      <div className="kpi-grid">
-        {dashboardKpis.map((kpi) => (
-          <KpiCard key={kpi.label} {...kpi} />
-        ))}
-      </div>
+      {unavailableSections.length > 0 ? (
+        <SectionCard
+          title="Some data is temporarily unavailable"
+          description="Only successfully loaded backend sections are shown below."
+        >
+          <div className="list-item">
+            <div>
+              <strong>Unavailable right now</strong>
+              <span>{formatUnavailableSections(unavailableSections)}</span>
+            </div>
+          </div>
+        </SectionCard>
+      ) : null}
 
       <div className="operations-grid">
         <div className="operations-main-column">
           <SectionCard
-            title="Recent Campaigns"
-            description="Programs currently running, paused, or recently completed."
-            action={<Link href="/campaigns" className="button-secondary compact-button">View all</Link>}
+            title="Recent Surveys"
+            description="Latest survey records returned by the backend."
+            action={<Link href="/surveys" className="button-secondary compact-button">View all</Link>}
           >
             <div className="stack-list">
-              {campaigns.map((campaign) => (
-                <div className="list-item operational-row" key={campaign.id}>
-                  <div>
-                    <strong>{campaign.name}</strong>
-                    <span>{campaign.summary}</span>
-                  </div>
-                  <div className="operational-meta">
-                    <span>{campaign.updatedAt}</span>
-                    <StatusBadge status={campaign.status} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-
-          <div className="dashboard-subgrid">
-            <SectionCard
-              title="Surveys Needing Attention"
-              description="Items slowing down launch readiness or active study quality."
-              action={<Link href="/surveys" className="button-secondary compact-button">Open surveys</Link>}
-            >
-              <div className="stack-list">
-                {surveysNeedingAttention.map((survey) => (
-                  <div className="list-item operational-row" key={survey.id}>
+              {surveys.length > 0 ? (
+                surveys.slice(0, 5).map((survey) => (
+                  <Link href={`/surveys/${survey.id}`} className="list-item operational-row" key={survey.id}>
                     <div>
-                      <strong>{survey.title}</strong>
-                      <span>{survey.detail}</span>
+                      <strong>{survey.name}</strong>
+                      <span>{survey.goal}</span>
                     </div>
                     <div className="operational-meta">
-                      <span>{survey.owner}</span>
+                      <span>{survey.updatedAt}</span>
                       <StatusBadge status={survey.status} />
                     </div>
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              title="Contacts Pending Upload / Validation"
-              description="Imports that are blocked, ready, or waiting for assignment."
-              action={<Link href="/contacts" className="button-secondary compact-button">Open contacts</Link>}
-            >
-              <div className="stack-list">
-                {contactUploadQueue.map((item) => (
-                  <div className="list-item operational-row" key={item.id}>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <span>{item.detail}</span>
-                    </div>
-                    <div className="operational-meta">
-                      <span>{item.owner}</span>
-                      <StatusBadge status={item.status} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-          </div>
-        </div>
-
-        <div className="operations-side-column">
-          <SectionCard title="Alerts / Issues" description="Operational items that need review before throughput slips.">
-            <div className="stack-list">
-              {dashboardAlerts.map((alert) => (
-                <div className="list-item operational-row alert-row" key={alert.id}>
-                  <div>
-                    <strong>{alert.title}</strong>
-                    <span>{alert.detail}</span>
-                  </div>
-                  <div className="operational-meta">
-                    <span>{alert.owner}</span>
-                    <StatusBadge status={alert.status} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-
-          <SectionCard title="Quick Actions / Next Steps" description="Use this to move from overview into execution.">
-            <div className="action-list">
-              {nextStepActions.map((action) => (
-                <div className="action-item" key={action.id}>
-                  <div>
-                    <strong>{action.title}</strong>
-                    <p>{action.detail}</p>
-                  </div>
-                  <Link href={action.href} className="button-secondary compact-button">
-                    {action.cta}
                   </Link>
+                ))
+              ) : (
+                <div className="list-item">
+                  <div>
+                    <strong>No surveys yet</strong>
+                    <span>Survey records will appear here as soon as they exist in the backend.</span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </SectionCard>
-
-          <SectionCard title="Performance Snapshot" description="Compact signals for today's portfolio health.">
-            <div className="mini-metric-grid">
-              {performanceSnapshot.map(([label, value]) => (
-                <div className="mini-metric" key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
+              )}
             </div>
           </SectionCard>
 
           <SectionCard
-            title="Recent Activity"
-            description="Latest operational changes across surveys, contacts, and campaign execution."
-            action={<Link href="/analytics" className="button-secondary compact-button">View analytics</Link>}
+            title="Recent Campaigns"
+            description="Current campaign inventory backed by the backend API."
+            action={<Link href="/campaigns" className="button-secondary compact-button">View all</Link>}
           >
             <div className="stack-list">
-              {recentActivity.map((item) => (
-                <div className="list-item operational-row" key={item.id}>
-                  <div>
-                    <strong>{item.title}</strong>
-                    <span>{item.detail}</span>
+              {campaigns.length > 0 ? (
+                campaigns.slice(0, 5).map((campaign) => (
+                  <div className="list-item operational-row" key={campaign.id}>
+                    <div>
+                      <strong>{campaign.name}</strong>
+                      <span>{campaign.summary}</span>
+                    </div>
+                    <div className="operational-meta">
+                      <span>{campaign.updatedAt}</span>
+                      <StatusBadge status={campaign.status} />
+                    </div>
                   </div>
-                  <div className="operational-meta">
-                    <span>{item.time}</span>
-                    <StatusBadge status={item.status} />
+                ))
+              ) : (
+                <div className="list-item">
+                  <div>
+                    <strong>No campaigns yet</strong>
+                    <span>Campaign records will show up here once they are created in the backend.</span>
                   </div>
                 </div>
-              ))}
+              )}
+            </div>
+          </SectionCard>
+        </div>
+
+        <div className="operations-side-column">
+          <SectionCard
+            title="Recent Contacts"
+            description="Contacts loaded from campaign contact records already stored in the backend."
+            action={<Link href="/contacts" className="button-secondary compact-button">Open contacts</Link>}
+          >
+            <div className="stack-list">
+              {contacts.length > 0 ? (
+                contacts.slice(0, 6).map((contact) => (
+                  <div className="list-item operational-row" key={contact.id}>
+                    <div>
+                      <strong>{contact.name}</strong>
+                      <span>{contact.campaignName} / {contact.phoneNumber}</span>
+                    </div>
+                    <div className="operational-meta">
+                      <span>{contact.updatedAt}</span>
+                      <StatusBadge status={contact.status} />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="list-item">
+                  <div>
+                    <strong>No contacts yet</strong>
+                    <span>Uploaded campaign contacts will appear here when backend records are available.</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Operational Analytics"
+            description="Reserved for backend-backed throughput and quality metrics."
+          >
+            <div className="list-item">
+              <div>
+                <strong>Not available yet</strong>
+                <span>Completion, alerting, and call-operation metrics stay hidden until the backend exposes real aggregates.</span>
+              </div>
             </div>
           </SectionCard>
         </div>
       </div>
-
-      <SectionCard title="Published Survey Snapshot" description="Live and draft inventory with direct paths into workflow pages.">
-        <div className="dashboard-subgrid published-surveys-grid">
-          {surveys.slice(0, 3).map((survey) => (
-            <Link href={`/surveys/${survey.id}`} className="list-item survey-summary-card" key={survey.id}>
-              <div>
-                <strong>{survey.name}</strong>
-                <span>{survey.goal}</span>
-              </div>
-              <div className="operational-meta">
-                <span>{survey.completions.toLocaleString()} completions</span>
-                <StatusBadge status={survey.status} />
-              </div>
-            </Link>
-          ))}
-        </div>
-      </SectionCard>
     </PageContainer>
   );
 }
 
+function formatUnavailableSections(sections: string[]): string {
+  if (sections.length === 1) {
+    return `${capitalize(sections[0])} could not be loaded from the backend.`;
+  }
+
+  return `${sections.map(capitalize).join(", ")} could not be fully loaded from the backend.`;
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
