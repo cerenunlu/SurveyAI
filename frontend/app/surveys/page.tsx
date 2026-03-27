@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ChartPlaceholder } from "@/components/ui/ChartPlaceholder";
@@ -5,10 +8,10 @@ import { DataTable } from "@/components/ui/DataTable";
 import { HeroPanel } from "@/components/ui/HeroPanel";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { TableColumn } from "@/lib/types";
-import { surveys } from "@/mock/data";
+import { fetchCompanySurveys } from "@/lib/surveys";
+import { Survey, TableColumn } from "@/lib/types";
 
-const columns: TableColumn<(typeof surveys)[number]>[] = [
+const columns: TableColumn<Survey>[] = [
   {
     key: "survey",
     label: "Survey",
@@ -51,6 +54,38 @@ const columns: TableColumn<(typeof surveys)[number]>[] = [
 ];
 
 export default function SurveysPage() {
+  const [surveys, setSurveys] = useState<Survey[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadSurveys() {
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+        const nextSurveys = await fetchCompanySurveys(undefined, { signal: controller.signal });
+        setSurveys(nextSurveys);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : "Failed to load surveys.";
+        setErrorMessage(message);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadSurveys();
+
+    return () => controller.abort();
+  }, []);
+
   return (
     <PageContainer>
       <HeroPanel
@@ -68,7 +103,7 @@ export default function SurveysPage() {
 
       <SectionCard
         title="Survey portfolio"
-        description="Mock data table designed for a modern analytics product feel."
+        description="Live survey inventory powered by the backend API."
         action={
           <div className="filter-tabs">
             <span className="filter-tab is-active">All</span>
@@ -78,16 +113,41 @@ export default function SurveysPage() {
           </div>
         }
       >
-        <DataTable
-          columns={columns}
-          rows={surveys}
-          toolbar={
-            <>
-              <span className="table-meta">4 surveys / updated continuously in mock mode</span>
-              <button className="button-secondary">Export List</button>
-            </>
-          }
-        />
+        {errorMessage ? (
+          <div className="list-item">
+            <div>
+              <strong>Unable to load surveys</strong>
+              <span>{errorMessage}</span>
+            </div>
+          </div>
+        ) : isLoading ? (
+          <div className="list-item">
+            <div>
+              <strong>Loading surveys</strong>
+              <span>Fetching the latest survey inventory from the backend.</span>
+            </div>
+          </div>
+        ) : surveys.length === 0 ? (
+          <div className="list-item">
+            <div>
+              <strong>No surveys yet</strong>
+              <span>No survey records were returned for this company.</span>
+            </div>
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={surveys}
+            toolbar={
+              <>
+                <span className="table-meta">
+                  {surveys.length} survey{surveys.length === 1 ? "" : "s"} / synced from backend
+                </span>
+                <button className="button-secondary">Export List</button>
+              </>
+            }
+          />
+        )}
       </SectionCard>
 
       <div className="two-column-grid">

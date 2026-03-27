@@ -15,8 +15,10 @@ import com.yourcompany.surveyai.survey.domain.enums.SurveyStatus;
 import com.yourcompany.surveyai.survey.repository.SurveyQuestionOptionRepository;
 import com.yourcompany.surveyai.survey.repository.SurveyQuestionRepository;
 import com.yourcompany.surveyai.survey.repository.SurveyRepository;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -29,6 +31,9 @@ public class DataInitializer implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
     private static final String COMPANY_SLUG = "acme-research";
     private static final String USER_EMAIL = "owner@acme-research.test";
+    private static final UUID COMPANY_ID = UUID.nameUUIDFromBytes(
+            ("company:" + COMPANY_SLUG).getBytes(StandardCharsets.UTF_8)
+    );
 
     private final CompanyRepository companyRepository;
     private final AppUserRepository appUserRepository;
@@ -60,6 +65,7 @@ public class DataInitializer implements CommandLineRunner {
         }
 
         Company company = new Company();
+        company.setId(COMPANY_ID);
         company.setName("Acme Research");
         company.setSlug(COMPANY_SLUG);
         company.setStatus(CompanyStatus.ACTIVE);
