@@ -45,6 +45,25 @@ export function ContactIcon({ className }: IconProps) {
   );
 }
 
+export function AnalyticsIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path {...strokeProps} d="M4 19.5h16" />
+      <path {...strokeProps} d="M7 16V10" />
+      <path {...strokeProps} d="M12 16V6" />
+      <path {...strokeProps} d="M17 16v-3.5" />
+    </svg>
+  );
+}
+
+export function CallingOpsIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path {...strokeProps} d="M7.5 4.5h2l1.3 4-1.6 1.6a12.8 12.8 0 0 0 4.7 4.7l1.6-1.6 4 1.3v2a1.5 1.5 0 0 1-1.5 1.5A14.5 14.5 0 0 1 5.5 6A1.5 1.5 0 0 1 7 4.5Z" />
+    </svg>
+  );
+}
+
 export function SearchIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">

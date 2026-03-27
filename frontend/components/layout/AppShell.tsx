@@ -8,20 +8,28 @@ import { BellIcon, CollapseIcon, MenuIcon, SearchIcon, SparkIcon } from "@/compo
 
 const pageMeta: Record<string, { title: string; subtitle: string }> = {
   "/": {
-    title: "SurveyAI Control Center",
-    subtitle: "Monitor surveys, outreach, and response quality from one premium workspace.",
+    title: "Operations Overview",
+    subtitle: "Track campaign health, survey readiness, contact flow, and operational issues from one control layer.",
   },
   "/surveys": {
-    title: "Survey Programs",
-    subtitle: "Shape question flows, watch health metrics, and manage live survey inventory.",
+    title: "Surveys",
+    subtitle: "Manage survey drafts, publishing status, and live program inventory.",
   },
   "/campaigns": {
-    title: "Campaign Performance",
-    subtitle: "Track delivery, response lift, and operator efficiency across active campaigns.",
+    title: "Campaigns",
+    subtitle: "Monitor launch readiness, active pacing, and cross-channel execution.",
   },
   "/contacts": {
-    title: "Audience Intelligence",
-    subtitle: "Keep your contact universe clean, segmented, and ready for activation.",
+    title: "Contacts",
+    subtitle: "Keep contact files validated, segmented, and ready for campaign assignment.",
+  },
+  "/analytics": {
+    title: "Analytics",
+    subtitle: "Review completions, response lift, and delivery performance across the portfolio.",
+  },
+  "/calling-ops": {
+    title: "Calling Ops",
+    subtitle: "Watch queue volume, call job readiness, and coordinator attention points.",
   },
 };
 
@@ -67,7 +75,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {!isSidebarCollapsed ? (
               <div className="brand-copy">
                 <p className="brand-title">SurveyAI</p>
-                <p className="brand-subtitle">Control Platform</p>
+                <p className="brand-subtitle">Research Operations</p>
               </div>
             ) : null}
           </div>
@@ -105,10 +113,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="sidebar-footer">
               <div className="eyebrow">
                 <SparkIcon className="nav-icon" />
-                AI Ops
+                Daily Focus
               </div>
-              <strong>Operator readiness</strong>
-              <p>Mock environment is seeded with premium UI states for surveys, campaigns, and contact intelligence.</p>
+              <strong>Operational readiness</strong>
+              <p>Use the dashboard to triage issues, then move into surveys, campaigns, contacts, and calling workflows to execute.</p>
             </div>
           ) : null}
         </div>
@@ -136,10 +144,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               <button className="icon-button notification-button" style={{ padding: "12px" }} aria-label="Notifications">
                 <BellIcon className="nav-icon" />
               </button>
-              <button className="button-primary topbar-cta desktop-only">
+              <Link href="/surveys" className="button-primary topbar-cta desktop-only">
                 <SparkIcon className="nav-icon" />
-                New Workflow
-              </button>
+                Create Survey
+              </Link>
             </div>
           </header>
 
@@ -149,4 +157,3 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
-

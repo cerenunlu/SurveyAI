@@ -15,6 +15,13 @@ export type Stat = {
   detail: string;
 };
 
+export type Kpi = {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "positive" | "warning" | "danger" | "neutral";
+};
+
 export type Survey = {
   id: string;
   name: string;
@@ -61,6 +68,30 @@ export type Contact = {
   lastTouch: string;
   score: string;
   region: string;
+};
+
+export type ActivityItem = {
+  id: string;
+  title: string;
+  detail: string;
+  time: string;
+  status: "Active" | "Draft" | "Paused" | "Completed" | "Failed" | "Pending";
+};
+
+export type AttentionItem = {
+  id: string;
+  title: string;
+  detail: string;
+  owner: string;
+  status: "Live" | "Draft" | "Archived" | "Active" | "Paused" | "Failed" | "Pending";
+};
+
+export type ActionItem = {
+  id: string;
+  title: string;
+  detail: string;
+  href: string;
+  cta: string;
 };
 
 export type TableColumn<T> = {

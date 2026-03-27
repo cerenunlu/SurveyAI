@@ -1,4 +1,4 @@
-import { Campaign, Contact, Stat, Survey } from "@/lib/types";
+import { ActionItem, ActivityItem, AttentionItem, Campaign, Contact, Kpi, Stat, Survey } from "@/lib/types";
 
 export const dashboardStats: Stat[] = [
   {
@@ -28,6 +28,45 @@ export const dashboardStats: Stat[] = [
     delta: "+3",
     tone: "danger",
     detail: "Flagged for review by the model quality and escalation pipeline.",
+  },
+];
+
+export const dashboardKpis: Kpi[] = [
+  {
+    label: "Active Campaigns",
+    value: "12",
+    detail: "3 need pacing review before end of day.",
+    tone: "positive",
+  },
+  {
+    label: "Draft Surveys",
+    value: "5",
+    detail: "2 are waiting for final approval.",
+    tone: "warning",
+  },
+  {
+    label: "Contacts Uploaded Today",
+    value: "4,280",
+    detail: "640 still in validation.",
+    tone: "neutral",
+  },
+  {
+    label: "Completion Rate",
+    value: "64.8%",
+    detail: "Down 1.2% from yesterday's close.",
+    tone: "warning",
+  },
+  {
+    label: "Calls Waiting",
+    value: "186",
+    detail: "Queue is highest in EMEA follow-up.",
+    tone: "warning",
+  },
+  {
+    label: "Failed Jobs / Alerts",
+    value: "7",
+    detail: "2 contact imports and 5 call-job retries.",
+    tone: "danger",
   },
 ];
 
@@ -179,3 +218,137 @@ export const detailHighlights = [
 ];
 
 export const recentOperators = ["Mina Patel", "Jordan Lee", "Sophia Kim"];
+
+export const surveysNeedingAttention: AttentionItem[] = [
+  {
+    id: "trial-conversion-audit",
+    title: "Trial Conversion Audit",
+    detail: "Draft has no publishing owner and needs intro prompt review.",
+    owner: "Jordan Lee",
+    status: "Draft",
+  },
+  {
+    id: "nps-retention-loop",
+    title: "NPS Retention Loop",
+    detail: "Live survey completion rate fell below target in renewal cohort.",
+    owner: "Sophia Kim",
+    status: "Live",
+  },
+  {
+    id: "support-recovery-audit",
+    title: "Support Recovery Audit",
+    detail: "Archived program still linked to a paused recovery campaign.",
+    owner: "Ethan Ross",
+    status: "Archived",
+  },
+];
+
+export const contactUploadQueue: AttentionItem[] = [
+  {
+    id: "northstar-enterprise",
+    title: "Northstar Finance upload",
+    detail: "220 records blocked by duplicate phone formatting.",
+    owner: "Contacts team",
+    status: "Pending",
+  },
+  {
+    id: "orbital-prospects",
+    title: "Orbital Commerce prospects",
+    detail: "Validation passed; waiting for campaign assignment.",
+    owner: "Growth ops",
+    status: "Active",
+  },
+  {
+    id: "summit-renewals",
+    title: "Summit Energy renewals",
+    detail: "19 records flagged as invalid before call job generation.",
+    owner: "Data QA",
+    status: "Failed",
+  },
+];
+
+export const recentActivity: ActivityItem[] = [
+  {
+    id: "activity-1",
+    title: "CX Activation Spring 2026 resumed",
+    detail: "Voice AI channel restarted after script update.",
+    time: "14 min ago",
+    status: "Active",
+  },
+  {
+    id: "activity-2",
+    title: "Contacts upload finished validation",
+    detail: "1,240 retail records are ready for campaign mapping.",
+    time: "32 min ago",
+    status: "Completed",
+  },
+  {
+    id: "activity-3",
+    title: "Trial Conversion Audit saved as draft",
+    detail: "Survey builder changes need approval before publish.",
+    time: "1h ago",
+    status: "Draft",
+  },
+  {
+    id: "activity-4",
+    title: "Call job generation failed",
+    detail: "Retry needed for EMEA follow-up contacts batch 08.",
+    time: "1h ago",
+    status: "Failed",
+  },
+];
+
+export const dashboardAlerts: AttentionItem[] = [
+  {
+    id: "alert-1",
+    title: "Call queue backlog in EMEA",
+    detail: "186 contacts are waiting and SLA risk begins in 2 hours.",
+    owner: "Calling ops",
+    status: "Pending",
+  },
+  {
+    id: "alert-2",
+    title: "Paused campaign with live survey",
+    detail: "Trial Lift Wave is paused while its linked draft survey is still incomplete.",
+    owner: "Jordan Lee",
+    status: "Paused",
+  },
+  {
+    id: "alert-3",
+    title: "Import validation failures",
+    detail: "Two uploads need contact cleanup before they can be assigned.",
+    owner: "Data QA",
+    status: "Failed",
+  },
+];
+
+export const nextStepActions: ActionItem[] = [
+  {
+    id: "next-1",
+    title: "Create a survey draft",
+    detail: "Start a new study brief for the next client wave.",
+    href: "/surveys",
+    cta: "New Survey",
+  },
+  {
+    id: "next-2",
+    title: "Publish a survey",
+    detail: "Move approved drafts into campaign-ready status.",
+    href: "/surveys",
+    cta: "Review Drafts",
+  },
+  {
+    id: "next-3",
+    title: "Upload contacts to a campaign",
+    detail: "Finish today's pending imports and assign them to live outreach.",
+    href: "/contacts",
+    cta: "Open Contacts",
+  },
+  {
+    id: "next-4",
+    title: "Start call job generation",
+    detail: "Clear waiting queue items before the next coordinator shift.",
+    href: "/calling-ops",
+    cta: "Open Calling Ops",
+  },
+];
