@@ -1,4 +1,5 @@
-import { API_BASE_URL, DEFAULT_COMPANY_ID } from "@/lib/api";
+import { API_BASE_URL } from "@/lib/api";
+import { DASHBOARD_COMPANY_ID } from "@/lib/company";
 import { fetchCompanySurveys } from "@/lib/surveys";
 import { Campaign, CampaignContact } from "@/lib/types";
 
@@ -33,7 +34,7 @@ type CampaignContactApiResponse = {
 };
 
 export async function fetchCompanyCampaigns(
-  companyId: string = DEFAULT_COMPANY_ID,
+  companyId: string = DASHBOARD_COMPANY_ID,
   init?: RequestInit,
 ): Promise<Campaign[]> {
   const [campaignsResponse, surveys] = await Promise.all([
@@ -46,7 +47,7 @@ export async function fetchCompanyCampaigns(
 
 export async function fetchCampaignById(
   campaignId: string,
-  companyId: string = DEFAULT_COMPANY_ID,
+  companyId: string = DASHBOARD_COMPANY_ID,
   init?: RequestInit,
 ): Promise<Campaign> {
   const [campaignResponse, surveys] = await Promise.all([
@@ -59,7 +60,7 @@ export async function fetchCampaignById(
 
 export async function fetchCampaignContacts(
   campaignId: string,
-  companyId: string = DEFAULT_COMPANY_ID,
+  companyId: string = DASHBOARD_COMPANY_ID,
   init?: RequestInit,
 ): Promise<CampaignContact[]> {
   const response = await fetchJson<CampaignContactApiResponse[]>(
