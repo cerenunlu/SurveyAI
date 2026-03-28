@@ -29,7 +29,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const currentMeta = (() => {
     let key = pageMetaKeys[pathname] ?? pageMetaKeys["/"];
 
-    if (pathname.startsWith("/surveys/")) {
+    if (pathname === "/surveys/new") {
+      key = "shell.pageMeta.surveyCreate";
+    } else if (pathname === "/operations/new") {
+      key = "shell.pageMeta.operationCreate";
+    } else if (pathname.startsWith("/surveys/")) {
       key = "shell.pageMeta.surveyDetail";
     } else if (pathname.startsWith("/operations/")) {
       key = "shell.pageMeta.operationDetail";
@@ -167,4 +171,8 @@ function LanguageButton({
     </button>
   );
 }
+
+
+
+
 

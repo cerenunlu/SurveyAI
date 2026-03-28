@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -155,14 +155,6 @@ export default function NewOperationPage() {
   return (
     <PageContainer>
       <div className="operation-create-shell">
-        <header className="operation-create-header panel-card">
-          <div>
-            <p className="builder-panel-kicker">Operation Setup</p>
-            <h1>Yeni Operasyon</h1>
-            <p>Yayinlanmis bir anket secin ve cagri sureci icin yeni bir operasyon hazirlayin.</p>
-          </div>
-        </header>
-
         <div className="operation-create-layout">
           <div className="operation-create-main">
             <section className="panel-card survey-form-card operation-create-card">
@@ -198,7 +190,7 @@ export default function NewOperationPage() {
                     rows={4}
                     value={operationNote}
                     onChange={(event) => setOperationNote(event.target.value)}
-                    placeholder="Operasyon kapsamı, segment notu veya ekip icin kisa baglam ekleyin."
+                    placeholder="Operasyon kapsami, segment notu veya ekip icin kisa baglam ekleyin."
                   />
                   <span>Bu alan MVP adiminda backend create istegine dahil edilmiyor; yalnizca hazirlik notu olarak sunuluyor.</span>
                 </label>
@@ -403,4 +395,7 @@ export default function NewOperationPage() {
     </PageContainer>
   );
 }
+
+
+
 

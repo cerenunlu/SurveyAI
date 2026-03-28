@@ -6,11 +6,12 @@ type HeroPanelProps = {
   description: string;
   actions?: ReactNode;
   chips?: string[];
+  variant?: "default" | "compact";
 };
 
-export function HeroPanel({ eyebrow, title, description, actions, chips }: HeroPanelProps) {
+export function HeroPanel({ eyebrow, title, description, actions, chips, variant = "default" }: HeroPanelProps) {
   return (
-    <section className="hero-card">
+    <section className={["hero-card", variant === "compact" ? "is-compact" : ""].filter(Boolean).join(" ")}>
       <div className="eyebrow">{eyebrow}</div>
       <h2 className="hero-title">{title}</h2>
       <p className="hero-text">{description}</p>
@@ -27,3 +28,4 @@ export function HeroPanel({ eyebrow, title, description, actions, chips }: HeroP
     </section>
   );
 }
+

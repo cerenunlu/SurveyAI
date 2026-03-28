@@ -46,9 +46,17 @@ export const en = {
         title: "Calling Ops",
         subtitle: "Watch queue volume, call job readiness, and coordinator attention points.",
       },
+      surveyCreate: {
+        title: "New Survey",
+        subtitle: "Prepare the title, description, and question flow in a single editing surface.",
+      },
       surveyDetail: {
         title: "Survey Detail",
         subtitle: "Inspect survey health, response posture, and operational notes.",
+      },
+      operationCreate: {
+        title: "New Operation",
+        subtitle: "Select a published survey and prepare a new operation for the calling flow.",
       },
       operationDetail: {
         title: "Operation Detail",
@@ -343,5 +351,6 @@ export const en = {
     },
   },
 } as const;
+
 
 

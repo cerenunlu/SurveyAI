@@ -189,8 +189,8 @@ export function SurveyBuilderShell({
       <section className="survey-form-card panel-card">
         <div className="survey-form-card-head">
           <div>
-            <span className="builder-panel-kicker">{mode === "create" ? "Yeni anket" : "Anket duzenle"}</span>
-            <h1>Anket bilgileri</h1>
+            <span className="builder-panel-kicker">{mode === "create" ? "Anket formu" : "Duzenleme formu"}</span>
+            <h2 className="survey-form-card-title">Anket bilgileri</h2>
             <p>Baslik, aciklama ve soru akisini tek bir duzenleme ekraninda yonetin.</p>
           </div>
           <div className="survey-form-meta">
@@ -285,3 +285,6 @@ export function SurveyBuilderShell({
     </div>
   );
 }
+
+
+

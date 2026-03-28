@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg: #06111f;
   --bg-deep: #030b15;
   --bg-elevated: rgba(7, 18, 33, 0.78);
@@ -410,6 +410,7 @@ img {
   box-shadow: var(--shadow-glow);
 }
 
+
 .topbar-copy h1 {
   margin: 0;
   font-family: var(--font-display), sans-serif;
@@ -616,6 +617,19 @@ img {
   letter-spacing: -0.06em;
   line-height: 0.94;
   text-wrap: balance;
+}
+
+.hero-card.is-compact .hero-title {
+  margin: 14px 0 10px;
+  max-width: none;
+  font-size: clamp(1.7rem, 2.8vw, 2.4rem);
+  line-height: 1.02;
+}
+
+.hero-card.is-compact .hero-text {
+  max-width: 72ch;
+  font-size: 0.96rem;
+  line-height: 1.7;
 }
 
 .hero-text {
@@ -1580,7 +1594,7 @@ img {
 
 .builder-toolbar-copy strong,
 .builder-canvas-header h2,
-.survey-form-card-head h1 {
+.survey-form-card-title {
   margin: 0;
   font-family: var(--font-display), sans-serif;
   letter-spacing: -0.04em;
@@ -1624,6 +1638,12 @@ img {
   align-items: flex-start;
   margin-bottom: 20px;
 }
+
+.survey-form-card-title {
+  font-size: clamp(1.35rem, 2vw, 1.7rem);
+  line-height: 1.08;
+}
+
 
 .survey-form-card-head p,
 .builder-canvas-header p,
@@ -2157,27 +2177,6 @@ img {
   gap: 20px;
 }
 
-.operation-create-header {
-  padding: 24px 26px;
-  border-radius: 28px;
-  background:
-    radial-gradient(circle at top right, rgba(91, 231, 255, 0.12), transparent 28%),
-    linear-gradient(180deg, rgba(10, 25, 45, 0.9), rgba(6, 16, 30, 0.92));
-}
-
-.operation-create-header h1 {
-  margin: 6px 0 0;
-  font-family: var(--font-display), sans-serif;
-  font-size: clamp(2rem, 4vw, 2.6rem);
-  letter-spacing: -0.05em;
-}
-
-.operation-create-header p:last-child {
-  margin: 10px 0 0;
-  max-width: 760px;
-  color: var(--text-muted);
-}
-
 .operation-create-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.82fr);
@@ -2437,4 +2436,7 @@ img {
     width: 100%;
   }
 }
+
+
+
 

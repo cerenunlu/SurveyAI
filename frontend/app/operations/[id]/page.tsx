@@ -103,6 +103,7 @@ export default function OperationDetailPage() {
         eyebrow="Operation Detail"
         title={operation?.name ?? "Loading operation detail"}
         description={operation?.summary ?? "Read-only operation overview synced from the backend API."}
+        variant="compact"
         actions={
           <>
             <StatusBadge status={operation?.status ?? "Pending"} />
@@ -208,3 +209,4 @@ export default function OperationDetailPage() {
     </PageContainer>
   );
 }
+

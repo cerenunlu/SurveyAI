@@ -46,9 +46,17 @@ export const tr = {
         title: "Arama Operasyonlari",
         subtitle: "Kuyruk hacmini, arama isleri hazirligini ve koordinator dikkat noktalarini izleyin.",
       },
+      surveyCreate: {
+        title: "Yeni Anket",
+        subtitle: "Baslik, aciklama ve soru akisini tek bir duzenleme ekraninda hazirlayin.",
+      },
       surveyDetail: {
         title: "Anket Detayi",
         subtitle: "Anket sagligini, yanit durumunu ve operasyonel notlari inceleyin.",
+      },
+      operationCreate: {
+        title: "Yeni Operasyon",
+        subtitle: "Yayinlanmis bir anket secin ve cagri sureci icin yeni bir operasyon hazirlayin.",
       },
       operationDetail: {
         title: "Operasyon Detayi",
@@ -378,4 +386,5 @@ export const tr = {
     },
   },
 } as const;
+
 
