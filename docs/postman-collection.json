@@ -1,0 +1,487 @@
+{
+  "info": {
+    "_postman_id": "5e346f3b-49e1-4d15-97cd-f64279efb6ff",
+    "name": "SurveyAI API Test Flow",
+    "description": "Postman collection for SurveyAI. Import this together with docs/postman-environment.json. Run the collection in order to automatically create an operation, save operationId, and chain the remaining requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "{{baseUrl}}"
+    },
+    {
+      "key": "companyId",
+      "value": "{{companyId}}"
+    },
+    {
+      "key": "surveyId",
+      "value": "{{surveyId}}"
+    },
+    {
+      "key": "questionId",
+      "value": "{{questionId}}"
+    },
+    {
+      "key": "userId",
+      "value": "{{userId}}"
+    },
+    {
+      "key": "operationId",
+      "value": "{{operationId}}"
+    }
+  ],
+  "item": [
+    {
+      "name": "Survey Smoke",
+      "item": [
+        {
+          "name": "List Surveys",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Response is an array', function () {",
+                  "  pm.expect(Array.isArray(body)).to.eql(true);",
+                  "});",
+                  "",
+                  "console.log('List Surveys response body:', body);",
+                  "postman.setNextRequest('Get Survey By Id');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/companies/{{companyId}}/surveys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "companies",
+                "{{companyId}}",
+                "surveys"
+              ]
+            },
+            "description": "Lists surveys for the seeded company."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Survey By Id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Returned seeded survey', function () {",
+                  "  pm.expect(body.id).to.eql(pm.environment.get('surveyId'));",
+                  "});",
+                  "",
+                  "console.log('Get Survey By Id response body:', body);",
+                  "postman.setNextRequest('List Survey Questions');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/companies/{{companyId}}/surveys/{{surveyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "companies",
+                "{{companyId}}",
+                "surveys",
+                "{{surveyId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Survey Questions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Response contains seeded question', function () {",
+                  "  pm.expect(body.some(q => q.id === pm.environment.get('questionId'))).to.eql(true);",
+                  "});",
+                  "",
+                  "console.log('List Survey Questions response body:', body);",
+                  "postman.setNextRequest('List Survey Question Options');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/companies/{{companyId}}/surveys/{{surveyId}}/questions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "companies",
+                "{{companyId}}",
+                "surveys",
+                "{{surveyId}}",
+                "questions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Survey Question Options",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Options response is an array', function () {",
+                  "  pm.expect(Array.isArray(body)).to.eql(true);",
+                  "});",
+                  "",
+                  "console.log('List Survey Question Options response body:', body);",
+                  "postman.setNextRequest('Create Operation');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/companies/{{companyId}}/surveys/{{surveyId}}/questions/{{questionId}}/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "companies",
+                "{{companyId}}",
+                "surveys",
+                "{{surveyId}}",
+                "questions",
+                "{{questionId}}",
+                "options"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Operation Flow",
+      "item": [
+        {
+          "name": "Create Operation",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('operationName', 'Postman Test Operation ' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('operationId', body.id);",
+                  "",
+                  "pm.test('operationId saved', function () {",
+                  "  pm.expect(pm.environment.get('operationId')).to.eql(body.id);",
+                  "});",
+                  "",
+                  "console.log('Create Operation response body:', body);",
+                  "console.log('Saved operationId:', pm.environment.get('operationId'));",
+                  "postman.setNextRequest('List Operations');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{operationName}}\",\n  \"surveyId\": \"{{surveyId}}\",\n  \"scheduledAt\": null,\n  \"createdByUserId\": \"{{userId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/operations?companyId={{companyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "operations"
+              ],
+              "query": [
+                {
+                  "key": "companyId",
+                  "value": "{{companyId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Operations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Created operation is present', function () {",
+                  "  pm.expect(body.some(op => op.id === pm.environment.get('operationId'))).to.eql(true);",
+                  "});",
+                  "",
+                  "console.log('List Operations response body:', body);",
+                  "postman.setNextRequest('Get Operation By Id');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/operations?companyId={{companyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "operations"
+              ],
+              "query": [
+                {
+                  "key": "companyId",
+                  "value": "{{companyId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Operation By Id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Returned operation matches saved operationId', function () {",
+                  "  pm.expect(body.id).to.eql(pm.environment.get('operationId'));",
+                  "});",
+                  "",
+                  "console.log('Get Operation By Id response body:', body);",
+                  "postman.setNextRequest('Upload Operation Contacts');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/operations/{{operationId}}?companyId={{companyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "operations",
+                "{{operationId}}"
+              ],
+              "query": [
+                {
+                  "key": "companyId",
+                  "value": "{{companyId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Operation Contacts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('At least two contacts uploaded', function () {",
+                  "  pm.expect(body.length).to.be.at.least(2);",
+                  "});",
+                  "",
+                  "console.log('Upload Operation Contacts response body:', body);",
+                  "postman.setNextRequest('List Operation Contacts');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contacts\": [\n    {\n      \"name\": \"Alice Example\",\n      \"phoneNumber\": \"+15550000001\"\n    },\n    {\n      \"name\": \"Bob Example\",\n      \"phoneNumber\": \"+15550000002\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/operations/{{operationId}}/contacts?companyId={{companyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "operations",
+                "{{operationId}}",
+                "contacts"
+              ],
+              "query": [
+                {
+                  "key": "companyId",
+                  "value": "{{companyId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Operation Contacts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "pm.test('Contacts list is an array', function () {",
+                  "  pm.expect(Array.isArray(body)).to.eql(true);",
+                  "});",
+                  "",
+                  "console.log('List Operation Contacts response body:', body);",
+                  "postman.setNextRequest(null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/operations/{{operationId}}/contacts?companyId={{companyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "operations",
+                "{{operationId}}",
+                "contacts"
+              ],
+              "query": [
+                {
+                  "key": "companyId",
+                  "value": "{{companyId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

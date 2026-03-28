@@ -1,0 +1,51 @@
+{
+  "id": "7e8cfd84-41fe-4ef9-84c1-1982c9f6544f",
+  "name": "SurveyAI Local Docker",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "companyId",
+      "value": "71700ff8-e51a-4ff0-9286-e2b3b548fbfa",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "surveyId",
+      "value": "4ed7e060-06a3-4a0e-9c35-c531444b4231",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "questionId",
+      "value": "48f7e3c7-61db-4e29-94df-6f8495ab1276",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "userId",
+      "value": "8b86e16a-5714-4431-af72-ad1055dbf230",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "operationId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "operationName",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_at": "2026-03-28T13:35:00.000Z",
+  "_postman_exported_using": "Codex"
+}
