@@ -83,7 +83,7 @@ export default function DashboardPage() {
     <PageContainer>
       <section className="dashboard-actions panel-card">
         <div className="dashboard-actions-row">
-          <Link href="/surveys" className="button-primary">
+          <Link href="/surveys/new" className="button-primary">
             {t("shell.topbar.createSurvey")}
           </Link>
           <Link href="/surveys" className="button-secondary">

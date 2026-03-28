@@ -36,6 +36,44 @@ export type Survey = {
   owner: string;
 };
 
+export type SurveyQuestionType =
+  | "short_text"
+  | "long_text"
+  | "yes_no"
+  | "single_choice"
+  | "multi_choice"
+  | "rating_1_5"
+  | "rating_1_10"
+  | "date"
+  | "full_name"
+  | "number"
+  | "phone";
+
+export type SurveyQuestionOption = {
+  id: string;
+  label: string;
+};
+
+export type SurveyBuilderQuestion = {
+  id: string;
+  code: string;
+  type: SurveyQuestionType;
+  title: string;
+  description: string;
+  required: boolean;
+  options?: SurveyQuestionOption[];
+};
+
+export type SurveyBuilderSurvey = {
+  id: string;
+  name: string;
+  summary: string;
+  status: "Draft" | "Live" | "Archived";
+  updatedAt: string;
+  questionCount: number;
+  questions: SurveyBuilderQuestion[];
+};
+
 export type Campaign = {
   id: string;
   name: string;

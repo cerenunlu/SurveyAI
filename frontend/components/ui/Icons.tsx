@@ -114,3 +114,33 @@ export function CollapseIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function PlusIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path {...strokeProps} d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function EyeIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path {...strokeProps} d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle {...strokeProps} cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+export function GripIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <circle cx="8" cy="7" r="1.25" fill="currentColor" />
+      <circle cx="16" cy="7" r="1.25" fill="currentColor" />
+      <circle cx="8" cy="12" r="1.25" fill="currentColor" />
+      <circle cx="16" cy="12" r="1.25" fill="currentColor" />
+      <circle cx="8" cy="17" r="1.25" fill="currentColor" />
+      <circle cx="16" cy="17" r="1.25" fill="currentColor" />
+    </svg>
+  );
+}

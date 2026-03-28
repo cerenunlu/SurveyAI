@@ -54,7 +54,7 @@ export default function SurveysPage() {
       label: t("surveys.table.columns.action"),
       render: (survey) => (
         <Link href={`/surveys/${survey.id}`} className="button-secondary">
-          {t("surveys.table.states.viewDetail")}
+          {t("surveys.table.columns.action")}
         </Link>
       ),
     },
@@ -96,7 +96,7 @@ export default function SurveysPage() {
         description={t("surveys.hero.description")}
         actions={
           <>
-            <button className="button-primary">{t("surveys.hero.createSurvey")}</button>
+            <Link href="/surveys/new" className="button-primary">{t("surveys.hero.createSurvey")}</Link>
             <button className="button-secondary">{t("surveys.hero.importBlueprint")}</button>
           </>
         }
