@@ -13,15 +13,15 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<Language>(defaultLanguage);
+  const [language, setLanguage] = useState<Language>(() => {
+    if (typeof window === "undefined") {
+      return defaultLanguage;
+    }
 
-  useEffect(() => {
     const savedLanguage = window.localStorage.getItem(languageStorageKey);
 
-    if (savedLanguage && isLanguage(savedLanguage)) {
-      setLanguage(savedLanguage);
-    }
-  }, []);
+    return savedLanguage && isLanguage(savedLanguage) ? savedLanguage : defaultLanguage;
+  });
 
   useEffect(() => {
     window.localStorage.setItem(languageStorageKey, language);
@@ -91,3 +91,4 @@ function formatTranslation(value: unknown, replacements?: Record<string, string 
     value,
   );
 }
+

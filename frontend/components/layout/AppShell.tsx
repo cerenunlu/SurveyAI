@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { getNavigationItems } from "@/components/layout/navigation";
 import { BellIcon, CollapseIcon, MenuIcon, SearchIcon, SparkIcon } from "@/components/ui/Icons";
@@ -24,33 +24,25 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { language, setLanguage } = useLanguage();
   const { t } = useTranslations();
 
-  const navigationItems = useMemo(() => getNavigationItems(t), [t]);
+  const navigationItems = getNavigationItems(t);
 
-  const currentMeta = useMemo(() => {
+  const currentMeta = (() => {
+    let key = pageMetaKeys[pathname] ?? pageMetaKeys["/"];
+
     if (pathname.startsWith("/surveys/")) {
-      return {
-        title: t("shell.pageMeta.surveyDetail.title"),
-        subtitle: t("shell.pageMeta.surveyDetail.subtitle"),
-      };
+      key = "shell.pageMeta.surveyDetail";
+    } else if (pathname.startsWith("/campaigns/")) {
+      key = "shell.pageMeta.campaignDetail";
     }
-
-    if (pathname.startsWith("/campaigns/")) {
-      return {
-        title: t("shell.pageMeta.campaignDetail.title"),
-        subtitle: t("shell.pageMeta.campaignDetail.subtitle"),
-      };
-    }
-
-    const key = pageMetaKeys[pathname] ?? pageMetaKeys["/"];
 
     return {
       title: t(`${key}.title`),
       subtitle: t(`${key}.subtitle`),
     };
-  }, [pathname, t]);
+  })();
 
   return (
-    <div className="app-shell">
+    <div className={["app-shell", isSidebarCollapsed ? "is-sidebar-collapsed" : ""].filter(Boolean).join(" ")}>
       {isMobileNavOpen ? (
         <button className="mobile-overlay" aria-label={t("shell.sidebar.closeNavigation")} onClick={() => setIsMobileNavOpen(false)} />
       ) : null}
@@ -132,7 +124,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
 
             <div className="topbar-actions">
-              <div className="language-switcher" aria-label={t("shell.topbar.languageLabel")}>
+              <div className="language-switcher" role="group" aria-label={t("shell.topbar.languageLabel")}>
                 <LanguageButton current={language} code="tr" label={t("shell.topbar.tr")} onSelect={setLanguage} />
                 <LanguageButton current={language} code="en" label={t("shell.topbar.en")} onSelect={setLanguage} />
               </div>
@@ -172,9 +164,11 @@ function LanguageButton({
     <button
       type="button"
       className={["language-button", current === code ? "is-active" : ""].filter(Boolean).join(" ")}
+      aria-pressed={current === code}
       onClick={() => onSelect(code)}
     >
       {label}
     </button>
   );
 }
+
