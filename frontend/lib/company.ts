@@ -1,2 +1,2 @@
-// Single source of truth for the dashboard's backend company scope.
-export const DASHBOARD_COMPANY_ID = "71700ff8-e51a-4ff0-9286-e2b3b548fbfa";
+// Single source of truth for the frontend's backend company scope.
+export const COMPANY_ID = "c5289d28-3a2e-4c59-9f3c-a7b5f74796ce";

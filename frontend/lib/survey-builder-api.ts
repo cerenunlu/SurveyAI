@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "@/lib/api";
-import { DASHBOARD_COMPANY_ID } from "@/lib/company";
+import { COMPANY_ID } from "@/lib/company";
 import type { SurveyBuilderQuestion, SurveyBuilderSurvey, SurveyQuestionOption, SurveyQuestionType } from "@/lib/types";
 
 type SurveyStatusDto = "DRAFT" | "PUBLISHED" | "ARCHIVED";
@@ -105,7 +105,7 @@ export type BuilderSaveResult = {
 
 export async function fetchSurveyBuilderSurvey(
   surveyId: string,
-  companyId: string = DASHBOARD_COMPANY_ID,
+  companyId: string = COMPANY_ID,
   init?: RequestInit,
 ): Promise<SurveyBuilderSurvey> {
   const [survey, questions] = await Promise.all([
@@ -125,7 +125,7 @@ export async function fetchSurveyBuilderSurvey(
 export async function saveSurveyBuilderSurvey(
   survey: SurveyBuilderSurvey,
   action: BuilderSaveAction,
-  companyId: string = DASHBOARD_COMPANY_ID,
+  companyId: string = COMPANY_ID,
 ): Promise<BuilderSaveResult> {
   const persistedSurvey = isUuid(survey.id);
   const syncAction = survey.status === "Draft" ? "draft" : action;
