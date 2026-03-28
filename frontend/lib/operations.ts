@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "@/lib/api";
-import { DASHBOARD_COMPANY_ID } from "@/lib/company";
+import { COMPANY_ID } from "@/lib/company";
 import { fetchCompanySurveys } from "@/lib/surveys";
 import { Operation, OperationContact } from "@/lib/types";
 
@@ -58,7 +58,7 @@ type CreateOperationContactsRequest = {
 };
 
 export async function fetchCompanyOperations(
-  companyId: string = DASHBOARD_COMPANY_ID,
+  companyId: string = COMPANY_ID,
   init?: RequestInit,
 ): Promise<Operation[]> {
   const [operationsResponse, surveys] = await Promise.all([
@@ -71,7 +71,7 @@ export async function fetchCompanyOperations(
 
 export async function fetchOperationById(
   operationId: string,
-  companyId: string = DASHBOARD_COMPANY_ID,
+  companyId: string = COMPANY_ID,
   init?: RequestInit,
 ): Promise<Operation> {
   const [operationResponse, surveys] = await Promise.all([
@@ -84,7 +84,7 @@ export async function fetchOperationById(
 
 export async function fetchOperationContacts(
   operationId: string,
-  companyId: string = DASHBOARD_COMPANY_ID,
+  companyId: string = COMPANY_ID,
   init?: RequestInit,
 ): Promise<OperationContact[]> {
   const response = await fetchJson<OperationContactApiResponse[]>(
@@ -98,7 +98,7 @@ export async function fetchOperationContacts(
 
 export async function createOperation(
   request: CreateOperationRequest,
-  companyId: string = DASHBOARD_COMPANY_ID,
+  companyId: string = COMPANY_ID,
 ): Promise<OperationApiResponse> {
   return fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations?companyId=${companyId}`, {
     method: "POST",
@@ -109,7 +109,7 @@ export async function createOperation(
 export async function createOperationContacts(
   operationId: string,
   request: CreateOperationContactsRequest,
-  companyId: string = DASHBOARD_COMPANY_ID,
+  companyId: string = COMPANY_ID,
 ): Promise<OperationContact[]> {
   const response = await fetchJson<OperationContactApiResponse[]>(
     `${API_BASE_URL}/api/v1/operations/${operationId}/contacts?companyId=${companyId}`,

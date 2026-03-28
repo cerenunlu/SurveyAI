@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "@/lib/api";
-import { DASHBOARD_COMPANY_ID } from "@/lib/company";
+import { COMPANY_ID } from "@/lib/company";
 import { Survey } from "@/lib/types";
 
 type SurveyApiResponse = {
@@ -18,7 +18,7 @@ type SurveyApiResponse = {
 };
 
 export async function fetchCompanySurveys(
-  companyId: string = DASHBOARD_COMPANY_ID,
+  companyId: string = COMPANY_ID,
   init?: RequestInit,
 ): Promise<Survey[]> {
   const response = await fetch(`${API_BASE_URL}/api/v1/companies/${companyId}/surveys`, {
