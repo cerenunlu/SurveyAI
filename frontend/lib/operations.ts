@@ -1,7 +1,13 @@
-import { API_BASE_URL } from "@/lib/api";
+﻿import { API_BASE_URL } from "@/lib/api";
 import { DASHBOARD_COMPANY_ID } from "@/lib/company";
 import { fetchCompanySurveys } from "@/lib/surveys";
 import { Operation, OperationContact } from "@/lib/types";
+
+type ApiErrorResponse = {
+  code?: string;
+  message?: string;
+  details?: string[];
+};
 
 type SurveyReference = {
   id: string;
@@ -31,6 +37,13 @@ type OperationContactApiResponse = {
   status: "PENDING" | "CALLING" | "COMPLETED" | "FAILED" | "RETRY" | "INVALID";
   createdAt: string;
   updatedAt: string;
+};
+
+type CreateOperationRequest = {
+  name: string;
+  surveyId: string;
+  scheduledAt: string | null;
+  createdByUserId: string | null;
 };
 
 export async function fetchCompanyOperations(
@@ -72,6 +85,16 @@ export async function fetchOperationContacts(
   return response.map(mapOperationContactDtoToContact);
 }
 
+export async function createOperation(
+  request: CreateOperationRequest,
+  companyId: string = DASHBOARD_COMPANY_ID,
+): Promise<OperationApiResponse> {
+  return fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations?companyId=${companyId}`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  }, "operation");
+}
+
 async function fetchJson<T>(
   input: string,
   init: RequestInit | undefined,
@@ -81,16 +104,33 @@ async function fetchJson<T>(
     ...init,
     headers: {
       Accept: "application/json",
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
     cache: "no-store",
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to load ${resourceName} (${response.status})`);
+    throw new Error(await readApiError(response, resourceName));
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return (await response.json()) as T;
+}
+
+async function readApiError(response: Response, resourceName: string): Promise<string> {
+  try {
+    const payload = (await response.json()) as ApiErrorResponse;
+    const details = payload.details?.filter(Boolean) ?? [];
+    const fallback = `Failed to load ${resourceName} (${response.status})`;
+    const message = payload.message?.trim() || fallback;
+    return details.length > 0 ? `${message}: ${details.join(" ")}` : message;
+  } catch {
+    return `Failed to load ${resourceName} (${response.status})`;
+  }
 }
 
 function mapOperationDtoToOperation(dto: OperationApiResponse, surveys: SurveyReference[]): Operation {
@@ -229,5 +269,4 @@ function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
 
   return `${statusLabel} operation linked to ${surveyLabel} with schedule ${scheduleLabel}.`;
 }
-
 
