@@ -20,8 +20,13 @@ export function SurveyBuilderShell({
   const [activeAction, setActiveAction] = useState<BuilderSaveAction | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [feedbackTone, setFeedbackTone] = useState<"success" | "error" | null>(null);
+  const isPublished = survey.status === "Live";
 
   function updateQuestion(nextQuestion: SurveyBuilderQuestion) {
+    if (isPublished) {
+      return;
+    }
+
     setFeedbackMessage(null);
     setFeedbackTone(null);
     setSurvey((current) => ({
@@ -32,6 +37,10 @@ export function SurveyBuilderShell({
   }
 
   function addQuestion(type: SurveyQuestionType = "short_text") {
+    if (isPublished) {
+      return;
+    }
+
     setFeedbackMessage(null);
     setFeedbackTone(null);
     setSurvey((current) => {
@@ -47,6 +56,10 @@ export function SurveyBuilderShell({
   }
 
   function addQuestionAfter(afterId: string, type: SurveyQuestionType = "short_text") {
+    if (isPublished) {
+      return;
+    }
+
     setFeedbackMessage(null);
     setFeedbackTone(null);
     setSurvey((current) => {
@@ -68,6 +81,10 @@ export function SurveyBuilderShell({
   }
 
   function reorderQuestion(id: string, direction: -1 | 1) {
+    if (isPublished) {
+      return;
+    }
+
     setFeedbackMessage(null);
     setFeedbackTone(null);
     setSurvey((current) => {
@@ -91,6 +108,10 @@ export function SurveyBuilderShell({
   }
 
   function removeQuestion(id: string) {
+    if (isPublished) {
+      return;
+    }
+
     setFeedbackMessage(null);
     setFeedbackTone(null);
     setSurvey((current) => {
@@ -109,6 +130,10 @@ export function SurveyBuilderShell({
   }
 
   async function handlePersist(action: BuilderSaveAction) {
+    if (isPublished) {
+      return;
+    }
+
     setActiveAction(action);
     setFeedbackMessage(null);
     setFeedbackTone(null);
@@ -135,7 +160,31 @@ export function SurveyBuilderShell({
         activeAction={activeAction}
         feedbackMessage={feedbackMessage}
         feedbackTone={feedbackTone}
+        readOnly={isPublished}
       />
+
+      {isPublished ? (
+        <section className="builder-readonly-banner panel-card" aria-live="polite">
+          <div className="builder-readonly-banner-copy">
+            <span className="builder-panel-kicker">Yayin durumu</span>
+            <strong>Bu anket yayinlanmis durumda.</strong>
+            <p>Yayinlanmis anketlerde soru ve secenek degisikligi yapilamaz.</p>
+            <p>Yayinlama, bu anketin operasyonlar ve kampanyalar icin son haline geldigi anlamina gelir; AI arama surecinin basladigi anlamina gelmez.</p>
+            <p>Degisiklik yapmak icin bu anketten yeni bir taslak olusturun.</p>
+          </div>
+          <div className="builder-readonly-banner-actions">
+            <button
+              type="button"
+              className="button-secondary compact-button"
+              disabled
+              title="Yeni taslak olusturma akisi yakinda eklenecek."
+            >
+              Yeni taslak olustur
+            </button>
+            <span className="builder-readonly-banner-note">Kopyalayarak yeni taslak olusturma akisi yakinda sunulacak.</span>
+          </div>
+        </section>
+      ) : null}
 
       <section className="survey-form-card panel-card">
         <div className="survey-form-card-head">
@@ -157,6 +206,7 @@ export function SurveyBuilderShell({
               value={survey.name}
               onChange={(event) => setSurvey((current) => ({ ...current, name: event.target.value }))}
               placeholder="Anket basligini yazin"
+              disabled={isPublished}
             />
           </label>
 
@@ -167,6 +217,7 @@ export function SurveyBuilderShell({
               value={survey.summary}
               onChange={(event) => setSurvey((current) => ({ ...current, summary: event.target.value }))}
               placeholder="Katilimcilarin gorecegi aciklamayi yazin"
+              disabled={isPublished}
             />
           </label>
         </div>
@@ -182,7 +233,13 @@ export function SurveyBuilderShell({
 
           <div className="builder-quick-add">
             {(["short_text", "single_choice", "multi_choice", "dropdown", "rating_1_5", "date"] as SurveyQuestionType[]).map((type) => (
-              <button key={type} type="button" className="builder-quick-chip" onClick={() => addQuestion(type)}>
+              <button
+                key={type}
+                type="button"
+                className="builder-quick-chip"
+                onClick={() => addQuestion(type)}
+                disabled={isPublished}
+              >
                 <PlusIcon className="nav-icon" />
                 {questionTypeLabels[type]}
               </button>
@@ -191,7 +248,7 @@ export function SurveyBuilderShell({
         </div>
 
         {survey.questions.length === 0 ? (
-          <EmptyBuilderState onAdd={() => addQuestion()} />
+          <EmptyBuilderState onAdd={() => addQuestion()} disabled={isPublished} />
         ) : (
           <div className="builder-question-list">
             {survey.questions.map((question, index) => (
@@ -202,6 +259,7 @@ export function SurveyBuilderShell({
                 isFirst={index === 0}
                 isLast={index === survey.questions.length - 1}
                 canRemove={survey.questions.length > 1}
+                readOnly={isPublished}
                 onUpdate={updateQuestion}
                 onMoveUp={() => reorderQuestion(question.id, -1)}
                 onMoveDown={() => reorderQuestion(question.id, 1)}
@@ -213,7 +271,12 @@ export function SurveyBuilderShell({
         )}
 
         <div className="builder-bottom-actions">
-          <button type="button" className="button-secondary" onClick={() => addQuestion()} disabled={activeAction !== null}>
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => addQuestion()}
+            disabled={activeAction !== null || isPublished}
+          >
             <PlusIcon className="nav-icon" />
             Yeni soru ekle
           </button>

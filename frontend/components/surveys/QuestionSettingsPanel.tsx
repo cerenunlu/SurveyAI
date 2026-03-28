@@ -8,9 +8,10 @@ import type { SurveyBuilderQuestion, SurveyQuestionType } from "@/lib/types";
 type QuestionSettingsPanelProps = {
   question: SurveyBuilderQuestion | null;
   onUpdate: (question: SurveyBuilderQuestion) => void;
+  readOnly?: boolean;
 };
 
-export function QuestionSettingsPanel({ question, onUpdate }: QuestionSettingsPanelProps) {
+export function QuestionSettingsPanel({ question, onUpdate, readOnly = false }: QuestionSettingsPanelProps) {
   if (!question) {
     return (
       <aside className="builder-side-panel">
@@ -32,10 +33,7 @@ export function QuestionSettingsPanel({ question, onUpdate }: QuestionSettingsPa
       </div>
 
       <div className="builder-settings-stack">
-        <QuestionTypeSelector
-          value={question.type}
-          onChange={(type) => onUpdate(withChoiceOptions(question, type))}
-        />
+        <QuestionTypeSelector value={question.type} onChange={(type) => onUpdate(withChoiceOptions(question, type))} disabled={readOnly} />
 
         <label className="builder-toggle-row">
           <div>
@@ -47,6 +45,7 @@ export function QuestionSettingsPanel({ question, onUpdate }: QuestionSettingsPa
             className={["builder-toggle", question.required ? "is-active" : ""].filter(Boolean).join(" ")}
             onClick={() => onUpdate({ ...question, required: !question.required })}
             aria-pressed={question.required}
+            disabled={readOnly}
           >
             <span />
           </button>

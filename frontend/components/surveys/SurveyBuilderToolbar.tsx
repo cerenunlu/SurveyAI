@@ -12,6 +12,7 @@ type SurveyBuilderToolbarProps = {
   activeAction: BuilderSaveAction | null;
   feedbackMessage: string | null;
   feedbackTone: "success" | "error" | null;
+  readOnly?: boolean;
 };
 
 export function SurveyBuilderToolbar({
@@ -21,15 +22,20 @@ export function SurveyBuilderToolbar({
   activeAction,
   feedbackMessage,
   feedbackTone,
+  readOnly = false,
 }: SurveyBuilderToolbarProps) {
   const isBusy = activeAction !== null;
+  const isPublished = survey.status === "Live";
+  const disableMutations = isBusy || readOnly;
 
   return (
     <section className="builder-toolbar">
       <div className="builder-toolbar-context">
         <div className="builder-toolbar-copy">
           <span className="builder-panel-kicker">Form Builder</span>
-          <strong>{survey.status === "Draft" ? "Taslak duzenleniyor" : "Anket duzenleniyor"}</strong>
+          <strong>
+            {isPublished ? "Yayinlanmis anket goruntuleniyor" : survey.status === "Draft" ? "Taslak duzenleniyor" : "Anket duzenleniyor"}
+          </strong>
         </div>
         <div className="builder-toolbar-meta">
           <span>{survey.questions.length} soru</span>
@@ -42,7 +48,7 @@ export function SurveyBuilderToolbar({
         <Link href="/surveys" className="button-secondary compact-button">
           Listeye don
         </Link>
-        <button type="button" className="button-secondary compact-button" onClick={onAddQuestion} disabled={isBusy}>
+        <button type="button" className="button-secondary compact-button" onClick={onAddQuestion} disabled={disableMutations}>
           <PlusIcon className="nav-icon" />
           Soru ekle
         </button>
@@ -50,7 +56,7 @@ export function SurveyBuilderToolbar({
           type="button"
           className="button-secondary compact-button"
           onClick={() => onPersist("draft")}
-          disabled={isBusy}
+          disabled={disableMutations}
         >
           {activeAction === "draft" ? "Kaydediliyor..." : "Taslak olarak birak"}
         </button>
@@ -58,7 +64,7 @@ export function SurveyBuilderToolbar({
           type="button"
           className="button-secondary compact-button"
           onClick={() => onPersist("save")}
-          disabled={isBusy}
+          disabled={disableMutations}
         >
           {activeAction === "save" ? "Kaydediliyor..." : "Kaydet"}
         </button>
@@ -66,9 +72,17 @@ export function SurveyBuilderToolbar({
           type="button"
           className="button-primary compact-button"
           onClick={() => onPersist("publish")}
-          disabled={isBusy}
+          disabled={isBusy || isPublished}
         >
-          {activeAction === "publish" ? "Yayinlaniyor..." : "Yayinla"}
+          {isPublished ? "Yayinlandi" : activeAction === "publish" ? "Yayinlaniyor..." : "Yayinla"}
+        </button>
+        <button
+          type="button"
+          className="button-secondary compact-button"
+          disabled
+          title="Kopyalayarak yeni taslak olusturma akisi yakinda eklenecek."
+        >
+          Bu anketi kopyala
         </button>
       </div>
     </section>

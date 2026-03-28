@@ -1509,6 +1509,48 @@ img {
   box-shadow: 0 20px 40px rgba(3, 10, 20, 0.26);
 }
 
+.builder-readonly-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 22px;
+  border-radius: 26px;
+  border: 1px solid rgba(255, 209, 102, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(255, 209, 102, 0.12), transparent 28%),
+    linear-gradient(180deg, rgba(14, 24, 40, 0.94), rgba(9, 18, 31, 0.9));
+  box-shadow: 0 18px 36px rgba(4, 10, 18, 0.22);
+}
+
+.builder-readonly-banner-copy,
+.builder-readonly-banner-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.builder-readonly-banner-copy strong {
+  font-family: var(--font-display), sans-serif;
+  font-size: 1.08rem;
+  letter-spacing: -0.03em;
+}
+
+.builder-readonly-banner-copy p,
+.builder-readonly-banner-note {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.builder-readonly-banner-actions {
+  align-items: flex-start;
+  min-width: 220px;
+}
+
+.builder-readonly-banner-note {
+  font-size: 0.82rem;
+}
+
 .builder-toolbar-context,
 .builder-toolbar-copy,
 .survey-form-card-head,
@@ -1654,6 +1696,12 @@ img {
   cursor: pointer;
 }
 
+.builder-quick-chip:disabled,
+.builder-inline-add:disabled,
+.choice-inline-add:disabled {
+  cursor: not-allowed;
+}
+
 .question-card {
   padding: 22px;
   border: 1px solid rgba(91, 231, 255, 0.12);
@@ -1718,6 +1766,15 @@ img {
   background: rgba(2, 10, 19, 0.62);
   color: var(--text);
   outline: 0;
+}
+
+.builder-field input:disabled,
+.builder-field textarea:disabled,
+.builder-field select:disabled,
+.builder-option-row input:disabled {
+  color: rgba(226, 236, 250, 0.62);
+  cursor: not-allowed;
+  background: rgba(2, 10, 19, 0.44);
 }
 
 .builder-field input:focus,
@@ -1788,6 +1845,11 @@ img {
   transform: translateX(28px);
 }
 
+.builder-toggle:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
 .builder-options-list,
 .choice-list-preview {
   display: flex;
@@ -1806,7 +1868,9 @@ img {
   color: var(--accent);
 }
 
-.builder-ghost-button[disabled] {
+.builder-ghost-button[disabled],
+.builder-inline-add[disabled],
+.choice-inline-add[disabled] {
   color: rgba(142, 168, 199, 0.44);
 }
 
@@ -1926,6 +1990,7 @@ img {
 }
 
 @media (max-width: 980px) {
+  .builder-readonly-banner,
   .builder-toolbar,
   .survey-form-card-head,
   .builder-canvas-header,
@@ -2082,5 +2147,7 @@ img {
     linear-gradient(180deg, rgba(91, 231, 255, 0.1), rgba(63, 179, 255, 0.04)),
     linear-gradient(135deg, transparent 45%, rgba(91, 231, 255, 0.8) 46%, rgba(91, 231, 255, 0.8) 54%, transparent 55%);
 }
+
+
 
 

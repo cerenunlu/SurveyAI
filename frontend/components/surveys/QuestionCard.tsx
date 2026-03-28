@@ -20,6 +20,7 @@ type QuestionCardProps = {
   isFirst: boolean;
   isLast: boolean;
   canRemove: boolean;
+  readOnly?: boolean;
   onUpdate: (question: SurveyBuilderQuestion) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -33,6 +34,7 @@ export function QuestionCard({
   isFirst,
   isLast,
   canRemove,
+  readOnly = false,
   onUpdate,
   onMoveUp,
   onMoveDown,
@@ -60,6 +62,7 @@ export function QuestionCard({
               value={question.title}
               onChange={(event) => onUpdate({ ...question, title: event.target.value })}
               placeholder="Sorunuzu yazin"
+              disabled={readOnly}
             />
           </div>
 
@@ -70,14 +73,15 @@ export function QuestionCard({
               value={question.description}
               onChange={(event) => onUpdate({ ...question, description: event.target.value })}
               placeholder="Istege bagli aciklama veya yonlendirme"
+              disabled={readOnly}
             />
           </div>
 
-          <div className="question-preview-surface">{renderQuestionPreview(question, onUpdate)}</div>
+          <div className="question-preview-surface">{renderQuestionPreview(question, onUpdate, readOnly)}</div>
         </div>
 
         <div className="question-side-column">
-          <QuestionTypeSelector value={question.type} onChange={(type) => onUpdate(buildNextQuestion(question, type))} />
+          <QuestionTypeSelector value={question.type} onChange={(type) => onUpdate(buildNextQuestion(question, type))} disabled={readOnly} />
 
           <label className="builder-toggle-row">
             <div>
@@ -89,6 +93,7 @@ export function QuestionCard({
               className={["builder-toggle", question.required ? "is-active" : ""].filter(Boolean).join(" ")}
               onClick={() => onUpdate({ ...question, required: !question.required })}
               aria-pressed={question.required}
+              disabled={readOnly}
             >
               <span />
             </button>
@@ -100,20 +105,20 @@ export function QuestionCard({
 
       <div className="question-card-footer">
         <div className="question-order-actions">
-          <button type="button" className="builder-ghost-button" onClick={onMoveUp} disabled={isFirst}>
+          <button type="button" className="builder-ghost-button" onClick={onMoveUp} disabled={readOnly || isFirst}>
             Yukari al
           </button>
-          <button type="button" className="builder-ghost-button" onClick={onMoveDown} disabled={isLast}>
+          <button type="button" className="builder-ghost-button" onClick={onMoveDown} disabled={readOnly || isLast}>
             Asagi al
           </button>
-          <button type="button" className="builder-ghost-button danger-button" onClick={onRemove} disabled={!canRemove}>
+          <button type="button" className="builder-ghost-button danger-button" onClick={onRemove} disabled={readOnly || !canRemove}>
             Sil
           </button>
         </div>
       </div>
 
       <div className="question-insert-row">
-        <button type="button" className="builder-inline-add" onClick={onAddBelow}>
+        <button type="button" className="builder-inline-add" onClick={onAddBelow} disabled={readOnly}>
           <PlusIcon className="nav-icon" />
           Alta soru ekle
         </button>
@@ -207,6 +212,7 @@ function getInputHelp(type: SurveyQuestionType) {
 function renderQuestionPreview(
   question: SurveyBuilderQuestion,
   onUpdate: (question: SurveyBuilderQuestion) => void,
+  readOnly: boolean,
 ) {
   if (isChoiceQuestion(question.type)) {
     if (isDropdownQuestion(question.type)) {
@@ -220,6 +226,7 @@ function renderQuestionPreview(
             type={question.type}
             options={question.options ?? []}
             onChange={(options) => onUpdate({ ...question, options })}
+            disabled={readOnly}
           />
         </div>
       );
@@ -230,6 +237,7 @@ function renderQuestionPreview(
         type={question.type}
         options={question.options ?? []}
         onChange={(options) => onUpdate({ ...question, options })}
+        disabled={readOnly}
       />
     );
   }

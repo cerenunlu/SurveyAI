@@ -8,9 +8,10 @@ type ChoiceOptionsEditorProps = {
   type: SurveyQuestionType;
   options: SurveyQuestionOption[];
   onChange: (options: SurveyQuestionOption[]) => void;
+  disabled?: boolean;
 };
 
-export function ChoiceOptionsEditor({ type, options, onChange }: ChoiceOptionsEditorProps) {
+export function ChoiceOptionsEditor({ type, options, onChange, disabled = false }: ChoiceOptionsEditorProps) {
   const markerClassName = [
     "choice-marker",
     isDropdownQuestion(type) ? "is-dropdown" : isMultiSelectQuestion(type) ? "is-checkbox" : "is-radio",
@@ -44,13 +45,14 @@ export function ChoiceOptionsEditor({ type, options, onChange }: ChoiceOptionsEd
                 }
                 placeholder={`Secenek ${index + 1}`}
                 aria-label={`Secenek ${index + 1}`}
+                disabled={disabled}
               />
             </div>
             <button
               type="button"
               className="builder-ghost-button choice-inline-remove"
               onClick={() => onChange(options.filter((item) => item.id !== option.id))}
-              disabled={isFixedBinaryChoice || options.length <= 1}
+              disabled={disabled || isFixedBinaryChoice || options.length <= 1}
             >
               Sil
             </button>
@@ -62,7 +64,7 @@ export function ChoiceOptionsEditor({ type, options, onChange }: ChoiceOptionsEd
         type="button"
         className="choice-inline-add"
         onClick={() => onChange([...options, createChoiceOption(`option-${options.length + 1}-${Date.now()}`, `Secenek ${options.length + 1}`, options.length + 1)])}
-        disabled={isFixedBinaryChoice}
+        disabled={disabled || isFixedBinaryChoice}
       >
         <PlusIcon className="nav-icon" />
         Secenek ekle
