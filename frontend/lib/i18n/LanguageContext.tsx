@@ -13,20 +13,30 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<Language>(() => {
-    if (typeof window === "undefined") {
-      return defaultLanguage;
-    }
-
-    const savedLanguage = window.localStorage.getItem(languageStorageKey);
-
-    return savedLanguage && isLanguage(savedLanguage) ? savedLanguage : defaultLanguage;
-  });
+  const [language, setLanguage] = useState<Language>(defaultLanguage);
+  const [hasRestoredLanguage, setHasRestoredLanguage] = useState(false);
 
   useEffect(() => {
-    window.localStorage.setItem(languageStorageKey, language);
     document.documentElement.lang = language;
   }, [language]);
+
+  useEffect(() => {
+    const savedLanguage = window.localStorage.getItem(languageStorageKey);
+
+    if (savedLanguage && isLanguage(savedLanguage)) {
+      setLanguage(savedLanguage);
+    }
+
+    setHasRestoredLanguage(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasRestoredLanguage) {
+      return;
+    }
+
+    window.localStorage.setItem(languageStorageKey, language);
+  }, [hasRestoredLanguage, language]);
 
   const value = useMemo<LanguageContextValue>(() => {
     return {
@@ -91,4 +101,3 @@ function formatTranslation(value: unknown, replacements?: Record<string, string 
     value,
   );
 }
-
