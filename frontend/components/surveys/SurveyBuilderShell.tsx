@@ -5,6 +5,7 @@ import { EmptyBuilderState } from "@/components/surveys/EmptyBuilderState";
 import { QuestionCard } from "@/components/surveys/QuestionCard";
 import { SurveyBuilderToolbar } from "@/components/surveys/SurveyBuilderToolbar";
 import { PlusIcon } from "@/components/ui/Icons";
+import { saveSurveyBuilderSurvey, type BuilderSaveAction } from "@/lib/survey-builder-api";
 import { createQuestion, questionTypeLabels } from "@/lib/survey-builder";
 import type { SurveyBuilderQuestion, SurveyBuilderSurvey, SurveyQuestionType } from "@/lib/types";
 
@@ -16,8 +17,13 @@ export function SurveyBuilderShell({
   mode: "create" | "edit";
 }) {
   const [survey, setSurvey] = useState<SurveyBuilderSurvey>(initialSurvey);
+  const [activeAction, setActiveAction] = useState<BuilderSaveAction | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [feedbackTone, setFeedbackTone] = useState<"success" | "error" | null>(null);
 
   function updateQuestion(nextQuestion: SurveyBuilderQuestion) {
+    setFeedbackMessage(null);
+    setFeedbackTone(null);
     setSurvey((current) => ({
       ...current,
       questionCount: current.questions.length,
@@ -26,6 +32,8 @@ export function SurveyBuilderShell({
   }
 
   function addQuestion(type: SurveyQuestionType = "short_text") {
+    setFeedbackMessage(null);
+    setFeedbackTone(null);
     setSurvey((current) => {
       const nextQuestion = createQuestion(type, current.questions.length + 1);
       const nextQuestions = [...current.questions, nextQuestion];
@@ -39,6 +47,8 @@ export function SurveyBuilderShell({
   }
 
   function addQuestionAfter(afterId: string, type: SurveyQuestionType = "short_text") {
+    setFeedbackMessage(null);
+    setFeedbackTone(null);
     setSurvey((current) => {
       const index = current.questions.findIndex((question) => question.id === afterId);
       if (index < 0) {
@@ -58,6 +68,8 @@ export function SurveyBuilderShell({
   }
 
   function reorderQuestion(id: string, direction: -1 | 1) {
+    setFeedbackMessage(null);
+    setFeedbackTone(null);
     setSurvey((current) => {
       const index = current.questions.findIndex((question) => question.id === id);
       const target = index + direction;
@@ -72,12 +84,15 @@ export function SurveyBuilderShell({
 
       return {
         ...current,
+        questionCount: nextQuestions.length,
         questions: nextQuestions,
       };
     });
   }
 
   function removeQuestion(id: string) {
+    setFeedbackMessage(null);
+    setFeedbackTone(null);
     setSurvey((current) => {
       if (current.questions.length <= 1) {
         return current;
@@ -93,9 +108,34 @@ export function SurveyBuilderShell({
     });
   }
 
+  async function handlePersist(action: BuilderSaveAction) {
+    setActiveAction(action);
+    setFeedbackMessage(null);
+    setFeedbackTone(null);
+
+    try {
+      const result = await saveSurveyBuilderSurvey(survey, action);
+      setSurvey(result.survey);
+      setFeedbackMessage(result.message);
+      setFeedbackTone("success");
+    } catch (error) {
+      setFeedbackMessage(error instanceof Error ? error.message : "Kaydetme sirasinda bir hata olustu.");
+      setFeedbackTone("error");
+    } finally {
+      setActiveAction(null);
+    }
+  }
+
   return (
     <div className="page-container survey-builder-page">
-      <SurveyBuilderToolbar survey={survey} onAddQuestion={() => addQuestion()} />
+      <SurveyBuilderToolbar
+        survey={survey}
+        onAddQuestion={() => addQuestion()}
+        onPersist={handlePersist}
+        activeAction={activeAction}
+        feedbackMessage={feedbackMessage}
+        feedbackTone={feedbackTone}
+      />
 
       <section className="survey-form-card panel-card">
         <div className="survey-form-card-head">
@@ -173,7 +213,7 @@ export function SurveyBuilderShell({
         )}
 
         <div className="builder-bottom-actions">
-          <button type="button" className="button-secondary" onClick={() => addQuestion()}>
+          <button type="button" className="button-secondary" onClick={() => addQuestion()} disabled={activeAction !== null}>
             <PlusIcon className="nav-icon" />
             Yeni soru ekle
           </button>

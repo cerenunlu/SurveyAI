@@ -53,6 +53,8 @@ export type SurveyQuestionType =
 export type SurveyQuestionOption = {
   id: string;
   label: string;
+  code?: string;
+  value?: string;
 };
 
 export type SurveyBuilderQuestion = {
@@ -62,6 +64,9 @@ export type SurveyBuilderQuestion = {
   title: string;
   description: string;
   required: boolean;
+  retryPrompt?: string;
+  branchConditionJson?: string;
+  settingsJson?: string;
   options?: SurveyQuestionOption[];
 };
 
@@ -72,6 +77,10 @@ export type SurveyBuilderSurvey = {
   status: "Draft" | "Live" | "Archived";
   updatedAt: string;
   questionCount: number;
+  languageCode: string;
+  introPrompt: string;
+  closingPrompt: string;
+  maxRetryPerQuestion: number;
   questions: SurveyBuilderQuestion[];
 };
 
@@ -138,3 +147,4 @@ export type TableColumn<T> = {
   label: string;
   render: (row: T) => ReactNode;
 };
+

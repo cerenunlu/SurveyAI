@@ -1,7 +1,7 @@
 "use client";
 
 import { PlusIcon } from "@/components/ui/Icons";
-import { isDropdownQuestion, isMultiSelectQuestion } from "@/lib/survey-builder";
+import { createChoiceOption, isDropdownQuestion, isMultiSelectQuestion } from "@/lib/survey-builder";
 import type { SurveyQuestionOption, SurveyQuestionType } from "@/lib/types";
 
 type ChoiceOptionsEditorProps = {
@@ -61,12 +61,7 @@ export function ChoiceOptionsEditor({ type, options, onChange }: ChoiceOptionsEd
       <button
         type="button"
         className="choice-inline-add"
-        onClick={() =>
-          onChange([
-            ...options,
-            { id: `option-${options.length + 1}-${Date.now()}`, label: `Secenek ${options.length + 1}` },
-          ])
-        }
+        onClick={() => onChange([...options, createChoiceOption(`option-${options.length + 1}-${Date.now()}`, `Secenek ${options.length + 1}`, options.length + 1)])}
         disabled={isFixedBinaryChoice}
       >
         <PlusIcon className="nav-icon" />

@@ -1,6 +1,6 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { SurveyBuilderShell } from "@/components/surveys/SurveyBuilderShell";
-import { getMockSurveyBuilder } from "@/lib/survey-builder";
+import { fetchSurveyBuilderSurvey } from "@/lib/survey-builder-api";
 
 type SurveyDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -8,10 +8,11 @@ type SurveyDetailPageProps = {
 
 export default async function SurveyDetailPage({ params }: SurveyDetailPageProps) {
   const { id } = await params;
+  const survey = await fetchSurveyBuilderSurvey(id);
 
   return (
     <PageContainer>
-      <SurveyBuilderShell initialSurvey={getMockSurveyBuilder(id)} mode="edit" />
+      <SurveyBuilderShell initialSurvey={survey} mode="edit" />
     </PageContainer>
   );
 }

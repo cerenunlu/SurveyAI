@@ -1,4 +1,4 @@
-import type { SurveyBuilderQuestion, SurveyBuilderSurvey, SurveyQuestionType } from "@/lib/types";
+import type { SurveyBuilderQuestion, SurveyBuilderSurvey, SurveyQuestionOption, SurveyQuestionType } from "@/lib/types";
 
 export const questionTypeLabels: Record<SurveyQuestionType, string> = {
   short_text: "Kisa metin",
@@ -40,6 +40,10 @@ export function createEmptySurveyDraft(): SurveyBuilderSurvey {
     status: "Draft",
     updatedAt: "Bugun",
     questionCount: questions.length,
+    languageCode: "tr",
+    introPrompt: "",
+    closingPrompt: "",
+    maxRetryPerQuestion: 2,
     questions,
   };
 }
@@ -52,6 +56,10 @@ export function getMockSurveyBuilder(id: string): SurveyBuilderSurvey {
       summary: "Kurumsal musteri algisi, destek deneyimi ve fiyat degisikligi sonrasi guven sinyalini olcen ana anket.",
       status: "Live",
       updatedAt: "Bugun, 09:40",
+      languageCode: "en",
+      introPrompt: "",
+      closingPrompt: "",
+      maxRetryPerQuestion: 2,
       questions: [
         {
           id: "q-1",
@@ -77,10 +85,10 @@ export function getMockSurveyBuilder(id: string): SurveyBuilderSurvey {
           description: "Tek baskin surucuyu isaretleyin.",
           required: true,
           options: [
-            { id: "opt-1", label: "Urun kalitesi" },
-            { id: "opt-2", label: "Destek deneyimi" },
-            { id: "opt-3", label: "Fiyatlandirma" },
-            { id: "opt-4", label: "Uygulama hizi" },
+            createChoiceOption("opt-1", "Urun kalitesi", 1),
+            createChoiceOption("opt-2", "Destek deneyimi", 2),
+            createChoiceOption("opt-3", "Fiyatlandirma", 3),
+            createChoiceOption("opt-4", "Uygulama hizi", 4),
           ],
         },
         {
@@ -100,6 +108,10 @@ export function getMockSurveyBuilder(id: string): SurveyBuilderSurvey {
       summary: "Deneme kullanicilarinin ucretli plana gecisindeki surtunme noktalarini anlamaya yonelik taslak.",
       status: "Draft",
       updatedAt: "Dun, 18:10",
+      languageCode: "en",
+      introPrompt: "",
+      closingPrompt: "",
+      maxRetryPerQuestion: 2,
       questions: [
         createQuestion("yes_no", 1, {
           code: "activation_complete",
@@ -111,10 +123,10 @@ export function getMockSurveyBuilder(id: string): SurveyBuilderSurvey {
           title: "Hangi noktalar sizi yavaslatti?",
           description: "Birden fazla secim yapilabilir.",
           options: [
-            { id: "opt-a", label: "Kurulum karmasikligi" },
-            { id: "opt-b", label: "Yetkilendirme / erisim" },
-            { id: "opt-c", label: "Eksik belge veya yardim" },
-            { id: "opt-d", label: "Net deger algisi olmamasi" },
+            createChoiceOption("opt-a", "Kurulum karmasikligi", 1),
+            createChoiceOption("opt-b", "Yetkilendirme / erisim", 2),
+            createChoiceOption("opt-c", "Eksik belge veya yardim", 3),
+            createChoiceOption("opt-d", "Net deger algisi olmamasi", 4),
           ],
         }),
         createQuestion("dropdown", 3, {
@@ -122,9 +134,9 @@ export function getMockSurveyBuilder(id: string): SurveyBuilderSurvey {
           title: "Sizi en iyi tanimlayan kullanim kanali hangisi?",
           description: "Acilir listeden tek bir secenek secin.",
           options: [
-            { id: "opt-e", label: "Web uygulamasi" },
-            { id: "opt-f", label: "Mobil uygulama" },
-            { id: "opt-g", label: "Satis ekibi yonlendirmesi" },
+            createChoiceOption("opt-e", "Web uygulamasi", 1),
+            createChoiceOption("opt-f", "Mobil uygulama", 2),
+            createChoiceOption("opt-g", "Satis ekibi yonlendirmesi", 3),
           ],
         }),
       ],
@@ -150,17 +162,21 @@ export function createQuestion(
   index: number,
   overrides: Partial<SurveyBuilderQuestion> = {},
 ): SurveyBuilderQuestion {
+  const localId = overrides.id ?? createLocalId("question", type, index);
   const question: SurveyBuilderQuestion = {
-    id: `question-${index}-${type}`,
+    id: localId,
     code: overrides.code ?? `question_${index}`,
     type,
     title: overrides.title ?? defaultTitles[type],
     description: overrides.description ?? "",
     required: overrides.required ?? false,
+    retryPrompt: overrides.retryPrompt ?? "",
+    branchConditionJson: overrides.branchConditionJson ?? "{}",
+    settingsJson: overrides.settingsJson ?? "{}",
   };
 
   if (isChoiceQuestion(type)) {
-    question.options = overrides.options ?? createDefaultChoiceOptions(question.id, type);
+    question.options = overrides.options ?? createDefaultChoiceOptions(localId, type);
   }
 
   return {
@@ -190,18 +206,31 @@ export function getRatingRange(type: SurveyQuestionType): number[] {
   return Array.from({ length: max }, (_, index) => index + 1);
 }
 
-export function createDefaultChoiceOptions(questionId: string, type: SurveyQuestionType) {
+export function createDefaultChoiceOptions(questionId: string, type: SurveyQuestionType): SurveyQuestionOption[] {
   if (type === "yes_no") {
     return [
-      { id: `${questionId}-yes`, label: "Evet" },
-      { id: `${questionId}-no`, label: "Hayir" },
+      createChoiceOption(`${questionId}-yes`, "Evet", 1),
+      createChoiceOption(`${questionId}-no`, "Hayir", 2),
     ];
   }
 
   return [
-    { id: `${questionId}-option-1`, label: "Secenek 1" },
-    { id: `${questionId}-option-2`, label: "Secenek 2" },
+    createChoiceOption(`${questionId}-option-1`, "Secenek 1", 1),
+    createChoiceOption(`${questionId}-option-2`, "Secenek 2", 2),
   ];
+}
+
+export function createChoiceOption(id: string, label: string, index: number): SurveyQuestionOption {
+  return {
+    id,
+    label,
+    code: `option_${index}`,
+    value: `option_${index}`,
+  };
+}
+
+export function createLocalId(scope: string, type: string, index: number): string {
+  return `${scope}-${type}-${index}-${Date.now()}`;
 }
 
 export function withChoiceOptions(question: SurveyBuilderQuestion, type: SurveyQuestionType): SurveyBuilderQuestion {

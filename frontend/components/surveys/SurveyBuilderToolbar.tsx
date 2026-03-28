@@ -2,14 +2,28 @@
 
 import Link from "next/link";
 import { PlusIcon } from "@/components/ui/Icons";
+import type { BuilderSaveAction } from "@/lib/survey-builder-api";
 import type { SurveyBuilderSurvey } from "@/lib/types";
 
 type SurveyBuilderToolbarProps = {
   survey: SurveyBuilderSurvey;
   onAddQuestion: () => void;
+  onPersist: (action: BuilderSaveAction) => void;
+  activeAction: BuilderSaveAction | null;
+  feedbackMessage: string | null;
+  feedbackTone: "success" | "error" | null;
 };
 
-export function SurveyBuilderToolbar({ survey, onAddQuestion }: SurveyBuilderToolbarProps) {
+export function SurveyBuilderToolbar({
+  survey,
+  onAddQuestion,
+  onPersist,
+  activeAction,
+  feedbackMessage,
+  feedbackTone,
+}: SurveyBuilderToolbarProps) {
+  const isBusy = activeAction !== null;
+
   return (
     <section className="builder-toolbar">
       <div className="builder-toolbar-context">
@@ -20,6 +34,7 @@ export function SurveyBuilderToolbar({ survey, onAddQuestion }: SurveyBuilderToo
         <div className="builder-toolbar-meta">
           <span>{survey.questions.length} soru</span>
           <span>{survey.updatedAt}</span>
+          {feedbackMessage ? <span>{feedbackTone === "error" ? `Hata: ${feedbackMessage}` : feedbackMessage}</span> : null}
         </div>
       </div>
 
@@ -27,18 +42,33 @@ export function SurveyBuilderToolbar({ survey, onAddQuestion }: SurveyBuilderToo
         <Link href="/surveys" className="button-secondary compact-button">
           Listeye don
         </Link>
-        <button type="button" className="button-secondary compact-button" onClick={onAddQuestion}>
+        <button type="button" className="button-secondary compact-button" onClick={onAddQuestion} disabled={isBusy}>
           <PlusIcon className="nav-icon" />
           Soru ekle
         </button>
-        <button type="button" className="button-secondary compact-button">
-          Taslak olarak birak
+        <button
+          type="button"
+          className="button-secondary compact-button"
+          onClick={() => onPersist("draft")}
+          disabled={isBusy}
+        >
+          {activeAction === "draft" ? "Kaydediliyor..." : "Taslak olarak birak"}
         </button>
-        <button type="button" className="button-secondary compact-button">
-          Kaydet
+        <button
+          type="button"
+          className="button-secondary compact-button"
+          onClick={() => onPersist("save")}
+          disabled={isBusy}
+        >
+          {activeAction === "save" ? "Kaydediliyor..." : "Kaydet"}
         </button>
-        <button type="button" className="button-primary compact-button">
-          Yayinla
+        <button
+          type="button"
+          className="button-primary compact-button"
+          onClick={() => onPersist("publish")}
+          disabled={isBusy}
+        >
+          {activeAction === "publish" ? "Yayinlaniyor..." : "Yayinla"}
         </button>
       </div>
     </section>
