@@ -88,7 +88,12 @@ export type Operation = {
   id: string;
   name: string;
   status: "Active" | "Paused" | "Completed" | "Draft" | "Cancelled";
+  surveyId: string;
   survey: string;
+  surveyStatus: Survey["status"] | null;
+  surveyGoal: string | null;
+  surveyAudience: string | null;
+  surveyUpdatedAt: string | null;
   budget: string;
   reach: string;
   conversion: string;
@@ -147,4 +152,3 @@ export type TableColumn<T> = {
   label: string;
   render: (row: T) => ReactNode;
 };
-

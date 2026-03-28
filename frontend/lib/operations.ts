@@ -1,4 +1,4 @@
-﻿import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL } from "@/lib/api";
 import { DASHBOARD_COMPANY_ID } from "@/lib/company";
 import { fetchCompanySurveys } from "@/lib/surveys";
 import { Operation, OperationContact } from "@/lib/types";
@@ -12,6 +12,10 @@ type ApiErrorResponse = {
 type SurveyReference = {
   id: string;
   name: string;
+  status: Operation["surveyStatus"];
+  goal: string | null;
+  audience: string | null;
+  updatedAt: string | null;
 };
 
 type OperationApiResponse = {
@@ -141,7 +145,12 @@ function mapOperationDtoToOperation(dto: OperationApiResponse, surveys: SurveyRe
     id: dto.id,
     name: dto.name,
     status: mapOperationStatus(dto.status),
+    surveyId: dto.surveyId,
     survey: survey?.name ?? formatSurveyFallback(dto.surveyId),
+    surveyStatus: survey?.status ?? null,
+    surveyGoal: survey?.goal ?? null,
+    surveyAudience: survey?.audience ?? null,
+    surveyUpdatedAt: survey?.updatedAt ?? null,
     budget: "Not available",
     reach: formatReach(dto),
     conversion: "N/A",
@@ -269,4 +278,3 @@ function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
 
   return `${statusLabel} operation linked to ${surveyLabel} with schedule ${scheduleLabel}.`;
 }
-

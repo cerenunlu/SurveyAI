@@ -2407,19 +2407,185 @@ img {
   gap: 12px;
 }
 
+.operation-workspace-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.operation-workspace-hero-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.operation-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.82fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.operation-workspace-main,
+.operation-workspace-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.operation-hero-status-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.operation-readiness-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(142, 168, 199, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.operation-readiness-pill.is-ready {
+  color: #b7ffdf;
+  border-color: rgba(52, 211, 153, 0.22);
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.operation-readiness-pill.is-blocked {
+  color: #ffd2da;
+  border-color: rgba(251, 113, 133, 0.24);
+  background: rgba(251, 113, 133, 0.12);
+}
+
+.operation-workspace-summary-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 0;
+}
+
+.operation-contact-readiness {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.operation-contact-count-card,
+.operation-empty-state {
+  padding: 20px;
+  border-radius: 22px;
+  border: 1px solid rgba(91, 231, 255, 0.1);
+  background:
+    radial-gradient(circle at top right, rgba(91, 231, 255, 0.08), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015)),
+    rgba(7, 18, 32, 0.58);
+}
+
+.operation-contact-count-card span,
+.operation-empty-state p,
+.operation-action-footnote {
+  color: var(--text-muted);
+}
+
+.operation-contact-count-card span {
+  display: block;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.operation-contact-count-card strong {
+  display: block;
+  margin-top: 10px;
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  letter-spacing: -0.05em;
+}
+
+.operation-contact-count-card p,
+.operation-empty-state p,
+.operation-action-footnote {
+  margin: 10px 0 0;
+  font-size: 0.92rem;
+  line-height: 1.7;
+}
+
+.operation-empty-state {
+  border-color: rgba(251, 113, 133, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(251, 113, 133, 0.12), transparent 26%),
+    linear-gradient(180deg, rgba(49, 12, 24, 0.5), rgba(20, 10, 15, 0.3));
+}
+
+.operation-empty-state strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.operation-workspace-survey-card {
+  gap: 18px;
+}
+
+.operation-workspace-action-panel {
+  position: sticky;
+  top: 96px;
+  padding: 22px;
+  border-radius: 28px;
+}
+
+.operation-workspace-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.operation-workspace-action-group .button-primary,
+.operation-workspace-action-group .button-secondary {
+  width: 100%;
+}
+
+.operation-disabled-action[disabled] {
+  cursor: not-allowed;
+  opacity: 0.62;
+  border-color: rgba(142, 168, 199, 0.08);
+  color: var(--text-soft);
+  box-shadow: none;
+}
+
+.operation-action-checklist {
+  margin-top: 18px;
+}
+
 @media (max-width: 1200px) {
-  .operation-create-layout {
+  .operation-create-layout,
+  .operation-workspace-grid {
     grid-template-columns: 1fr;
   }
 
-  .operation-summary-panel {
+  .operation-summary-panel,
+  .operation-workspace-action-panel {
     position: static;
+  }
+
+  .operation-workspace-hero-head {
+    flex-direction: column;
   }
 }
 
 @media (max-width: 820px) {
   .operation-summary-metrics,
-  .operation-choice-grid {
+  .operation-choice-grid,
+  .operation-workspace-summary-list {
     grid-template-columns: 1fr;
   }
 
@@ -2436,6 +2602,8 @@ img {
     width: 100%;
   }
 }
+
+
 
 
 
