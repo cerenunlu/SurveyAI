@@ -66,16 +66,11 @@ export function QuestionCard({
             />
           </div>
 
-          <div className="question-preview-surface">{renderQuestionPreview(question)}</div>
+          <div className="question-preview-surface">{renderQuestionPreview(question, onUpdate)}</div>
         </div>
 
         <div className="question-side-column">
           <QuestionTypeSelector value={question.type} onChange={(type) => onUpdate(buildNextQuestion(question, type))} />
-
-          <label className="builder-field">
-            <span>Soru kodu</span>
-            <input value={question.code} onChange={(event) => onUpdate({ ...question, code: slugify(event.target.value) })} />
-          </label>
 
           <label className="builder-toggle-row">
             <div>
@@ -92,12 +87,11 @@ export function QuestionCard({
             </button>
           </label>
 
-          <TypeSpecificSettings question={question} onUpdate={onUpdate} />
+          <TypeSpecificSettings question={question} />
         </div>
       </div>
 
       <div className="question-card-footer">
-        <code>{question.code}</code>
         <div className="question-order-actions">
           <button type="button" className="builder-ghost-button" onClick={onMoveUp} disabled={isFirst}>
             Yukari al
@@ -137,17 +131,7 @@ function buildNextQuestion(question: SurveyBuilderQuestion, type: SurveyQuestion
   };
 }
 
-function TypeSpecificSettings({
-  question,
-  onUpdate,
-}: {
-  question: SurveyBuilderQuestion;
-  onUpdate: (question: SurveyBuilderQuestion) => void;
-}) {
-  if (isChoiceQuestion(question.type)) {
-    return <ChoiceOptionsEditor options={question.options ?? []} onChange={(options) => onUpdate({ ...question, options })} />;
-  }
-
+function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion }) {
   if (isRatingQuestion(question.type)) {
     return <RatingSettings type={question.type} />;
   }
@@ -216,14 +200,10 @@ function getInputHelp(type: SurveyQuestionType) {
   }
 }
 
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function renderQuestionPreview(question: SurveyBuilderQuestion) {
+function renderQuestionPreview(
+  question: SurveyBuilderQuestion,
+  onUpdate: (question: SurveyBuilderQuestion) => void,
+) {
   if (question.type === "yes_no") {
     return (
       <div className="choice-pill-row">
@@ -235,14 +215,11 @@ function renderQuestionPreview(question: SurveyBuilderQuestion) {
 
   if (isChoiceQuestion(question.type)) {
     return (
-      <div className="choice-list-preview">
-        {(question.options ?? []).map((option) => (
-          <div key={option.id} className="choice-list-item">
-            <span className="choice-marker" />
-            <span>{option.label}</span>
-          </div>
-        ))}
-      </div>
+      <ChoiceOptionsEditor
+        type={question.type}
+        options={question.options ?? []}
+        onChange={(options) => onUpdate({ ...question, options })}
+      />
     );
   }
 

@@ -1,9 +1,8 @@
 "use client";
 
-import { ChoiceOptionsEditor } from "@/components/surveys/ChoiceOptionsEditor";
 import { QuestionTypeSelector } from "@/components/surveys/QuestionTypeSelector";
 import { RatingSettings } from "@/components/surveys/RatingSettings";
-import { isChoiceQuestion, isRatingQuestion } from "@/lib/survey-builder";
+import { isRatingQuestion } from "@/lib/survey-builder";
 import type { SurveyBuilderQuestion, SurveyQuestionType } from "@/lib/types";
 
 type QuestionSettingsPanelProps = {
@@ -29,24 +28,10 @@ export function QuestionSettingsPanel({ question, onUpdate }: QuestionSettingsPa
       <div className="builder-side-panel-header">
         <span className="builder-panel-kicker">Ayarlar</span>
         <h3>{question.title || "Soru tipi secin"}</h3>
-        <p>Her soru icin baslik, kod, gereklilik ve tip bazli ayarlari bu panelden yonetin.</p>
+        <p>Soru tipi, gereklilik ve alan davranisi gibi ayarlari bu panelden yonetin.</p>
       </div>
 
       <div className="builder-settings-stack">
-        <label className="builder-field">
-          <span>Soru basligi</span>
-          <input value={question.title} onChange={(event) => onUpdate({ ...question, title: event.target.value })} />
-        </label>
-
-        <label className="builder-field">
-          <span>Yardimci metin</span>
-          <textarea
-            rows={3}
-            value={question.description}
-            onChange={(event) => onUpdate({ ...question, description: event.target.value })}
-          />
-        </label>
-
         <QuestionTypeSelector
           value={question.type}
           onChange={(type) =>
@@ -66,11 +51,6 @@ export function QuestionSettingsPanel({ question, onUpdate }: QuestionSettingsPa
           }
         />
 
-        <label className="builder-field">
-          <span>Soru kodu</span>
-          <input value={question.code} onChange={(event) => onUpdate({ ...question, code: slugify(event.target.value) })} />
-        </label>
-
         <label className="builder-toggle-row">
           <div>
             <strong>Zorunlu soru</strong>
@@ -86,23 +66,13 @@ export function QuestionSettingsPanel({ question, onUpdate }: QuestionSettingsPa
           </button>
         </label>
 
-        <TypeSpecificSettings question={question} onUpdate={onUpdate} />
+        <TypeSpecificSettings question={question} />
       </div>
     </aside>
   );
 }
 
-function TypeSpecificSettings({
-  question,
-  onUpdate,
-}: {
-  question: SurveyBuilderQuestion;
-  onUpdate: (question: SurveyBuilderQuestion) => void;
-}) {
-  if (isChoiceQuestion(question.type)) {
-    return <ChoiceOptionsEditor options={question.options ?? []} onChange={(options) => onUpdate({ ...question, options })} />;
-  }
-
+function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion }) {
   if (isRatingQuestion(question.type)) {
     return <RatingSettings type={question.type} />;
   }
@@ -169,11 +139,4 @@ function getInputHelp(type: SurveyQuestionType) {
     default:
       return "Bu alan tipi icin ek ayarlar sonraki entegrasyon adimlarinda genisletilebilir.";
   }
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
 }
