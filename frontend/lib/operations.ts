@@ -50,6 +50,13 @@ type CreateOperationRequest = {
   createdByUserId: string | null;
 };
 
+type CreateOperationContactsRequest = {
+  contacts: Array<{
+    name: string;
+    phoneNumber: string;
+  }>;
+};
+
 export async function fetchCompanyOperations(
   companyId: string = DASHBOARD_COMPANY_ID,
   init?: RequestInit,
@@ -97,6 +104,23 @@ export async function createOperation(
     method: "POST",
     body: JSON.stringify(request),
   }, "operation");
+}
+
+export async function createOperationContacts(
+  operationId: string,
+  request: CreateOperationContactsRequest,
+  companyId: string = DASHBOARD_COMPANY_ID,
+): Promise<OperationContact[]> {
+  const response = await fetchJson<OperationContactApiResponse[]>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/contacts?companyId=${companyId}`,
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+    "operation contacts",
+  );
+
+  return response.map(mapOperationContactDtoToContact);
 }
 
 async function fetchJson<T>(
@@ -278,3 +302,4 @@ function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
 
   return `${statusLabel} operation linked to ${surveyLabel} with schedule ${scheduleLabel}.`;
 }
+

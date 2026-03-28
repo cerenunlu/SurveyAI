@@ -2608,3 +2608,36 @@ img {
 
 
 
+
+.operation-contacts-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.operation-contacts-topbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.operation-upload-placeholder {
+  padding: 20px;
+  border-radius: 22px;
+  border: 1px dashed rgba(91, 231, 255, 0.22);
+  background:
+    radial-gradient(circle at top right, rgba(91, 231, 255, 0.08), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015)),
+    rgba(7, 18, 32, 0.48);
+}
+
+.operation-upload-placeholder strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.operation-upload-placeholder p {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.7;
+}

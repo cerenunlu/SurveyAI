@@ -310,7 +310,7 @@ export default function OperationDetailPage() {
             </div>
 
             <div className="operation-workspace-action-group">
-              <Link href="/contacts" className="button-primary compact-button">
+              <Link href={`/operations/${operationId}/contacts`} className="button-primary compact-button">
                 Kişi yükle
               </Link>
               <button type="button" className="button-secondary compact-button operation-disabled-action" disabled>
@@ -342,3 +342,4 @@ export default function OperationDetailPage() {
     </PageContainer>
   );
 }
+
