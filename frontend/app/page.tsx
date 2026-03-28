@@ -81,40 +81,49 @@ export default function DashboardPage() {
 
   return (
     <PageContainer>
-      <section className="overview-hero panel-card interactive-panel">
-        <div className="overview-header">
-          <div className="overview-copy">
-            <div className="eyebrow">{t("dashboard.hero.eyebrow")}</div>
-            <h2 className="overview-title">{t("dashboard.hero.title")}</h2>
-            <p className="overview-text">{t("dashboard.hero.description")}</p>
-          </div>
+      <section className="dashboard-actions panel-card">
+        <div className="dashboard-actions-row">
+          <Link href="/surveys" className="button-primary">
+            {t("shell.topbar.createSurvey")}
+          </Link>
+          <Link href="/surveys" className="button-secondary">
+            {t("dashboard.hero.openSurveys")}
+          </Link>
+          <Link href="/campaigns" className="button-secondary">
+            {t("dashboard.hero.openCampaigns")}
+          </Link>
+          <Link href="/contacts" className="button-secondary">
+            {t("dashboard.hero.openContacts")}
+          </Link>
+        </div>
+      </section>
 
-          <div className="overview-actions">
-            <Link href="/surveys" className="button-primary">
-              {t("dashboard.hero.openSurveys")}
-            </Link>
-            <Link href="/campaigns" className="button-secondary">
-              {t("dashboard.hero.openCampaigns")}
-            </Link>
-            <Link href="/contacts" className="button-secondary">
-              {t("dashboard.hero.openContacts")}
-            </Link>
+      <section className="kpi-grid">
+        <div className="kpi-card">
+          <div className="kpi-card-top">
+            <span className="kpi-label">{t("dashboard.hero.surveysSynced")}</span>
+            <span className="kpi-indicator tone-neutral" aria-hidden="true" />
           </div>
+          <strong className="kpi-value">{surveys.length}</strong>
+          <p className="kpi-detail">{t("dashboard.kpis.surveysDetail")}</p>
         </div>
 
-        <div className="overview-strip">
-          <div className="overview-strip-item">
-            <span className="overview-strip-label">{t("dashboard.hero.surveysSynced")}</span>
-            <strong>{surveys.length} {t("dashboard.hero.syncedSuffix")}</strong>
+        <div className="kpi-card">
+          <div className="kpi-card-top">
+            <span className="kpi-label">{t("dashboard.hero.campaignsSynced")}</span>
+            <span className="kpi-indicator tone-positive" aria-hidden="true" />
           </div>
-          <div className="overview-strip-item">
-            <span className="overview-strip-label">{t("dashboard.hero.campaignsSynced")}</span>
-            <strong>{campaigns.length} {t("dashboard.hero.syncedSuffix")}</strong>
+          <strong className="kpi-value">{campaigns.length}</strong>
+          <p className="kpi-detail">{t("dashboard.kpis.campaignsDetail")}</p>
+        </div>
+
+        <div className="kpi-card">
+          <div className="kpi-card-top">
+            <span className="kpi-label">{t("dashboard.hero.contactsSynced")}</span>
+            <span className="kpi-indicator tone-warning" aria-hidden="true" />
           </div>
-          <div className="overview-strip-item">
-            <span className="overview-strip-label">{t("dashboard.hero.contactsSynced")}</span>
-            <strong>{contacts.length} {t("dashboard.hero.syncedSuffix")}</strong>
-          </div>
+          <strong className="kpi-value">{contacts.length}</strong>
+          <p className="kpi-detail">{t("dashboard.kpis.contactsDetail")}</p>
         </div>
       </section>
 

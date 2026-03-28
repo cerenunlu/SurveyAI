@@ -90,6 +90,11 @@ export const tr = {
     },
   },
   dashboard: {
+    kpis: {
+      surveysDetail: "Sirket genelinde erisilebilir anket kayitlari.",
+      campaignsDetail: "Panelde listelenen aktif kampanya envanteri.",
+      contactsDetail: "Kampanyalardan yuklenen kisi kayitlari.",
+    },
     hero: {
       eyebrow: "Urun Gorunumu",
       title: "Canli urun kayitlariyla beslenen temiz bir panel",

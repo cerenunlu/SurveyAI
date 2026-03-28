@@ -135,10 +135,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               <button className="icon-button notification-button" style={{ padding: "12px" }} aria-label={t("shell.topbar.notifications")}>
                 <BellIcon className="nav-icon" />
               </button>
-              <Link href="/surveys" className="button-primary topbar-cta desktop-only">
-                <SparkIcon className="nav-icon" />
-                {t("shell.topbar.createSurvey")}
-              </Link>
             </div>
           </header>
 

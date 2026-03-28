@@ -81,6 +81,11 @@ export const en = {
     },
   },
   dashboard: {
+    kpis: {
+      surveysDetail: "Survey records currently available across the company.",
+      campaignsDetail: "Campaign inventory currently surfaced in the dashboard.",
+      contactsDetail: "Contacts loaded from campaign records.",
+    },
     hero: {
       eyebrow: "Product Overview",
       title: "A clean dashboard built from live product records",
@@ -338,6 +343,4 @@ export const en = {
     },
   },
 } as const;
-
-
 
