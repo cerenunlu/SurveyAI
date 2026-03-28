@@ -14,6 +14,7 @@ frontend/.eslintcache
 frontend/out/
 frontend/.vercel/
 frontend/.npm/
+frontend/*.tsbuildinfo
 frontend/npm-debug.log*
 frontend/yarn-debug.log*
 frontend/yarn-error.log*

@@ -13,10 +13,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/companies/{companyId}/operations")
+@RequestMapping("/api/v1/operations")
 public class OperationController {
 
     private final OperationService operationService;
@@ -27,25 +28,25 @@ public class OperationController {
 
     @PostMapping
     public ResponseEntity<OperationResponseDto> createOperation(
-            @PathVariable UUID companyId,
+            @RequestParam UUID companyId,
             @Valid @RequestBody CreateOperationRequest request
     ) {
         OperationResponseDto response = operationService.createOperation(companyId, request);
 
-        return ResponseEntity.created(URI.create("/api/v1/companies/" + companyId + "/operations/" + response.id()))
+        return ResponseEntity.created(URI.create("/api/v1/operations/" + response.id() + "?companyId=" + companyId))
                 .body(response);
     }
 
     @GetMapping("/{operationId}")
     public ResponseEntity<OperationResponseDto> getOperationById(
-            @PathVariable UUID companyId,
-            @PathVariable UUID operationId
+            @PathVariable UUID operationId,
+            @RequestParam UUID companyId
     ) {
         return ResponseEntity.ok(operationService.getOperationById(companyId, operationId));
     }
 
     @GetMapping
-    public ResponseEntity<List<OperationResponseDto>> listOperationsByCompany(@PathVariable UUID companyId) {
+    public ResponseEntity<List<OperationResponseDto>> listOperationsByCompany(@RequestParam UUID companyId) {
         return ResponseEntity.ok(operationService.listOperationsByCompany(companyId));
     }
 }

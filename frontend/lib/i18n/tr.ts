@@ -231,7 +231,7 @@ export const tr = {
       title: "Tek bir premium kontrol yuzeyinde cok kanalli teslimat ve tempo.",
       description:
         "Operasyonlar gorunumu modern analitik is akislari icin ayarlandi: yuksek sinyal yogunlugu, temiz hiyerarsi ve gelecekteki otomasyon katmanlari icin tekrar kullanilabilir yapilar.",
-      launchOperation: "Operasyonu baslat",
+      launchOperation: "Operasyon olustur",
       segmentBuilder: "Segment olusturucu",
       chips: ["Sesli YZ ile erisim", "E-posta ve SMS orkestrasyonu", "Durum duyarli detay gorunumleri"],
     },
@@ -378,3 +378,4 @@ export const tr = {
     },
   },
 } as const;
+

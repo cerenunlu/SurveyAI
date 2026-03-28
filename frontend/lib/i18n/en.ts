@@ -196,7 +196,7 @@ export const en = {
       title: "Cross-channel delivery and pacing in one premium control surface.",
       description:
         "The operations view is tuned for modern analytics workflows: high signal density, clean hierarchy, and reusable structures for future automation layers.",
-      launchOperation: "Launch Operation",
+      launchOperation: "Create Operation",
       segmentBuilder: "Segment Builder",
       chips: ["Voice AI outreach", "Email + SMS orchestration", "Status-aware detail views"],
     },
@@ -343,4 +343,5 @@ export const en = {
     },
   },
 } as const;
+
 

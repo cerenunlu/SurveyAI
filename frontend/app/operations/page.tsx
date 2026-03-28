@@ -96,7 +96,7 @@ export default function OperationsPage() {
         description={t("operations.hero.description")}
         actions={
           <>
-            <button className="button-primary">{t("operations.hero.launchOperation")}</button>
+            <Link href="/operations/new" className="button-primary">{t("operations.hero.launchOperation")}</Link>
             <button className="button-secondary">{t("operations.hero.segmentBuilder")}</button>
           </>
         }
@@ -169,3 +169,4 @@ export default function OperationsPage() {
     </PageContainer>
   );
 }
+

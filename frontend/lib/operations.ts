@@ -38,7 +38,7 @@ export async function fetchCompanyOperations(
   init?: RequestInit,
 ): Promise<Operation[]> {
   const [operationsResponse, surveys] = await Promise.all([
-    fetchJson<OperationApiResponse[]>(`${API_BASE_URL}/api/v1/companies/${companyId}/operations`, init, "operations"),
+    fetchJson<OperationApiResponse[]>(`${API_BASE_URL}/api/v1/operations?companyId=${companyId}`, init, "operations"),
     fetchCompanySurveys(companyId, init),
   ]);
 
@@ -51,7 +51,7 @@ export async function fetchOperationById(
   init?: RequestInit,
 ): Promise<Operation> {
   const [operationResponse, surveys] = await Promise.all([
-    fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/companies/${companyId}/operations/${operationId}`, init, "operation"),
+    fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations/${operationId}?companyId=${companyId}`, init, "operation"),
     fetchCompanySurveys(companyId, init),
   ]);
 
@@ -64,7 +64,7 @@ export async function fetchOperationContacts(
   init?: RequestInit,
 ): Promise<OperationContact[]> {
   const response = await fetchJson<OperationContactApiResponse[]>(
-    `${API_BASE_URL}/api/v1/companies/${companyId}/operations/${operationId}/contacts`,
+    `${API_BASE_URL}/api/v1/operations/${operationId}/contacts?companyId=${companyId}`,
     init,
     "operation contacts",
   );
@@ -229,3 +229,5 @@ function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
 
   return `${statusLabel} operation linked to ${surveyLabel} with schedule ${scheduleLabel}.`;
 }
+
+
