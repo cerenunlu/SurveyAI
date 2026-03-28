@@ -1,3 +1,5 @@
+"use client";
+
 type ChartPlaceholderProps = {
   title: string;
   subtitle: string;
@@ -5,15 +7,20 @@ type ChartPlaceholderProps = {
   labels?: string[];
 };
 
+import { useTranslations } from "@/lib/i18n/LanguageContext";
+
 const fallbackValues = [38, 52, 41, 68, 74, 57, 83, 62, 78, 88, 71, 92];
-const fallbackLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function ChartPlaceholder({
   title,
   subtitle,
   values = fallbackValues,
-  labels = fallbackLabels,
+  labels,
 }: ChartPlaceholderProps) {
+  const { tm } = useTranslations();
+  const fallbackLabels = tm<string[]>("common.weekdaysShort");
+  const activeLabels = labels ?? fallbackLabels;
+
   return (
     <div className="chart-placeholder">
       <div className="section-copy">
@@ -26,7 +33,7 @@ export function ChartPlaceholder({
         ))}
       </div>
       <div className="chart-labels">
-        {labels.map((label) => (
+        {activeLabels.map((label) => (
           <span key={label}>{label}</span>
         ))}
       </div>

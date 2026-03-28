@@ -1,45 +1,44 @@
+"use client";
+
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ChartPlaceholder } from "@/components/ui/ChartPlaceholder";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useTranslations } from "@/lib/i18n/LanguageContext";
 
 export default function AnalyticsPage() {
+  const { t, tm } = useTranslations();
+
   return (
     <PageContainer>
       <section className="overview-hero panel-card interactive-panel">
         <div className="overview-header">
           <div className="overview-copy">
-            <div className="eyebrow">Analytics</div>
-            <h2 className="overview-title">Portfolio performance in one view</h2>
-            <p className="overview-text">
-              Compare completion rates, delivery output, and campaign conversion trends before drilling into survey and campaign detail pages.
-            </p>
+            <div className="eyebrow">{t("analytics.hero.eyebrow")}</div>
+            <h2 className="overview-title">{t("analytics.hero.title")}</h2>
+            <p className="overview-text">{t("analytics.hero.description")}</p>
           </div>
           <div className="overview-actions">
-            <Link href="/campaigns" className="button-primary">Open Campaigns</Link>
-            <Link href="/surveys" className="button-secondary">Open Surveys</Link>
+            <Link href="/campaigns" className="button-primary">{t("analytics.hero.openCampaigns")}</Link>
+            <Link href="/surveys" className="button-secondary">{t("analytics.hero.openSurveys")}</Link>
           </div>
         </div>
       </section>
 
       <div className="two-column-grid">
-        <SectionCard title="Performance Trend" description="Daily throughput across active research operations.">
-          <ChartPlaceholder title="Completion throughput" subtitle="Active studies over the last 12 sessions" values={[24, 31, 38, 46, 52, 49, 58, 64, 68, 73, 70, 79]} />
+        <SectionCard title={t("analytics.sections.performanceTitle")} description={t("analytics.sections.performanceDescription")}>
+          <ChartPlaceholder title={t("analytics.sections.performanceChartTitle")} subtitle={t("analytics.sections.performanceChartSubtitle")} values={[24, 31, 38, 46, 52, 49, 58, 64, 68, 73, 70, 79]} />
         </SectionCard>
-        <SectionCard title="Priority Reads" description="Signals to check before end-of-day reporting.">
+        <SectionCard title={t("analytics.sections.priorityTitle")} description={t("analytics.sections.priorityDescription")}>
           <div className="stack-list">
-            {[
-              ["Completion rate softened", "Mobile-assisted sessions are below weekly target.", "Paused"],
-              ["Enterprise campaign lift", "CX Activation Spring 2026 is outperforming baseline.", "Active"],
-              ["Contact quality risk", "Validation failures are skewing call-job readiness.", "Pending"],
-            ].map(([title, detail, status]) => (
+            {tm<[string, string, string][]>("analytics.sections.reads").map(([title, detail, status]) => (
               <div className="list-item operational-row" key={title}>
                 <div>
                   <strong>{title}</strong>
                   <span>{detail}</span>
                 </div>
-                <StatusBadge status={status as "Paused" | "Active" | "Pending"} />
+                <StatusBadge status={status} />
               </div>
             ))}
           </div>

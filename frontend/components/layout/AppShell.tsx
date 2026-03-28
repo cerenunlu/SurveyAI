@@ -3,62 +3,57 @@
 import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { navigationItems } from "@/components/layout/navigation";
+import { getNavigationItems } from "@/components/layout/navigation";
 import { BellIcon, CollapseIcon, MenuIcon, SearchIcon, SparkIcon } from "@/components/ui/Icons";
+import { useLanguage, useTranslations } from "@/lib/i18n/LanguageContext";
+import type { Language } from "@/lib/i18n";
 
-const pageMeta: Record<string, { title: string; subtitle: string }> = {
-  "/": {
-    title: "Operations Overview",
-    subtitle: "Track campaign health, survey readiness, contact flow, and operational issues from one control layer.",
-  },
-  "/surveys": {
-    title: "Surveys",
-    subtitle: "Manage survey drafts, publishing status, and live program inventory.",
-  },
-  "/campaigns": {
-    title: "Campaigns",
-    subtitle: "Monitor launch readiness, active pacing, and cross-channel execution.",
-  },
-  "/contacts": {
-    title: "Contacts",
-    subtitle: "Keep contact files validated, segmented, and ready for campaign assignment.",
-  },
-  "/analytics": {
-    title: "Analytics",
-    subtitle: "Review completions, response lift, and delivery performance across the portfolio.",
-  },
-  "/calling-ops": {
-    title: "Calling Ops",
-    subtitle: "Watch queue volume, call job readiness, and coordinator attention points.",
-  },
+const pageMetaKeys: Record<string, string> = {
+  "/": "shell.pageMeta.dashboard",
+  "/surveys": "shell.pageMeta.surveys",
+  "/campaigns": "shell.pageMeta.campaigns",
+  "/contacts": "shell.pageMeta.contacts",
+  "/analytics": "shell.pageMeta.analytics",
+  "/calling-ops": "shell.pageMeta.callingOps",
 };
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const { language, setLanguage } = useLanguage();
+  const { t } = useTranslations();
+
+  const navigationItems = useMemo(() => getNavigationItems(t), [t]);
 
   const currentMeta = useMemo(() => {
     if (pathname.startsWith("/surveys/")) {
       return {
-        title: "Survey Detail",
-        subtitle: "Inspect survey health, response posture, and operational notes.",
+        title: t("shell.pageMeta.surveyDetail.title"),
+        subtitle: t("shell.pageMeta.surveyDetail.subtitle"),
       };
     }
 
     if (pathname.startsWith("/campaigns/")) {
       return {
-        title: "Campaign Detail",
-        subtitle: "Review pacing, channel mix, and lifecycle movement in one view.",
+        title: t("shell.pageMeta.campaignDetail.title"),
+        subtitle: t("shell.pageMeta.campaignDetail.subtitle"),
       };
     }
 
-    return pageMeta[pathname] ?? pageMeta["/"];
-  }, [pathname]);
+    const key = pageMetaKeys[pathname] ?? pageMetaKeys["/"];
+
+    return {
+      title: t(`${key}.title`),
+      subtitle: t(`${key}.subtitle`),
+    };
+  }, [pathname, t]);
 
   return (
     <div className="app-shell">
-      {isMobileNavOpen ? <button className="mobile-overlay" aria-label="Close navigation" onClick={() => setIsMobileNavOpen(false)} /> : null}
+      {isMobileNavOpen ? (
+        <button className="mobile-overlay" aria-label={t("shell.sidebar.closeNavigation")} onClick={() => setIsMobileNavOpen(false)} />
+      ) : null}
 
       <aside
         className={[
@@ -75,17 +70,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             {!isSidebarCollapsed ? (
               <div className="brand-copy">
                 <p className="brand-title">SurveyAI</p>
-                <p className="brand-subtitle">Research Operations</p>
+                <p className="brand-subtitle">{t("shell.brandSubtitle")}</p>
               </div>
             ) : null}
           </div>
 
           <button className="sidebar-toggle desktop-only" onClick={() => setIsSidebarCollapsed((value) => !value)}>
-            <span>{isSidebarCollapsed ? "Expand" : "Collapse"}</span>
+            <span>{isSidebarCollapsed ? t("shell.sidebar.expand") : t("shell.sidebar.collapse")}</span>
             <CollapseIcon className="nav-icon" />
           </button>
 
-          {!isSidebarCollapsed ? <div className="sidebar-group-label">Navigation</div> : null}
+          {!isSidebarCollapsed ? <div className="sidebar-group-label">{t("shell.sidebar.navigation")}</div> : null}
           <nav className="nav-list">
             {navigationItems.map((item) => {
               const isActive = item.href === "/" ? pathname === item.href : pathname.startsWith(item.href);
@@ -113,10 +108,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="sidebar-footer">
               <div className="eyebrow">
                 <SparkIcon className="nav-icon" />
-                Daily Focus
+                {t("shell.sidebar.dailyFocus")}
               </div>
-              <strong>Operational readiness</strong>
-              <p>Use the dashboard to triage issues, then move into surveys, campaigns, contacts, and calling workflows to execute.</p>
+              <strong>{t("shell.sidebar.readinessTitle")}</strong>
+              <p>{t("shell.sidebar.readinessDescription")}</p>
             </div>
           ) : null}
         </div>
@@ -128,7 +123,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="header-cluster">
               <button className="mobile-menu-button mobile-only" onClick={() => setIsMobileNavOpen(true)}>
                 <MenuIcon className="nav-icon" />
-                Menu
+                {t("shell.topbar.menu")}
               </button>
               <div className="topbar-copy">
                 <h1>{currentMeta.title}</h1>
@@ -137,16 +132,20 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
 
             <div className="topbar-actions">
+              <div className="language-switcher" aria-label={t("shell.topbar.languageLabel")}>
+                <LanguageButton current={language} code="tr" label={t("shell.topbar.tr")} onSelect={setLanguage} />
+                <LanguageButton current={language} code="en" label={t("shell.topbar.en")} onSelect={setLanguage} />
+              </div>
               <label className="search-field topbar-search">
                 <SearchIcon className="nav-icon" />
-                <input placeholder="Search surveys, campaigns, contacts..." />
+                <input placeholder={t("shell.topbar.searchPlaceholder")} />
               </label>
-              <button className="icon-button notification-button" style={{ padding: "12px" }} aria-label="Notifications">
+              <button className="icon-button notification-button" style={{ padding: "12px" }} aria-label={t("shell.topbar.notifications")}>
                 <BellIcon className="nav-icon" />
               </button>
               <Link href="/surveys" className="button-primary topbar-cta desktop-only">
                 <SparkIcon className="nav-icon" />
-                Create Survey
+                {t("shell.topbar.createSurvey")}
               </Link>
             </div>
           </header>
@@ -155,5 +154,27 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </main>
     </div>
+  );
+}
+
+function LanguageButton({
+  current,
+  code,
+  label,
+  onSelect,
+}: {
+  current: Language;
+  code: Language;
+  label: string;
+  onSelect: (language: Language) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={["language-button", current === code ? "is-active" : ""].filter(Boolean).join(" ")}
+      onClick={() => onSelect(code)}
+    >
+      {label}
+    </button>
   );
 }

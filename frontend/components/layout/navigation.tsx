@@ -1,41 +1,45 @@
 import { AnalyticsIcon, CallingOpsIcon, CampaignIcon, ContactIcon, DashboardIcon, SurveyIcon } from "@/components/ui/Icons";
-import { NavItem } from "@/lib/types";
+import type { NavItem } from "@/lib/types";
 
-export const navigationItems: NavItem[] = [
-  {
-    href: "/",
-    label: "Dashboard",
-    description: "Operations overview",
-    icon: <DashboardIcon className="nav-icon" />,
-  },
-  {
-    href: "/surveys",
-    label: "Surveys",
-    description: "Drafts and live studies",
-    icon: <SurveyIcon className="nav-icon" />,
-  },
-  {
-    href: "/campaigns",
-    label: "Campaigns",
-    description: "Launch and pacing",
-    icon: <CampaignIcon className="nav-icon" />,
-  },
-  {
-    href: "/contacts",
-    label: "Contacts",
-    description: "Uploads and validation",
-    icon: <ContactIcon className="nav-icon" />,
-  },
-  {
-    href: "/analytics",
-    label: "Analytics",
-    description: "Performance and trends",
-    icon: <AnalyticsIcon className="nav-icon" />,
-  },
-  {
-    href: "/calling-ops",
-    label: "Calling Ops",
-    description: "Queues and call jobs",
-    icon: <CallingOpsIcon className="nav-icon" />,
-  },
-];
+type Translate = (path: string) => string;
+
+export function getNavigationItems(t: Translate): NavItem[] {
+  return [
+    {
+      href: "/",
+      label: t("shell.navigation.dashboard.label"),
+      description: t("shell.navigation.dashboard.description"),
+      icon: <DashboardIcon className="nav-icon" />,
+    },
+    {
+      href: "/surveys",
+      label: t("shell.navigation.surveys.label"),
+      description: t("shell.navigation.surveys.description"),
+      icon: <SurveyIcon className="nav-icon" />,
+    },
+    {
+      href: "/campaigns",
+      label: t("shell.navigation.campaigns.label"),
+      description: t("shell.navigation.campaigns.description"),
+      icon: <CampaignIcon className="nav-icon" />,
+    },
+    {
+      href: "/contacts",
+      label: t("shell.navigation.contacts.label"),
+      description: t("shell.navigation.contacts.description"),
+      icon: <ContactIcon className="nav-icon" />,
+    },
+    {
+      href: "/analytics",
+      label: t("shell.navigation.analytics.label"),
+      description: t("shell.navigation.analytics.description"),
+      icon: <AnalyticsIcon className="nav-icon" />,
+    },
+    {
+      href: "/calling-ops",
+      label: t("shell.navigation.callingOps.label"),
+      description: t("shell.navigation.callingOps.description"),
+      icon: <CallingOpsIcon className="nav-icon" />,
+    },
+  ];
+}

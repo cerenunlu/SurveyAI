@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
-import "./globals.css";
-import { AppShell } from "@/components/layout/AppShell";
 import type { ReactNode } from "react";
+import { AppShell } from "@/components/layout/AppShell";
+import { LanguageProvider } from "@/lib/i18n/LanguageContext";
+import "./globals.css";
 
 const bodyFont = Manrope({
   variable: "--font-body",
@@ -19,15 +20,13 @@ export const metadata: Metadata = {
   description: "Premium analytics dashboard foundation for SurveyAI",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="tr">
       <body className={`${bodyFont.variable} ${displayFont.variable}`}>
-        <AppShell>{children}</AppShell>
+        <LanguageProvider>
+          <AppShell>{children}</AppShell>
+        </LanguageProvider>
       </body>
     </html>
   );

@@ -1,100 +1,129 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { fetchCampaignContacts, fetchCompanyCampaigns } from "@/lib/campaigns";
+import { useTranslations } from "@/lib/i18n/LanguageContext";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import { CampaignContact } from "@/lib/types";
+import type { CampaignContact } from "@/lib/types";
 
 type DashboardContact = CampaignContact & {
   campaignName: string;
 };
 
-export default async function DashboardPage() {
-  const [surveysResult, campaignsResult] = await Promise.allSettled([
-    fetchCompanySurveys(),
-    fetchCompanyCampaigns(),
-  ]);
+export default function DashboardPage() {
+  const { t } = useTranslations();
+  const [surveys, setSurveys] = useState<Awaited<ReturnType<typeof fetchCompanySurveys>>>([]);
+  const [campaigns, setCampaigns] = useState<Awaited<ReturnType<typeof fetchCompanyCampaigns>>>([]);
+  const [contacts, setContacts] = useState<DashboardContact[]>([]);
+  const [unavailableSections, setUnavailableSections] = useState<string[]>([]);
 
-  const surveys = surveysResult.status === "fulfilled" ? surveysResult.value : [];
-  const campaigns = campaignsResult.status === "fulfilled" ? campaignsResult.value : [];
+  useEffect(() => {
+    let isMounted = true;
 
-  const contactResults = campaigns.length
-    ? await Promise.allSettled(
-        campaigns.map(async (campaign) => ({
-          campaignName: campaign.name,
-          contacts: await fetchCampaignContacts(campaign.id),
-        })),
-      )
-    : [];
+    async function loadDashboard() {
+      const [surveysResult, campaignsResult] = await Promise.allSettled([fetchCompanySurveys(), fetchCompanyCampaigns()]);
 
-  const contacts = contactResults.flatMap((result): DashboardContact[] => {
-    if (result.status !== "fulfilled") {
-      return [];
+      if (!isMounted) {
+        return;
+      }
+
+      const nextSurveys = surveysResult.status === "fulfilled" ? surveysResult.value : [];
+      const nextCampaigns = campaignsResult.status === "fulfilled" ? campaignsResult.value : [];
+
+      setSurveys(nextSurveys);
+      setCampaigns(nextCampaigns);
+
+      const contactResults = nextCampaigns.length
+        ? await Promise.allSettled(
+            nextCampaigns.map(async (campaign) => ({
+              campaignName: campaign.name,
+              contacts: await fetchCampaignContacts(campaign.id),
+            })),
+          )
+        : [];
+
+      if (!isMounted) {
+        return;
+      }
+
+      setContacts(
+        contactResults.flatMap((result): DashboardContact[] => {
+          if (result.status !== "fulfilled") {
+            return [];
+          }
+
+          return result.value.contacts.map((contact) => ({
+            ...contact,
+            campaignName: result.value.campaignName,
+          }));
+        }),
+      );
+
+      setUnavailableSections(
+        [
+          surveysResult.status === "rejected" ? t("dashboard.unavailable.surveys") : null,
+          campaignsResult.status === "rejected" ? t("dashboard.unavailable.campaigns") : null,
+          contactResults.some((result) => result.status === "rejected") ? t("dashboard.unavailable.contacts") : null,
+        ].filter((value): value is string => value !== null),
+      );
     }
 
-    return result.value.contacts.map((contact) => ({
-      ...contact,
-      campaignName: result.value.campaignName,
-    }));
-  });
+    void loadDashboard();
 
-  const unavailableSections = [
-    surveysResult.status === "rejected" ? "surveys" : null,
-    campaignsResult.status === "rejected" ? "campaigns" : null,
-    contactResults.some((result) => result.status === "rejected") ? "contacts" : null,
-  ].filter((value): value is string => value !== null);
+    return () => {
+      isMounted = false;
+    };
+  }, [t]);
 
   return (
     <PageContainer>
       <section className="overview-hero panel-card interactive-panel">
         <div className="overview-header">
           <div className="overview-copy">
-            <div className="eyebrow">Product Overview</div>
-            <h2 className="overview-title">A clean dashboard built from live product records</h2>
-            <p className="overview-text">
-              This overview only surfaces backend-backed inventory for surveys, campaigns, and contacts so the dashboard stays useful without drifting into demo metrics.
-            </p>
+            <div className="eyebrow">{t("dashboard.hero.eyebrow")}</div>
+            <h2 className="overview-title">{t("dashboard.hero.title")}</h2>
+            <p className="overview-text">{t("dashboard.hero.description")}</p>
           </div>
 
           <div className="overview-actions">
             <Link href="/surveys" className="button-primary">
-              Open Surveys
+              {t("dashboard.hero.openSurveys")}
             </Link>
             <Link href="/campaigns" className="button-secondary">
-              Open Campaigns
+              {t("dashboard.hero.openCampaigns")}
             </Link>
             <Link href="/contacts" className="button-secondary">
-              Open Contacts
+              {t("dashboard.hero.openContacts")}
             </Link>
           </div>
         </div>
 
         <div className="overview-strip">
           <div className="overview-strip-item">
-            <span className="overview-strip-label">Surveys</span>
-            <strong>{surveys.length} synced</strong>
+            <span className="overview-strip-label">{t("dashboard.hero.surveysSynced")}</span>
+            <strong>{surveys.length} {t("dashboard.hero.syncedSuffix")}</strong>
           </div>
           <div className="overview-strip-item">
-            <span className="overview-strip-label">Campaigns</span>
-            <strong>{campaigns.length} synced</strong>
+            <span className="overview-strip-label">{t("dashboard.hero.campaignsSynced")}</span>
+            <strong>{campaigns.length} {t("dashboard.hero.syncedSuffix")}</strong>
           </div>
           <div className="overview-strip-item">
-            <span className="overview-strip-label">Contacts</span>
-            <strong>{contacts.length} synced</strong>
+            <span className="overview-strip-label">{t("dashboard.hero.contactsSynced")}</span>
+            <strong>{contacts.length} {t("dashboard.hero.syncedSuffix")}</strong>
           </div>
         </div>
       </section>
 
       {unavailableSections.length > 0 ? (
-        <SectionCard
-          title="Some data is temporarily unavailable"
-          description="Only successfully loaded backend sections are shown below."
-        >
+        <SectionCard title={t("dashboard.unavailable.title")} description={t("dashboard.unavailable.description")}>
           <div className="list-item">
             <div>
-              <strong>Unavailable right now</strong>
-              <span>{formatUnavailableSections(unavailableSections)}</span>
+              <strong>{t("dashboard.unavailable.nowUnavailable")}</strong>
+              <span>{formatUnavailableSections(unavailableSections, t)}</span>
             </div>
           </div>
         </SectionCard>
@@ -103,9 +132,9 @@ export default async function DashboardPage() {
       <div className="operations-grid">
         <div className="operations-main-column">
           <SectionCard
-            title="Recent Surveys"
-            description="Latest survey records returned by the backend."
-            action={<Link href="/surveys" className="button-secondary compact-button">View all</Link>}
+            title={t("dashboard.sections.recentSurveys.title")}
+            description={t("dashboard.sections.recentSurveys.description")}
+            action={<Link href="/surveys" className="button-secondary compact-button">{t("shell.common.viewAll")}</Link>}
           >
             <div className="stack-list">
               {surveys.length > 0 ? (
@@ -124,8 +153,8 @@ export default async function DashboardPage() {
               ) : (
                 <div className="list-item">
                   <div>
-                    <strong>No surveys yet</strong>
-                    <span>Survey records will appear here as soon as they exist in the backend.</span>
+                    <strong>{t("dashboard.sections.recentSurveys.emptyTitle")}</strong>
+                    <span>{t("dashboard.sections.recentSurveys.emptyDescription")}</span>
                   </div>
                 </div>
               )}
@@ -133,9 +162,9 @@ export default async function DashboardPage() {
           </SectionCard>
 
           <SectionCard
-            title="Recent Campaigns"
-            description="Current campaign inventory backed by the backend API."
-            action={<Link href="/campaigns" className="button-secondary compact-button">View all</Link>}
+            title={t("dashboard.sections.recentCampaigns.title")}
+            description={t("dashboard.sections.recentCampaigns.description")}
+            action={<Link href="/campaigns" className="button-secondary compact-button">{t("shell.common.viewAll")}</Link>}
           >
             <div className="stack-list">
               {campaigns.length > 0 ? (
@@ -154,8 +183,8 @@ export default async function DashboardPage() {
               ) : (
                 <div className="list-item">
                   <div>
-                    <strong>No campaigns yet</strong>
-                    <span>Campaign records will show up here once they are created in the backend.</span>
+                    <strong>{t("dashboard.sections.recentCampaigns.emptyTitle")}</strong>
+                    <span>{t("dashboard.sections.recentCampaigns.emptyDescription")}</span>
                   </div>
                 </div>
               )}
@@ -165,9 +194,9 @@ export default async function DashboardPage() {
 
         <div className="operations-side-column">
           <SectionCard
-            title="Recent Contacts"
-            description="Contacts loaded from campaign contact records already stored in the backend."
-            action={<Link href="/contacts" className="button-secondary compact-button">Open contacts</Link>}
+            title={t("dashboard.sections.recentContacts.title")}
+            description={t("dashboard.sections.recentContacts.description")}
+            action={<Link href="/contacts" className="button-secondary compact-button">{t("dashboard.sections.recentContacts.action")}</Link>}
           >
             <div className="stack-list">
               {contacts.length > 0 ? (
@@ -186,22 +215,19 @@ export default async function DashboardPage() {
               ) : (
                 <div className="list-item">
                   <div>
-                    <strong>No contacts yet</strong>
-                    <span>Uploaded campaign contacts will appear here when backend records are available.</span>
+                    <strong>{t("dashboard.sections.recentContacts.emptyTitle")}</strong>
+                    <span>{t("dashboard.sections.recentContacts.emptyDescription")}</span>
                   </div>
                 </div>
               )}
             </div>
           </SectionCard>
 
-          <SectionCard
-            title="Operational Analytics"
-            description="Reserved for backend-backed throughput and quality metrics."
-          >
+          <SectionCard title={t("dashboard.sections.operationalAnalytics.title")} description={t("dashboard.sections.operationalAnalytics.description")}>
             <div className="list-item">
               <div>
-                <strong>Not available yet</strong>
-                <span>Completion, alerting, and call-operation metrics stay hidden until the backend exposes real aggregates.</span>
+                <strong>{t("dashboard.sections.operationalAnalytics.emptyTitle")}</strong>
+                <span>{t("dashboard.sections.operationalAnalytics.emptyDescription")}</span>
               </div>
             </div>
           </SectionCard>
@@ -211,14 +237,10 @@ export default async function DashboardPage() {
   );
 }
 
-function formatUnavailableSections(sections: string[]): string {
+function formatUnavailableSections(sections: string[], t: (path: string, values?: Record<string, string>) => string) {
   if (sections.length === 1) {
-    return `${capitalize(sections[0])} could not be loaded from the backend.`;
+    return t("dashboard.unavailable.single", { section: sections[0] });
   }
 
-  return `${sections.map(capitalize).join(", ")} could not be fully loaded from the backend.`;
-}
-
-function capitalize(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  return t("dashboard.unavailable.multiple", { sections: sections.join(", ") });
 }

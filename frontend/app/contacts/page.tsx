@@ -1,97 +1,98 @@
+"use client";
+
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ChartPlaceholder } from "@/components/ui/ChartPlaceholder";
 import { DataTable } from "@/components/ui/DataTable";
 import { HeroPanel } from "@/components/ui/HeroPanel";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { TableColumn } from "@/lib/types";
+import { useTranslations } from "@/lib/i18n/LanguageContext";
+import type { TableColumn } from "@/lib/types";
 import { contacts } from "@/mock/data";
 
-const columns: TableColumn<(typeof contacts)[number]>[] = [
-  {
-    key: "contact",
-    label: "Contact",
-    render: (contact) => (
-      <div>
-        <div className="table-title">{contact.name}</div>
-        <div className="table-subtitle">
-          {contact.company} / {contact.role}
-        </div>
-      </div>
-    ),
-  },
-  {
-    key: "region",
-    label: "Region",
-    render: (contact) => contact.region,
-  },
-  {
-    key: "score",
-    label: "Fit score",
-    render: (contact) => contact.score,
-  },
-  {
-    key: "lastTouch",
-    label: "Last touch",
-    render: (contact) => contact.lastTouch,
-  },
-  {
-    key: "status",
-    label: "Status",
-    render: (contact) => <StatusBadge status={contact.status} />,
-  },
-];
-
 export default function ContactsPage() {
+  const { t, tm } = useTranslations();
+
+  const columns: TableColumn<(typeof contacts)[number]>[] = [
+    {
+      key: "contact",
+      label: t("contacts.table.columns.contact"),
+      render: (contact) => (
+        <div>
+          <div className="table-title">{contact.name}</div>
+          <div className="table-subtitle">
+            {contact.company} / {contact.role}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "region",
+      label: t("contacts.table.columns.region"),
+      render: (contact) => contact.region,
+    },
+    {
+      key: "score",
+      label: t("contacts.table.columns.score"),
+      render: (contact) => contact.score,
+    },
+    {
+      key: "lastTouch",
+      label: t("contacts.table.columns.lastTouch"),
+      render: (contact) => contact.lastTouch,
+    },
+    {
+      key: "status",
+      label: t("contacts.table.columns.status"),
+      render: (contact) => <StatusBadge status={contact.status} />,
+    },
+  ];
+
   return (
     <PageContainer>
       <HeroPanel
-        eyebrow="Contacts"
-        title="Audience intelligence designed to feel product-grade, not CRM-generic."
-        description="This contacts page is intentionally framed as a sleek analytics surface with reusable tables, status markers, and card sections that will scale into segmentation and enrichment later."
+        eyebrow={t("contacts.hero.eyebrow")}
+        title={t("contacts.hero.title")}
+        description={t("contacts.hero.description")}
         actions={
           <>
-            <button className="button-primary">Add Contacts</button>
-            <button className="button-secondary">Create Segment</button>
+            <button className="button-primary">{t("contacts.hero.addContacts")}</button>
+            <button className="button-secondary">{t("contacts.hero.createSegment")}</button>
           </>
         }
-        chips={["Segment-ready mock data", "Responsive table shell", "Status-aware audience cards"]}
+        chips={tm<string[]>("contacts.hero.chips")}
       />
 
-      <SectionCard title="Audience roster" description="Clean, readable table tuned for mobile and desktop usage alike.">
+      <SectionCard title={t("contacts.table.title")} description={t("contacts.table.description")}>
         <DataTable
           columns={columns}
           rows={contacts}
           toolbar={
             <>
               <div className="filter-tabs">
-                <span className="filter-tab is-active">All contacts</span>
-                <span className="filter-tab">Active</span>
-                <span className="filter-tab">Paused</span>
-                <span className="filter-tab">Completed</span>
+                <span className="filter-tab is-active">{t("contacts.table.filters.all")}</span>
+                <span className="filter-tab">{t("contacts.table.filters.active")}</span>
+                <span className="filter-tab">{t("contacts.table.filters.paused")}</span>
+                <span className="filter-tab">{t("contacts.table.filters.completed")}</span>
               </div>
-              <span className="table-meta">4 mock contacts / premium audience workspace foundation</span>
+              <span className="table-meta">{t("contacts.table.meta")}</span>
             </>
           }
         />
       </SectionCard>
 
       <div className="two-column-grid">
-        <SectionCard title="Audience quality trend" description="Placeholder visualization for growth and quality scoring.">
+        <SectionCard title={t("contacts.extras.trendTitle")} description={t("contacts.extras.trendDescription")}>
           <ChartPlaceholder
-            title="Fit score health"
-            subtitle="Sample segment quality progression"
+            title={t("contacts.extras.trendChartTitle")}
+            subtitle={t("contacts.extras.trendChartSubtitle")}
             values={[28, 34, 32, 44, 59, 57, 65, 68, 76, 78, 85, 89]}
           />
         </SectionCard>
 
-        <SectionCard title="Segment insights" description="Future-ready panel for enrichment and routing logic.">
+        <SectionCard title={t("contacts.extras.insightsTitle")} description={t("contacts.extras.insightsDescription")}>
           <div className="stack-list">
-            {[
-              "North America enterprise leaders show the highest engagement probability.",
-              "Recent pauses are clustered around onboarding-stage outreach.",
-              "High-scoring profiles are concentrated in CS and growth operations functions.",
-            ].map((item) => (
+            {tm<string[]>("contacts.extras.insights").map((item) => (
               <div className="list-item" key={item}>
                 <strong>{item}</strong>
               </div>

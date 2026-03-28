@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ChartPlaceholder } from "@/components/ui/ChartPlaceholder";
@@ -9,54 +9,56 @@ import { HeroPanel } from "@/components/ui/HeroPanel";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { fetchCompanyCampaigns } from "@/lib/campaigns";
-import { Campaign, TableColumn } from "@/lib/types";
-
-const columns: TableColumn<Campaign>[] = [
-  {
-    key: "campaign",
-    label: "Campaign",
-    render: (campaign) => (
-      <div>
-        <div className="table-title">{campaign.name}</div>
-        <div className="table-subtitle">{campaign.summary}</div>
-      </div>
-    ),
-  },
-  {
-    key: "status",
-    label: "Status",
-    render: (campaign) => <StatusBadge status={campaign.status} />,
-  },
-  {
-    key: "survey",
-    label: "Survey",
-    render: (campaign) => campaign.survey,
-  },
-  {
-    key: "reach",
-    label: "Reach",
-    render: (campaign) => campaign.reach,
-  },
-  {
-    key: "conversion",
-    label: "Conversion",
-    render: (campaign) => campaign.conversion,
-  },
-  {
-    key: "action",
-    label: "Open",
-    render: (campaign) => (
-      <Link href={`/campaigns/${campaign.id}`} className="button-secondary">
-        View detail
-      </Link>
-    ),
-  },
-];
+import { useTranslations } from "@/lib/i18n/LanguageContext";
+import type { Campaign, TableColumn } from "@/lib/types";
 
 export default function CampaignsPage() {
+  const { t, tm } = useTranslations();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const columns = useMemo<TableColumn<Campaign>[]>(() => [
+    {
+      key: "campaign",
+      label: t("campaigns.table.columns.campaign"),
+      render: (campaign) => (
+        <div>
+          <div className="table-title">{campaign.name}</div>
+          <div className="table-subtitle">{campaign.summary}</div>
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      label: t("campaigns.table.columns.status"),
+      render: (campaign) => <StatusBadge status={campaign.status} />,
+    },
+    {
+      key: "survey",
+      label: t("campaigns.table.columns.survey"),
+      render: (campaign) => campaign.survey,
+    },
+    {
+      key: "reach",
+      label: t("campaigns.table.columns.reach"),
+      render: (campaign) => campaign.reach,
+    },
+    {
+      key: "conversion",
+      label: t("campaigns.table.columns.conversion"),
+      render: (campaign) => campaign.conversion,
+    },
+    {
+      key: "action",
+      label: t("campaigns.table.columns.action"),
+      render: (campaign) => (
+        <Link href={`/campaigns/${campaign.id}`} className="button-secondary">
+          {t("campaigns.table.states.viewDetail")}
+        </Link>
+      ),
+    },
+  ], [t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -89,38 +91,38 @@ export default function CampaignsPage() {
   return (
     <PageContainer>
       <HeroPanel
-        eyebrow="Campaign Engine"
-        title="Cross-channel delivery and pacing in one premium control surface."
-        description="The campaigns view is tuned for modern analytics workflows: high signal density, clean hierarchy, and reusable structures for future automation layers."
+        eyebrow={t("campaigns.hero.eyebrow")}
+        title={t("campaigns.hero.title")}
+        description={t("campaigns.hero.description")}
         actions={
           <>
-            <button className="button-primary">Launch Campaign</button>
-            <button className="button-secondary">Segment Builder</button>
+            <button className="button-primary">{t("campaigns.hero.launchCampaign")}</button>
+            <button className="button-secondary">{t("campaigns.hero.segmentBuilder")}</button>
           </>
         }
-        chips={["Voice AI outreach", "Email + SMS orchestration", "Status-aware detail views"]}
+        chips={tm<string[]>("campaigns.hero.chips")}
       />
 
-      <SectionCard title="Campaign inventory" description="Live campaign inventory powered by the backend API.">
+      <SectionCard title={t("campaigns.table.title")} description={t("campaigns.table.description")}>
         {errorMessage ? (
           <div className="list-item">
             <div>
-              <strong>Unable to load campaigns</strong>
+              <strong>{t("campaigns.table.states.errorTitle")}</strong>
               <span>{errorMessage}</span>
             </div>
           </div>
         ) : isLoading ? (
           <div className="list-item">
             <div>
-              <strong>Loading campaigns</strong>
-              <span>Fetching the latest campaign inventory from the backend.</span>
+              <strong>{t("campaigns.table.states.loadingTitle")}</strong>
+              <span>{t("campaigns.table.states.loadingDescription")}</span>
             </div>
           </div>
         ) : campaigns.length === 0 ? (
           <div className="list-item">
             <div>
-              <strong>No campaigns yet</strong>
-              <span>No campaign records were returned for this company.</span>
+              <strong>{t("campaigns.table.states.emptyTitle")}</strong>
+              <span>{t("campaigns.table.states.emptyDescription")}</span>
             </div>
           </div>
         ) : (
@@ -129,13 +131,11 @@ export default function CampaignsPage() {
             rows={campaigns}
             toolbar={
               <>
-                <span className="table-meta">
-                  {campaigns.length} campaign{campaigns.length === 1 ? "" : "s"} / synced from backend
-                </span>
+                <span className="table-meta">{t("campaigns.table.states.synced", { count: String(campaigns.length) })}</span>
                 <div className="filter-tabs">
-                  <span className="filter-tab is-active">All stages</span>
-                  <span className="filter-tab">Active</span>
-                  <span className="filter-tab">Paused</span>
+                  <span className="filter-tab is-active">{t("campaigns.table.filters.allStages")}</span>
+                  <span className="filter-tab">{t("campaigns.table.filters.active")}</span>
+                  <span className="filter-tab">{t("campaigns.table.filters.paused")}</span>
                 </div>
               </>
             }
@@ -144,21 +144,17 @@ export default function CampaignsPage() {
       </SectionCard>
 
       <div className="two-column-grid">
-        <SectionCard title="Reach trajectory" description="Channel performance placeholder with consistent visual treatment.">
+        <SectionCard title={t("campaigns.extras.reachTitle")} description={t("campaigns.extras.reachDescription")}>
           <ChartPlaceholder
-            title="Delivery volume"
-            subtitle="Weekly multi-channel trajectory"
+            title={t("campaigns.extras.reachChartTitle")}
+            subtitle={t("campaigns.extras.reachChartSubtitle")}
             values={[18, 26, 39, 43, 52, 64, 57, 69, 74, 82, 76, 88]}
           />
         </SectionCard>
 
-        <SectionCard title="Channel mix" description="Future-ready card area for real channel analytics.">
+        <SectionCard title={t("campaigns.extras.channelMixTitle")} description={t("campaigns.extras.channelMixDescription")}>
           <div className="stack-list">
-            {[
-              ["Voice AI", "Highest conversion efficiency this week"],
-              ["Email", "Best reach for enterprise nurture"],
-              ["SMS", "Strongest reminder performance in short windows"],
-            ].map(([label, value]) => (
+            {tm<[string, string][]>("campaigns.extras.channelMix").map(([label, value]) => (
               <div key={label} className="list-item">
                 <div>
                   <strong>{label}</strong>

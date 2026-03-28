@@ -1,51 +1,36 @@
+"use client";
+
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useTranslations } from "@/lib/i18n/LanguageContext";
 
-const queueItems = [
-  {
-    title: "EMEA follow-up queue",
-    detail: "186 contacts waiting for call-job generation.",
-    owner: "Coordinator team",
-    status: "Pending" as const,
-  },
-  {
-    title: "North America callbacks",
-    detail: "QA complete and ready for the next dialer batch.",
-    owner: "Call QA",
-    status: "Active" as const,
-  },
-  {
-    title: "Retail recovery batch 08",
-    detail: "Retry required after failed job packaging.",
-    owner: "Ops automation",
-    status: "Failed" as const,
-  },
-];
+const queueStatuses = ["Pending", "Active", "Failed"];
 
 export default function CallingOpsPage() {
+  const { t, tm } = useTranslations();
+  const queueItems = tm<{ title: string; detail: string; owner: string }[]>("callingOps.queue.items");
+
   return (
     <PageContainer>
       <section className="overview-hero panel-card interactive-panel">
         <div className="overview-header">
           <div className="overview-copy">
-            <div className="eyebrow">Calling Ops</div>
-            <h2 className="overview-title">Queue and job readiness</h2>
-            <p className="overview-text">
-              This placeholder keeps calling operations visible in navigation and gives coordinators a clear landing point for queue health and job-generation follow-up.
-            </p>
+            <div className="eyebrow">{t("callingOps.hero.eyebrow")}</div>
+            <h2 className="overview-title">{t("callingOps.hero.title")}</h2>
+            <p className="overview-text">{t("callingOps.hero.description")}</p>
           </div>
           <div className="overview-actions">
-            <Link href="/contacts" className="button-primary">Upload Contacts</Link>
-            <Link href="/campaigns" className="button-secondary">Review Campaigns</Link>
+            <Link href="/contacts" className="button-primary">{t("callingOps.hero.uploadContacts")}</Link>
+            <Link href="/campaigns" className="button-secondary">{t("callingOps.hero.reviewCampaigns")}</Link>
           </div>
         </div>
       </section>
 
-      <SectionCard title="Queue Watch" description="Operational placeholders for upcoming calling workflows.">
+      <SectionCard title={t("callingOps.queue.title")} description={t("callingOps.queue.description")}>
         <div className="stack-list">
-          {queueItems.map((item) => (
+          {queueItems.map((item, index) => (
             <div className="list-item operational-row" key={item.title}>
               <div>
                 <strong>{item.title}</strong>
@@ -53,7 +38,7 @@ export default function CallingOpsPage() {
               </div>
               <div className="operational-meta">
                 <span>{item.owner}</span>
-                <StatusBadge status={item.status} />
+                <StatusBadge status={queueStatuses[index] ?? "Pending"} />
               </div>
             </div>
           ))}

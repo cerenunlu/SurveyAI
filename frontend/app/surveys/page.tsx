@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ChartPlaceholder } from "@/components/ui/ChartPlaceholder";
@@ -8,55 +8,57 @@ import { DataTable } from "@/components/ui/DataTable";
 import { HeroPanel } from "@/components/ui/HeroPanel";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useTranslations } from "@/lib/i18n/LanguageContext";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import { Survey, TableColumn } from "@/lib/types";
-
-const columns: TableColumn<Survey>[] = [
-  {
-    key: "survey",
-    label: "Survey",
-    render: (survey) => (
-      <div>
-        <div className="table-title">{survey.name}</div>
-        <div className="table-subtitle">{survey.goal}</div>
-      </div>
-    ),
-  },
-  {
-    key: "status",
-    label: "Status",
-    render: (survey) => <StatusBadge status={survey.status} />,
-  },
-  {
-    key: "audience",
-    label: "Audience",
-    render: (survey) => survey.audience,
-  },
-  {
-    key: "completions",
-    label: "Completions",
-    render: (survey) => survey.completions.toLocaleString(),
-  },
-  {
-    key: "rate",
-    label: "Response rate",
-    render: (survey) => survey.responseRate,
-  },
-  {
-    key: "action",
-    label: "Open",
-    render: (survey) => (
-      <Link href={`/surveys/${survey.id}`} className="button-secondary">
-        View detail
-      </Link>
-    ),
-  },
-];
+import type { Survey, TableColumn } from "@/lib/types";
 
 export default function SurveysPage() {
+  const { t, tm } = useTranslations();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const columns = useMemo<TableColumn<Survey>[]>(() => [
+    {
+      key: "survey",
+      label: t("surveys.table.columns.survey"),
+      render: (survey) => (
+        <div>
+          <div className="table-title">{survey.name}</div>
+          <div className="table-subtitle">{survey.goal}</div>
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      label: t("surveys.table.columns.status"),
+      render: (survey) => <StatusBadge status={survey.status} />,
+    },
+    {
+      key: "audience",
+      label: t("surveys.table.columns.audience"),
+      render: (survey) => survey.audience,
+    },
+    {
+      key: "completions",
+      label: t("surveys.table.columns.completions"),
+      render: (survey) => survey.completions.toLocaleString(),
+    },
+    {
+      key: "rate",
+      label: t("surveys.table.columns.responseRate"),
+      render: (survey) => survey.responseRate,
+    },
+    {
+      key: "action",
+      label: t("surveys.table.columns.action"),
+      render: (survey) => (
+        <Link href={`/surveys/${survey.id}`} className="button-secondary">
+          {t("surveys.table.states.viewDetail")}
+        </Link>
+      ),
+    },
+  ], [t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -89,49 +91,49 @@ export default function SurveysPage() {
   return (
     <PageContainer>
       <HeroPanel
-        eyebrow="Survey Programs"
-        title="A polished inventory for every survey workflow in the platform."
-        description="Use this page as the core foundation for list management, monitoring, and drill-down navigation. The structure is intentionally reusable for future filtering, search, and backend data hooks."
+        eyebrow={t("surveys.hero.eyebrow")}
+        title={t("surveys.hero.title")}
+        description={t("surveys.hero.description")}
         actions={
           <>
-            <button className="button-primary">Create Survey</button>
-            <button className="button-secondary">Import Blueprint</button>
+            <button className="button-primary">{t("surveys.hero.createSurvey")}</button>
+            <button className="button-secondary">{t("surveys.hero.importBlueprint")}</button>
           </>
         }
-        chips={["Live status badges", "Reusable table sections", "Responsive cards + tables"]}
+        chips={tm<string[]>("surveys.hero.chips")}
       />
 
       <SectionCard
-        title="Survey portfolio"
-        description="Live survey inventory powered by the backend API."
+        title={t("surveys.table.title")}
+        description={t("surveys.table.description")}
         action={
           <div className="filter-tabs">
-            <span className="filter-tab is-active">All</span>
-            <span className="filter-tab">Live</span>
-            <span className="filter-tab">Draft</span>
-            <span className="filter-tab">Archived</span>
+            <span className="filter-tab is-active">{t("surveys.table.filters.all")}</span>
+            <span className="filter-tab">{t("surveys.table.filters.live")}</span>
+            <span className="filter-tab">{t("surveys.table.filters.draft")}</span>
+            <span className="filter-tab">{t("surveys.table.filters.archived")}</span>
           </div>
         }
       >
         {errorMessage ? (
           <div className="list-item">
             <div>
-              <strong>Unable to load surveys</strong>
+              <strong>{t("surveys.table.states.errorTitle")}</strong>
               <span>{errorMessage}</span>
             </div>
           </div>
         ) : isLoading ? (
           <div className="list-item">
             <div>
-              <strong>Loading surveys</strong>
-              <span>Fetching the latest survey inventory from the backend.</span>
+              <strong>{t("surveys.table.states.loadingTitle")}</strong>
+              <span>{t("surveys.table.states.loadingDescription")}</span>
             </div>
           </div>
         ) : surveys.length === 0 ? (
           <div className="list-item">
             <div>
-              <strong>No surveys yet</strong>
-              <span>No survey records were returned for this company.</span>
+              <strong>{t("surveys.table.states.emptyTitle")}</strong>
+              <span>{t("surveys.table.states.emptyDescription")}</span>
             </div>
           </div>
         ) : (
@@ -140,10 +142,8 @@ export default function SurveysPage() {
             rows={surveys}
             toolbar={
               <>
-                <span className="table-meta">
-                  {surveys.length} survey{surveys.length === 1 ? "" : "s"} / synced from backend
-                </span>
-                <button className="button-secondary">Export List</button>
+                <span className="table-meta">{t("surveys.table.states.synced", { count: String(surveys.length) })}</span>
+                <button className="button-secondary">{t("surveys.table.states.export")}</button>
               </>
             }
           />
@@ -151,18 +151,13 @@ export default function SurveysPage() {
       </SectionCard>
 
       <div className="two-column-grid">
-        <SectionCard title="Portfolio momentum" description="Placeholder chart for completions and response lift.">
-          <ChartPlaceholder title="Weekly survey activity" subtitle="Live completion throughput across active programs" />
+        <SectionCard title={t("surveys.extras.momentumTitle")} description={t("surveys.extras.momentumDescription")}>
+          <ChartPlaceholder title={t("surveys.extras.chartTitle")} subtitle={t("surveys.extras.chartSubtitle")} />
         </SectionCard>
 
-        <SectionCard title="Design notes" description="Frontend-specific guidance reflected in this foundation.">
+        <SectionCard title={t("surveys.extras.designNotesTitle")} description={t("surveys.extras.designNotesDescription")}>
           <div className="stack-list">
-            {[
-              "Rounded large panels with subtle glow and premium depth.",
-              "Mobile-first layout behavior for tables and stacked content.",
-              "Clean dark palette that avoids generic admin-dashboard defaults.",
-              "Reusable component surfaces ready for backend wiring later.",
-            ].map((note) => (
+            {tm<string[]>("surveys.extras.notes").map((note) => (
               <div key={note} className="list-item">
                 <strong>{note}</strong>
               </div>
