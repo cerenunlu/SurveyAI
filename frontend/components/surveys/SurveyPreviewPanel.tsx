@@ -1,4 +1,4 @@
-import { isChoiceQuestion, isRatingQuestion, questionTypeLabels } from "@/lib/survey-builder";
+import { isChoiceQuestion, isDropdownQuestion, isMultiSelectQuestion, isRatingQuestion, questionTypeLabels } from "@/lib/survey-builder";
 import type { SurveyBuilderSurvey } from "@/lib/types";
 
 export function SurveyPreviewPanel({ survey }: { survey: SurveyBuilderSurvey }) {
@@ -46,11 +46,30 @@ function renderPreviewInput(question: SurveyBuilderSurvey["questions"][number]) 
   }
 
   if (isChoiceQuestion(question.type)) {
+    if (isDropdownQuestion(question.type)) {
+      return (
+        <div className="choice-preview-stack">
+          <div className="builder-select-mock">
+            <span>{question.options?.[0]?.label ?? "Bir secenek secin"}</span>
+            <span aria-hidden="true">v</span>
+          </div>
+          <div className="choice-list-preview">
+            {(question.options ?? []).map((option) => (
+              <div key={option.id} className="choice-list-item">
+                <span className="choice-marker is-dropdown" />
+                <span>{option.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="choice-list-preview">
         {(question.options ?? []).map((option) => (
           <div key={option.id} className="choice-list-item">
-            <span className="choice-marker" />
+            <span className={["choice-marker", isMultiSelectQuestion(question.type) ? "is-checkbox" : "is-radio"].join(" ")} />
             <span>{option.label}</span>
           </div>
         ))}
@@ -81,6 +100,14 @@ function renderPreviewInput(question: SurveyBuilderSurvey["questions"][number]) 
 
   if (question.type === "date") {
     return <div className="builder-input-mock">Tarih secin</div>;
+  }
+
+  if (question.type === "phone") {
+    return <div className="builder-input-mock">+90 5XX XXX XX XX</div>;
+  }
+
+  if (question.type === "number") {
+    return <div className="builder-input-mock">0</div>;
   }
 
   return <div className="builder-input-mock">{question.type === "long_text" ? "Yanit alani" : "Yanitiniz"}</div>;

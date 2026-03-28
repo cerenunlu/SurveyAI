@@ -108,6 +108,15 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
     );
   }
 
+  if (question.type === "dropdown") {
+    return (
+      <div className="builder-field-group">
+        <strong>Acilir menu davranisi</strong>
+        <p className="muted">Tek secim alir; secenekler kart icinde inline olarak duzenlenir.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="builder-field-group">
       <strong>Alan davranisi</strong>

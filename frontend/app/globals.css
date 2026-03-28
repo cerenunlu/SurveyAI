@@ -1706,6 +1706,7 @@ img {
 }
 
 .builder-input-mock,
+.builder-select-mock,
 .builder-field input,
 .builder-field textarea,
 .builder-field select,
@@ -1728,6 +1729,13 @@ img {
 }
 
 .builder-input-mock {
+  color: var(--text-soft);
+}
+
+.builder-select-mock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   color: var(--text-soft);
 }
 
@@ -1808,10 +1816,15 @@ img {
 
 .choice-pill-row,
 .rating-scale-preview,
-.name-grid-preview {
+.name-grid-preview,
+.choice-preview-stack {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.choice-preview-stack {
+  flex-direction: column;
 }
 
 .name-grid-preview {
@@ -2059,3 +2072,15 @@ img {
   border-width: 1.5px;
   background: linear-gradient(180deg, rgba(91, 231, 255, 0.1), rgba(63, 179, 255, 0.04));
 }
+
+.choice-marker.is-dropdown {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border-width: 1.5px;
+  background:
+    linear-gradient(180deg, rgba(91, 231, 255, 0.1), rgba(63, 179, 255, 0.04)),
+    linear-gradient(135deg, transparent 45%, rgba(91, 231, 255, 0.8) 46%, rgba(91, 231, 255, 0.8) 54%, transparent 55%);
+}
+
+

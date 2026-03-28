@@ -141,7 +141,7 @@ export function SurveyBuilderShell({
           </div>
 
           <div className="builder-quick-add">
-            {(["short_text", "single_choice", "rating_1_5", "date"] as SurveyQuestionType[]).map((type) => (
+            {(["short_text", "single_choice", "multi_choice", "dropdown", "rating_1_5", "date"] as SurveyQuestionType[]).map((type) => (
               <button key={type} type="button" className="builder-quick-chip" onClick={() => addQuestion(type)}>
                 <PlusIcon className="nav-icon" />
                 {questionTypeLabels[type]}

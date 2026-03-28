@@ -42,6 +42,7 @@ export type SurveyQuestionType =
   | "yes_no"
   | "single_choice"
   | "multi_choice"
+  | "dropdown"
   | "rating_1_5"
   | "rating_1_10"
   | "date"

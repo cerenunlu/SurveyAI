@@ -4,7 +4,14 @@ import { ChoiceOptionsEditor } from "@/components/surveys/ChoiceOptionsEditor";
 import { QuestionTypeSelector } from "@/components/surveys/QuestionTypeSelector";
 import { RatingSettings } from "@/components/surveys/RatingSettings";
 import { GripIcon, PlusIcon } from "@/components/ui/Icons";
-import { getRatingRange, isChoiceQuestion, isRatingQuestion, questionTypeLabels, withChoiceOptions } from "@/lib/survey-builder";
+import {
+  getRatingRange,
+  isChoiceQuestion,
+  isDropdownQuestion,
+  isRatingQuestion,
+  questionTypeLabels,
+  withChoiceOptions,
+} from "@/lib/survey-builder";
 import type { SurveyBuilderQuestion, SurveyQuestionType } from "@/lib/types";
 
 type QuestionCardProps = {
@@ -169,6 +176,15 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
     );
   }
 
+  if (question.type === "dropdown") {
+    return (
+      <div className="builder-field-group">
+        <strong>Acilir menu davranisi</strong>
+        <p className="muted">Tek secim alir ve onizlemede acilir liste olarak gorunur.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="builder-field-group">
       <strong>Alan davranisi</strong>
@@ -192,9 +208,23 @@ function renderQuestionPreview(
   question: SurveyBuilderQuestion,
   onUpdate: (question: SurveyBuilderQuestion) => void,
 ) {
-
-
   if (isChoiceQuestion(question.type)) {
+    if (isDropdownQuestion(question.type)) {
+      return (
+        <div className="choice-preview-stack">
+          <div className="builder-select-mock">
+            <span>Bir secenek secin</span>
+            <span aria-hidden="true">v</span>
+          </div>
+          <ChoiceOptionsEditor
+            type={question.type}
+            options={question.options ?? []}
+            onChange={(options) => onUpdate({ ...question, options })}
+          />
+        </div>
+      );
+    }
+
     return (
       <ChoiceOptionsEditor
         type={question.type}
@@ -227,6 +257,14 @@ function renderQuestionPreview(
         <div className="builder-input-mock">Soyad</div>
       </div>
     );
+  }
+
+  if (question.type === "phone") {
+    return <div className="builder-input-mock">+90 5XX XXX XX XX</div>;
+  }
+
+  if (question.type === "number") {
+    return <div className="builder-input-mock">0</div>;
   }
 
   return <div className="builder-input-mock">{question.type === "long_text" ? "Uzun yanit alani" : "Yaniti buraya yazin"}</div>;

@@ -5,7 +5,8 @@ export const questionTypeLabels: Record<SurveyQuestionType, string> = {
   long_text: "Uzun metin",
   yes_no: "Evet / Hayir",
   single_choice: "Coktan secmeli",
-  multi_choice: "Coklu secim",
+  multi_choice: "Onay kutulari",
+  dropdown: "Acilir menu",
   rating_1_5: "Derecelendirme 1-5",
   rating_1_10: "Derecelendirme 1-10",
   date: "Tarih",
@@ -19,7 +20,8 @@ const defaultTitles: Record<SurveyQuestionType, string> = {
   long_text: "Uzun metin sorusu",
   yes_no: "Evet / Hayir sorusu",
   single_choice: "Coktan secmeli soru",
-  multi_choice: "Coklu secim sorusu",
+  multi_choice: "Onay kutulari sorusu",
+  dropdown: "Acilir menu sorusu",
   rating_1_5: "Derecelendirme sorusu",
   rating_1_10: "Genis derecelendirme sorusu",
   date: "Tarih sorusu",
@@ -115,8 +117,18 @@ export function getMockSurveyBuilder(id: string): SurveyBuilderSurvey {
             { id: "opt-d", label: "Net deger algisi olmamasi" },
           ],
         }),
+        createQuestion("dropdown", 3, {
+          code: "primary_channel",
+          title: "Sizi en iyi tanimlayan kullanim kanali hangisi?",
+          description: "Acilir listeden tek bir secenek secin.",
+          options: [
+            { id: "opt-e", label: "Web uygulamasi" },
+            { id: "opt-f", label: "Mobil uygulama" },
+            { id: "opt-g", label: "Satis ekibi yonlendirmesi" },
+          ],
+        }),
       ],
-      questionCount: 2,
+      questionCount: 3,
     },
   };
 
@@ -158,11 +170,19 @@ export function createQuestion(
 }
 
 export function isChoiceQuestion(type: SurveyQuestionType): boolean {
-  return type === "single_choice" || type === "multi_choice" || type === "yes_no";
+  return type === "single_choice" || type === "multi_choice" || type === "dropdown" || type === "yes_no";
 }
 
 export function isRatingQuestion(type: SurveyQuestionType): boolean {
   return type === "rating_1_5" || type === "rating_1_10";
+}
+
+export function isMultiSelectQuestion(type: SurveyQuestionType): boolean {
+  return type === "multi_choice";
+}
+
+export function isDropdownQuestion(type: SurveyQuestionType): boolean {
+  return type === "dropdown";
 }
 
 export function getRatingRange(type: SurveyQuestionType): number[] {
