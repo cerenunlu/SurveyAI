@@ -1,6 +1,33 @@
-version: "3.9"
-
 services:
+  frontend:
+    build:
+      context: ./frontend
+    container_name: survey-ai-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      INTERNAL_API_BASE_URL: http://backend:8080
+    ports:
+      - "3000:3000"
+
+  backend:
+    build:
+      context: .
+    container_name: survey-ai-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/survey_ai
+      SPRING_DATASOURCE_USERNAME: survey_ai_user
+      SPRING_DATASOURCE_PASSWORD: survey_ai_password
+    ports:
+      - "8080:8080"
+
   postgres:
     image: postgres:16
     container_name: survey-ai-postgres
@@ -13,6 +40,11 @@ services:
       - "5432:5432"
     volumes:
       - survey_ai_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U survey_ai_user -d survey_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   survey_ai_postgres_data:

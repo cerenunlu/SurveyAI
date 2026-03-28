@@ -1,0 +1,514 @@
+openapi: 3.0.3
+info:
+  title: SurveyAI API Test Flow
+  version: 1.0.0
+  description: |
+    Postman-friendly OpenAPI file with concrete example values from the current database.
+
+    Current seeded/live IDs used in examples:
+    - companyId: 71700ff8-e51a-4ff0-9286-e2b3b548fbfa
+    - publishedSurveyId: 4ed7e060-06a3-4a0e-9c35-c531444b4231
+    - seededQuestionId: 48f7e3c7-61db-4e29-94df-6f8495ab1276
+    - seededOptionId: 9ebc3d6d-55b4-419a-830a-4584de2ea782
+    - seededUserId: 8b86e16a-5714-4431-af72-ad1055dbf230
+
+    Recommended Postman run order:
+    1. List Surveys
+    2. Get Survey By Id
+    3. List Survey Questions
+    4. List Survey Question Options
+    5. Create Operation
+    6. List Operations
+    7. Copy the returned operationId into the operation contact requests
+    8. Upload Operation Contacts
+    9. List Operation Contacts
+
+servers:
+  - url: http://localhost:8080
+    description: Local backend
+
+tags:
+  - name: Smoke Tests
+  - name: Survey Tests
+  - name: Operation Tests
+
+paths:
+  /api/v1/companies/{companyId}/surveys:
+    get:
+      tags: [Survey Tests]
+      operationId: listSurveys
+      summary: List surveys
+      description: Uses the current seeded company id.
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 71700ff8-e51a-4ff0-9286-e2b3b548fbfa
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              examples:
+                success:
+                  value:
+                    - id: 4ed7e060-06a3-4a0e-9c35-c531444b4231
+                      companyId: 71700ff8-e51a-4ff0-9286-e2b3b548fbfa
+                      name: Customer Satisfaction Survey
+                      description: Seeded survey for local manual API testing
+                      status: PUBLISHED
+                      languageCode: en
+                      introPrompt: Hello, we would like to ask a few short questions.
+                      closingPrompt: Thank you for your time.
+                      maxRetryPerQuestion: 2
+                      createdByUserId: 8b86e16a-5714-4431-af72-ad1055dbf230
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/companies/{companyId}/surveys/{surveyId}:
+    get:
+      tags: [Survey Tests]
+      operationId: getSurveyById
+      summary: Get seeded survey by id
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+        - name: surveyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 4ed7e060-06a3-4a0e-9c35-c531444b4231
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/companies/{companyId}/surveys/{surveyId}/questions:
+    get:
+      tags: [Survey Tests]
+      operationId: listSurveyQuestions
+      summary: List seeded survey questions
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+        - name: surveyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 4ed7e060-06a3-4a0e-9c35-c531444b4231
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SurveyQuestionResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/companies/{companyId}/surveys/{surveyId}/questions/{questionId}/options:
+    get:
+      tags: [Survey Tests]
+      operationId: listSurveyQuestionOptions
+      summary: List options for the seeded first question
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+        - name: surveyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 4ed7e060-06a3-4a0e-9c35-c531444b4231
+        - name: questionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 48f7e3c7-61db-4e29-94df-6f8495ab1276
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SurveyQuestionOptionResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/operations:
+    post:
+      tags: [Operation Tests]
+      operationId: createOperation
+      summary: Create operation using existing seeded survey
+      description: |
+        Run this first in the operations flow.
+        After sending, copy the returned `id` for the next operation contact requests.
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              createOperation:
+                value:
+                  name: Postman Test Operation
+                  surveyId: 4ed7e060-06a3-4a0e-9c35-c531444b4231
+                  scheduledAt: null
+                  createdByUserId: 8b86e16a-5714-4431-af72-ad1055dbf230
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    get:
+      tags: [Operation Tests]
+      operationId: listOperations
+      summary: List operations for the seeded company
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OperationResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/operations/{operationId}:
+    get:
+      tags: [Operation Tests]
+      operationId: getOperationById
+      summary: Get operation by id
+      description: Paste the `id` returned by Create Operation into `operationId`.
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: REPLACE_WITH_CREATED_OPERATION_ID
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/operations/{operationId}/contacts:
+    post:
+      tags: [Operation Tests]
+      operationId: uploadOperationContacts
+      summary: Upload contacts into created operation
+      description: Paste the `id` returned by Create Operation into `operationId`.
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: REPLACE_WITH_CREATED_OPERATION_ID
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              uploadContacts:
+                value:
+                  contacts:
+                    - name: Alice Example
+                      phoneNumber: "+15550000001"
+                    - name: Bob Example
+                      phoneNumber: "+15550000002"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OperationContactResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    get:
+      tags: [Operation Tests]
+      operationId: listOperationContacts
+      summary: List contacts for created operation
+      description: Paste the `id` returned by Create Operation into `operationId`.
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: REPLACE_WITH_CREATED_OPERATION_ID
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OperationContactResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+components:
+  parameters:
+    CompanyId:
+      name: companyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: 71700ff8-e51a-4ff0-9286-e2b3b548fbfa
+    CompanyIdQuery:
+      name: companyId
+      in: query
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: 71700ff8-e51a-4ff0-9286-e2b3b548fbfa
+
+  responses:
+    ApiError:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+
+  schemas:
+    SurveyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED, ARCHIVED]
+        languageCode:
+          type: string
+        introPrompt:
+          type: string
+          nullable: true
+        closingPrompt:
+          type: string
+          nullable: true
+        maxRetryPerQuestion:
+          type: integer
+          nullable: true
+        createdByUserId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SurveyQuestionOptionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        questionId:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        optionOrder:
+          type: integer
+        optionCode:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SurveyQuestionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        surveyId:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        questionOrder:
+          type: integer
+        questionType:
+          type: string
+          enum: [SINGLE_CHOICE, MULTI_CHOICE, OPEN_ENDED, RATING]
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        required:
+          type: boolean
+        retryPrompt:
+          type: string
+          nullable: true
+        branchConditionJson:
+          type: string
+          nullable: true
+        settingsJson:
+          type: string
+          nullable: true
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/SurveyQuestionOptionResponse"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    OperationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        surveyId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, SCHEDULED, RUNNING, PAUSED, COMPLETED, CANCELLED]
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdByUserId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    OperationContactResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        operationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phoneNumber:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, CALLING, COMPLETED, FAILED, RETRY, INVALID]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ApiErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
