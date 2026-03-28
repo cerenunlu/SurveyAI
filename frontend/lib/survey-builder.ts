@@ -147,11 +147,8 @@ export function createQuestion(
     required: overrides.required ?? false,
   };
 
-  if (type === "single_choice" || type === "multi_choice") {
-    question.options = overrides.options ?? [
-      { id: `${question.id}-1`, label: "Secenek 1" },
-      { id: `${question.id}-2`, label: "Secenek 2" },
-    ];
+  if (isChoiceQuestion(type)) {
+    question.options = overrides.options ?? createDefaultChoiceOptions(question.id, type);
   }
 
   return {
@@ -161,7 +158,7 @@ export function createQuestion(
 }
 
 export function isChoiceQuestion(type: SurveyQuestionType): boolean {
-  return type === "single_choice" || type === "multi_choice";
+  return type === "single_choice" || type === "multi_choice" || type === "yes_no";
 }
 
 export function isRatingQuestion(type: SurveyQuestionType): boolean {
@@ -171,4 +168,30 @@ export function isRatingQuestion(type: SurveyQuestionType): boolean {
 export function getRatingRange(type: SurveyQuestionType): number[] {
   const max = type === "rating_1_10" ? 10 : 5;
   return Array.from({ length: max }, (_, index) => index + 1);
+}
+
+export function createDefaultChoiceOptions(questionId: string, type: SurveyQuestionType) {
+  if (type === "yes_no") {
+    return [
+      { id: `${questionId}-yes`, label: "Evet" },
+      { id: `${questionId}-no`, label: "Hayir" },
+    ];
+  }
+
+  return [
+    { id: `${questionId}-option-1`, label: "Secenek 1" },
+    { id: `${questionId}-option-2`, label: "Secenek 2" },
+  ];
+}
+
+export function withChoiceOptions(question: SurveyBuilderQuestion, type: SurveyQuestionType): SurveyBuilderQuestion {
+  return {
+    ...question,
+    type,
+    options: isChoiceQuestion(type)
+      ? question.options?.length
+        ? question.options
+        : createDefaultChoiceOptions(question.id, type)
+      : undefined,
+  };
 }

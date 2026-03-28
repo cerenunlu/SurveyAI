@@ -1978,6 +1978,8 @@ img {
 }
 
 .choice-inline-row {
+  display: flex;
+  align-items: stretch;
   gap: 12px;
   padding: 12px 14px;
   border-radius: 18px;
@@ -1987,7 +1989,26 @@ img {
     rgba(6, 18, 32, 0.54);
 }
 
+.choice-inline-input-shell {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(142, 168, 199, 0.12);
+  background: rgba(2, 10, 19, 0.62);
+}
+
+.choice-inline-input-label {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .choice-inline-row input {
+  min-width: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -1999,7 +2020,13 @@ img {
   box-shadow: none;
 }
 
+.choice-inline-input-shell:focus-within {
+  border-color: rgba(91, 231, 255, 0.34);
+  box-shadow: 0 0 0 3px rgba(91, 231, 255, 0.08);
+}
+
 .choice-inline-remove {
+  align-self: center;
   color: var(--text-muted);
 }
 

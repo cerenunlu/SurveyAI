@@ -11,13 +11,14 @@ type ChoiceOptionsEditorProps = {
 
 export function ChoiceOptionsEditor({ type, options, onChange }: ChoiceOptionsEditorProps) {
   const markerClassName = ["choice-marker", type === "multi_choice" ? "is-checkbox" : "is-radio"].join(" ");
+  const isFixedBinaryChoice = type === "yes_no";
 
   return (
     <div className="choice-inline-editor">
       <div className="choice-inline-header">
         <div>
           <strong>Yanit secenekleri</strong>
-          <p>Secenekleri gordugunuz yerde duzenleyin.</p>
+          <p>Secenek metnine tiklayip kart icinde dogrudan duzenleyin.</p>
         </div>
       </div>
 
@@ -25,19 +26,22 @@ export function ChoiceOptionsEditor({ type, options, onChange }: ChoiceOptionsEd
         {options.map((option, index) => (
           <div className="builder-option-row choice-inline-row" key={option.id}>
             <span className={markerClassName} aria-hidden="true" />
-            <input
-              value={option.label}
-              onChange={(event) =>
-                onChange(options.map((item) => (item.id === option.id ? { ...item, label: event.target.value } : item)))
-              }
-              placeholder={`Secenek ${index + 1}`}
-              aria-label={`Secenek ${index + 1}`}
-            />
+            <div className="choice-inline-input-shell">
+              <span className="choice-inline-input-label">Secenek {index + 1}</span>
+              <input
+                value={option.label}
+                onChange={(event) =>
+                  onChange(options.map((item) => (item.id === option.id ? { ...item, label: event.target.value } : item)))
+                }
+                placeholder={`Secenek ${index + 1}`}
+                aria-label={`Secenek ${index + 1}`}
+              />
+            </div>
             <button
               type="button"
               className="builder-ghost-button choice-inline-remove"
               onClick={() => onChange(options.filter((item) => item.id !== option.id))}
-              disabled={options.length <= 1}
+              disabled={isFixedBinaryChoice || options.length <= 1}
             >
               Sil
             </button>
@@ -54,6 +58,7 @@ export function ChoiceOptionsEditor({ type, options, onChange }: ChoiceOptionsEd
             { id: `option-${options.length + 1}-${Date.now()}`, label: `Secenek ${options.length + 1}` },
           ])
         }
+        disabled={isFixedBinaryChoice}
       >
         <PlusIcon className="nav-icon" />
         Secenek ekle

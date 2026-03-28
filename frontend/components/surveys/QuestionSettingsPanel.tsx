@@ -2,7 +2,7 @@
 
 import { QuestionTypeSelector } from "@/components/surveys/QuestionTypeSelector";
 import { RatingSettings } from "@/components/surveys/RatingSettings";
-import { isRatingQuestion } from "@/lib/survey-builder";
+import { isRatingQuestion, withChoiceOptions } from "@/lib/survey-builder";
 import type { SurveyBuilderQuestion, SurveyQuestionType } from "@/lib/types";
 
 type QuestionSettingsPanelProps = {
@@ -34,21 +34,7 @@ export function QuestionSettingsPanel({ question, onUpdate }: QuestionSettingsPa
       <div className="builder-settings-stack">
         <QuestionTypeSelector
           value={question.type}
-          onChange={(type) =>
-            onUpdate({
-              ...question,
-              type,
-              options:
-                type === "single_choice" || type === "multi_choice"
-                  ? question.options?.length
-                    ? question.options
-                    : [
-                        { id: `${question.id}-option-1`, label: "Secenek 1" },
-                        { id: `${question.id}-option-2`, label: "Secenek 2" },
-                      ]
-                  : undefined,
-            })
-          }
+          onChange={(type) => onUpdate(withChoiceOptions(question, type))}
         />
 
         <label className="builder-toggle-row">

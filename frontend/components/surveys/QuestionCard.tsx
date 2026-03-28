@@ -4,7 +4,7 @@ import { ChoiceOptionsEditor } from "@/components/surveys/ChoiceOptionsEditor";
 import { QuestionTypeSelector } from "@/components/surveys/QuestionTypeSelector";
 import { RatingSettings } from "@/components/surveys/RatingSettings";
 import { GripIcon, PlusIcon } from "@/components/ui/Icons";
-import { getRatingRange, isChoiceQuestion, isRatingQuestion, questionTypeLabels } from "@/lib/survey-builder";
+import { getRatingRange, isChoiceQuestion, isRatingQuestion, questionTypeLabels, withChoiceOptions } from "@/lib/survey-builder";
 import type { SurveyBuilderQuestion, SurveyQuestionType } from "@/lib/types";
 
 type QuestionCardProps = {
@@ -116,19 +116,7 @@ export function QuestionCard({
 }
 
 function buildNextQuestion(question: SurveyBuilderQuestion, type: SurveyQuestionType): SurveyBuilderQuestion {
-  return {
-    ...question,
-    type,
-    options:
-      type === "single_choice" || type === "multi_choice"
-        ? question.options?.length
-          ? question.options
-          : [
-              { id: `${question.id}-option-1`, label: "Secenek 1" },
-              { id: `${question.id}-option-2`, label: "Secenek 2" },
-            ]
-        : undefined,
-  };
+  return withChoiceOptions(question, type);
 }
 
 function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion }) {
@@ -204,14 +192,7 @@ function renderQuestionPreview(
   question: SurveyBuilderQuestion,
   onUpdate: (question: SurveyBuilderQuestion) => void,
 ) {
-  if (question.type === "yes_no") {
-    return (
-      <div className="choice-pill-row">
-        <span className="choice-pill">Evet</span>
-        <span className="choice-pill">Hayir</span>
-      </div>
-    );
-  }
+
 
   if (isChoiceQuestion(question.type)) {
     return (
