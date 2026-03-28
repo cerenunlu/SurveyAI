@@ -1,0 +1,49 @@
+ALTER TABLE campaign RENAME TO operation;
+ALTER TABLE campaign_contact RENAME TO operation_contact;
+
+ALTER TABLE operation_contact RENAME COLUMN campaign_id TO operation_id;
+
+ALTER TABLE call_job RENAME COLUMN campaign_id TO operation_id;
+ALTER TABLE call_job RENAME COLUMN campaign_contact_id TO operation_contact_id;
+
+ALTER TABLE call_attempt RENAME COLUMN campaign_id TO operation_id;
+ALTER TABLE call_attempt RENAME COLUMN campaign_contact_id TO operation_contact_id;
+
+ALTER TABLE survey_response RENAME COLUMN campaign_id TO operation_id;
+ALTER TABLE survey_response RENAME COLUMN campaign_contact_id TO operation_contact_id;
+
+ALTER TABLE operation RENAME CONSTRAINT fk_campaign_company TO fk_operation_company;
+ALTER TABLE operation RENAME CONSTRAINT fk_campaign_survey TO fk_operation_survey;
+ALTER TABLE operation RENAME CONSTRAINT fk_campaign_created_by TO fk_operation_created_by;
+ALTER TABLE operation RENAME CONSTRAINT chk_campaign_status TO chk_operation_status;
+
+ALTER TABLE operation_contact RENAME CONSTRAINT fk_campaign_contact_campaign TO fk_operation_contact_operation;
+ALTER TABLE operation_contact RENAME CONSTRAINT fk_campaign_contact_company TO fk_operation_contact_company;
+ALTER TABLE operation_contact RENAME CONSTRAINT uq_campaign_contact_external_ref TO uq_operation_contact_external_ref;
+ALTER TABLE operation_contact RENAME CONSTRAINT chk_campaign_contact_status TO chk_operation_contact_status;
+ALTER TABLE operation_contact RENAME CONSTRAINT chk_campaign_contact_retry_count TO chk_operation_contact_retry_count;
+ALTER TABLE operation_contact RENAME CONSTRAINT chk_campaign_contact_age TO chk_operation_contact_age;
+
+ALTER TABLE call_job RENAME CONSTRAINT fk_call_job_campaign TO fk_call_job_operation;
+ALTER TABLE call_job RENAME CONSTRAINT fk_call_job_campaign_contact TO fk_call_job_operation_contact;
+
+ALTER TABLE call_attempt RENAME CONSTRAINT fk_call_attempt_campaign TO fk_call_attempt_operation;
+ALTER TABLE call_attempt RENAME CONSTRAINT fk_call_attempt_campaign_contact TO fk_call_attempt_operation_contact;
+
+ALTER TABLE survey_response RENAME CONSTRAINT fk_survey_response_campaign TO fk_survey_response_operation;
+ALTER TABLE survey_response RENAME CONSTRAINT fk_survey_response_campaign_contact TO fk_survey_response_operation_contact;
+
+ALTER INDEX idx_campaign_company_status RENAME TO idx_operation_company_status;
+ALTER INDEX idx_campaign_company_scheduled_at RENAME TO idx_operation_company_scheduled_at;
+ALTER INDEX idx_campaign_company_survey RENAME TO idx_operation_company_survey;
+ALTER INDEX idx_campaign_deleted_at RENAME TO idx_operation_deleted_at;
+
+ALTER INDEX idx_campaign_contact_campaign_status RENAME TO idx_operation_contact_operation_status;
+ALTER INDEX idx_campaign_contact_company_status RENAME TO idx_operation_contact_company_status;
+ALTER INDEX idx_campaign_contact_company_next_retry RENAME TO idx_operation_contact_company_next_retry;
+ALTER INDEX idx_campaign_contact_campaign_phone RENAME TO idx_operation_contact_operation_phone;
+ALTER INDEX idx_campaign_contact_deleted_at RENAME TO idx_operation_contact_deleted_at;
+
+ALTER INDEX idx_call_job_campaign_contact RENAME TO idx_call_job_operation_contact;
+ALTER INDEX idx_call_attempt_contact_created_at RENAME TO idx_call_attempt_operation_contact_created_at;
+ALTER INDEX idx_survey_response_company_campaign RENAME TO idx_survey_response_company_operation;

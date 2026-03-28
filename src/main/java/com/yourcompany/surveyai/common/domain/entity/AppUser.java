@@ -1,6 +1,6 @@
 package com.yourcompany.surveyai.common.domain.entity;
 
-import com.yourcompany.surveyai.campaign.domain.entity.Campaign;
+import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.common.domain.enums.AppUserRole;
 import com.yourcompany.surveyai.common.domain.enums.AppUserStatus;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
@@ -45,7 +45,7 @@ public class AppUser extends CompanyScopedEntity {
     private Set<Survey> createdSurveys = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "createdBy")
-    private Set<Campaign> createdCampaigns = new LinkedHashSet<>();
+    private Set<Operation> createdOperations = new LinkedHashSet<>();
 
     public String getEmail() {
         return email;

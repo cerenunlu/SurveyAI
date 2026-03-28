@@ -23,7 +23,7 @@ export default function CallingOpsPage() {
           </div>
           <div className="overview-actions">
             <Link href="/contacts" className="button-primary">{t("callingOps.hero.uploadContacts")}</Link>
-            <Link href="/campaigns" className="button-secondary">{t("callingOps.hero.reviewCampaigns")}</Link>
+            <Link href="/operations" className="button-secondary">{t("callingOps.hero.reviewOperations")}</Link>
           </div>
         </div>
       </section>

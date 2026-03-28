@@ -1,8 +1,8 @@
 package com.yourcompany.surveyai.call.domain.entity;
 
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
-import com.yourcompany.surveyai.campaign.domain.entity.Campaign;
-import com.yourcompany.surveyai.campaign.domain.entity.CampaignContact;
+import com.yourcompany.surveyai.operation.domain.entity.Operation;
+import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.common.domain.entity.CompanyScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -22,12 +22,12 @@ import java.util.Set;
 public class CallJob extends CompanyScopedEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "campaign_id", nullable = false)
-    private Campaign campaign;
+    @JoinColumn(name = "operation_id", nullable = false)
+    private Operation operation;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "campaign_contact_id", nullable = false)
-    private CampaignContact campaignContact;
+    @JoinColumn(name = "operation_contact_id", nullable = false)
+    private OperationContact operationContact;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)

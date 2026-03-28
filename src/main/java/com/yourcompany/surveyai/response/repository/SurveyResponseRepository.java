@@ -15,7 +15,7 @@ public interface SurveyResponseRepository extends JpaRepository<SurveyResponse, 
             SurveyResponseStatus status
     );
 
-    List<SurveyResponse> findAllByCampaign_IdOrderByCreatedAtDesc(UUID campaignId);
+    List<SurveyResponse> findAllByOperation_IdOrderByCreatedAtDesc(UUID operationId);
 
     Optional<SurveyResponse> findByCallAttempt_IdAndDeletedAtIsNull(UUID callAttemptId);
 

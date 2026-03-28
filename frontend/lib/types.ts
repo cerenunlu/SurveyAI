@@ -84,7 +84,7 @@ export type SurveyBuilderSurvey = {
   questions: SurveyBuilderQuestion[];
 };
 
-export type Campaign = {
+export type Operation = {
   id: string;
   name: string;
   status: "Active" | "Paused" | "Completed" | "Draft" | "Cancelled";
@@ -98,7 +98,7 @@ export type Campaign = {
   summary: string;
 };
 
-export type CampaignContact = {
+export type OperationContact = {
   id: string;
   name: string;
   phoneNumber: string;

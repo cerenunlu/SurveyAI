@@ -169,7 +169,7 @@ export function SurveyBuilderShell({
             <span className="builder-panel-kicker">Yayin durumu</span>
             <strong>Bu anket yayinlanmis durumda.</strong>
             <p>Yayinlanmis anketlerde soru ve secenek degisikligi yapilamaz.</p>
-            <p>Yayinlama, bu anketin operasyonlar ve kampanyalar icin son haline geldigi anlamina gelir; AI arama surecinin basladigi anlamina gelmez.</p>
+            <p>Yayinlama, bu anketin operasyonlar icin son haline geldigi anlamina gelir; AI arama surecinin basladigi anlamina gelmez.</p>
             <p>Degisiklik yapmak icin bu anketten yeni bir taslak olusturun.</p>
           </div>
           <div className="builder-readonly-banner-actions">

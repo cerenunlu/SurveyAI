@@ -11,7 +11,7 @@ import type { Language } from "@/lib/i18n";
 const pageMetaKeys: Record<string, string> = {
   "/": "shell.pageMeta.dashboard",
   "/surveys": "shell.pageMeta.surveys",
-  "/campaigns": "shell.pageMeta.campaigns",
+  "/operations": "shell.pageMeta.operations",
   "/contacts": "shell.pageMeta.contacts",
   "/analytics": "shell.pageMeta.analytics",
   "/calling-ops": "shell.pageMeta.callingOps",
@@ -31,8 +31,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
     if (pathname.startsWith("/surveys/")) {
       key = "shell.pageMeta.surveyDetail";
-    } else if (pathname.startsWith("/campaigns/")) {
-      key = "shell.pageMeta.campaignDetail";
+    } else if (pathname.startsWith("/operations/")) {
+      key = "shell.pageMeta.operationDetail";
     }
 
     return {

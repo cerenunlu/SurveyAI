@@ -16,9 +16,9 @@ public interface CallJobRepository extends JpaRepository<CallJob, UUID> {
             OffsetDateTime availableAt
     );
 
-    List<CallJob> findAllByCampaign_IdAndDeletedAtIsNull(UUID campaignId);
+    List<CallJob> findAllByOperation_IdAndDeletedAtIsNull(UUID operationId);
 
-    List<CallJob> findAllByCampaignContact_IdAndDeletedAtIsNull(UUID campaignContactId);
+    List<CallJob> findAllByOperationContact_IdAndDeletedAtIsNull(UUID operationContactId);
 
     Optional<CallJob> findByIdempotencyKeyAndDeletedAtIsNull(String idempotencyKey);
 }

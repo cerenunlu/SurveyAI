@@ -1,4 +1,4 @@
-import { AnalyticsIcon, CallingOpsIcon, CampaignIcon, ContactIcon, DashboardIcon, SurveyIcon } from "@/components/ui/Icons";
+import { AnalyticsIcon, CallingOpsIcon, OperationIcon, ContactIcon, DashboardIcon, SurveyIcon } from "@/components/ui/Icons";
 import type { NavItem } from "@/lib/types";
 
 type Translate = (path: string) => string;
@@ -18,10 +18,10 @@ export function getNavigationItems(t: Translate): NavItem[] {
       icon: <SurveyIcon className="nav-icon" />,
     },
     {
-      href: "/campaigns",
-      label: t("shell.navigation.campaigns.label"),
-      description: t("shell.navigation.campaigns.description"),
-      icon: <CampaignIcon className="nav-icon" />,
+      href: "/operations",
+      label: t("shell.navigation.operations.label"),
+      description: t("shell.navigation.operations.description"),
+      icon: <OperationIcon className="nav-icon" />,
     },
     {
       href: "/contacts",

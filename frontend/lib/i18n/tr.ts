@@ -8,12 +8,12 @@ export const tr = {
       dailyFocus: "Gunluk Odak",
       readinessTitle: "Operasyonel hazirlik",
       readinessDescription:
-        "Sorunlari onceliklendirmek icin paneli kullanin; ardindan is akisini yurutmeye baslamak icin anketler, kampanyalar, kisiler ve arama operasyonlarina gecin.",
+        "Sorunlari onceliklendirmek icin paneli kullanin; ardindan is akisini yurutmeye baslamak icin anketler, operasyonlar, kisiler ve arama operasyonlarina gecin.",
       closeNavigation: "Gezinmeyi kapat",
     },
     topbar: {
       menu: "Menu",
-      searchPlaceholder: "Anket, kampanya, kisi ara...",
+      searchPlaceholder: "Anket, operasyon, kisi ara...",
       notifications: "Bildirimler",
       createSurvey: "Anket olustur",
       languageLabel: "Dil",
@@ -24,19 +24,19 @@ export const tr = {
       dashboard: {
         title: "Operasyonlara Genel Bakis",
         subtitle:
-          "Kampanya sagligini, anket hazirligini, kisi akislarini ve operasyonel sorunlari tek bir kontrol katmanindan takip edin.",
+          "Operasyon sagligini, anket hazirligini, kisi akislarini ve operasyonel sorunlari tek bir kontrol katmanindan takip edin.",
       },
       surveys: {
         title: "Anketler",
         subtitle: "Anket taslaklarini, yayin durumunu ve canli program envanterini yonetin.",
       },
-      campaigns: {
-        title: "Kampanyalar",
+      operations: {
+        title: "Operasyonlar",
         subtitle: "Lansman hazirligini, aktif tempoyu ve cok kanalli yurutmeyi izleyin.",
       },
       contacts: {
         title: "Kisiler",
-        subtitle: "Kisi dosyalarini dogrulanmis, segmentlenmis ve kampanya atamasina hazir tutun.",
+        subtitle: "Kisi dosyalarini dogrulanmis, segmentlenmis ve operasyon atamasina hazir tutun.",
       },
       analytics: {
         title: "Analitik",
@@ -50,15 +50,15 @@ export const tr = {
         title: "Anket Detayi",
         subtitle: "Anket sagligini, yanit durumunu ve operasyonel notlari inceleyin.",
       },
-      campaignDetail: {
-        title: "Kampanya Detayi",
+      operationDetail: {
+        title: "Operasyon Detayi",
         subtitle: "Tempoyu, kanal karmasini ve yasam dongusu hareketlerini tek ekranda gorun.",
       },
     },
     navigation: {
       dashboard: { label: "Panel", description: "Operasyon ozeti" },
       surveys: { label: "Anketler", description: "Taslaklar ve canli calismalar" },
-      campaigns: { label: "Kampanyalar", description: "Lansman ve tempo" },
+      operations: { label: "Operasyonlar", description: "Lansman ve tempo" },
       contacts: { label: "Kisiler", description: "Yuklemeler ve dogrulama" },
       analytics: { label: "Analitik", description: "Performans ve trendler" },
       callingOps: { label: "Arama Operasyonlari", description: "Kuyruklar ve arama isleri" },
@@ -92,19 +92,19 @@ export const tr = {
   dashboard: {
     kpis: {
       surveysDetail: "Sirket genelinde erisilebilir anket kayitlari.",
-      campaignsDetail: "Panelde listelenen aktif kampanya envanteri.",
-      contactsDetail: "Kampanyalardan yuklenen kisi kayitlari.",
+      operationsDetail: "Panelde listelenen aktif operasyon envanteri.",
+      contactsDetail: "Operasyonlardan yuklenen kisi kayitlari.",
     },
     hero: {
       eyebrow: "Urun Gorunumu",
       title: "Canli urun kayitlariyla beslenen temiz bir panel",
       description:
-        "Bu genel bakis yalnizca backend destekli anket, kampanya ve kisi envanterini gosterir; boylece panel demo metriklerine kaymadan faydali kalir.",
+        "Bu genel bakis yalnizca backend destekli anket, operasyon ve kisi envanterini gosterir; boylece panel demo metriklerine kaymadan faydali kalir.",
       openSurveys: "Anketleri ac",
-      openCampaigns: "Kampanyalari ac",
+      openOperations: "Operasyonlari ac",
       openContacts: "Kisileri ac",
       surveysSynced: "Anketler",
-      campaignsSynced: "Kampanyalar",
+      operationsSynced: "Operasyonlar",
       contactsSynced: "Kisiler",
       syncedSuffix: "senkronize",
     },
@@ -115,7 +115,7 @@ export const tr = {
       single: "{{section}} backend uzerinden yuklenemedi.",
       multiple: "{{sections}} backend uzerinden tam olarak yuklenemedi.",
       surveys: "Anketler",
-      campaigns: "Kampanyalar",
+      operations: "Operasyonlar",
       contacts: "Kisiler",
     },
     sections: {
@@ -125,18 +125,18 @@ export const tr = {
         emptyTitle: "Henuz anket yok",
         emptyDescription: "Backend tarafinda olusturulan anket kayitlari burada gorunecek.",
       },
-      recentCampaigns: {
-        title: "Son Kampanyalar",
-        description: "Backend API tarafindan desteklenen mevcut kampanya envanteri.",
-        emptyTitle: "Henuz kampanya yok",
-        emptyDescription: "Backend uzerinde olusturulan kampanya kayitlari burada gorunecek.",
+      recentOperations: {
+        title: "Son Operasyonlar",
+        description: "Backend API tarafindan desteklenen mevcut operasyon envanteri.",
+        emptyTitle: "Henuz operasyon yok",
+        emptyDescription: "Backend uzerinde olusturulan operasyon kayitlari burada gorunecek.",
       },
       recentContacts: {
         title: "Son Kisiler",
-        description: "Backend'de saklanan kampanya kisi kayitlarindan yuklenen kisiler.",
+        description: "Backend'de saklanan operasyon kisi kayitlarindan yuklenen kisiler.",
         action: "Kisileri ac",
         emptyTitle: "Henuz kisi yok",
-        emptyDescription: "Backend kayitlari hazir oldugunda yuklenen kampanya kisileri burada gorunecek.",
+        emptyDescription: "Backend kayitlari hazir oldugunda yuklenen operasyon kisileri burada gorunecek.",
       },
       operationalAnalytics: {
         title: "Operasyonel Analitik",
@@ -225,21 +225,21 @@ export const tr = {
       ],
     },
   },
-  campaigns: {
+  operations: {
     hero: {
-      eyebrow: "Kampanya Motoru",
+      eyebrow: "Operasyon Motoru",
       title: "Tek bir premium kontrol yuzeyinde cok kanalli teslimat ve tempo.",
       description:
-        "Kampanyalar gorunumu modern analitik is akislari icin ayarlandi: yuksek sinyal yogunlugu, temiz hiyerarsi ve gelecekteki otomasyon katmanlari icin tekrar kullanilabilir yapilar.",
-      launchCampaign: "Kampanya baslat",
+        "Operasyonlar gorunumu modern analitik is akislari icin ayarlandi: yuksek sinyal yogunlugu, temiz hiyerarsi ve gelecekteki otomasyon katmanlari icin tekrar kullanilabilir yapilar.",
+      launchOperation: "Operasyonu baslat",
       segmentBuilder: "Segment olusturucu",
       chips: ["Sesli YZ ile erisim", "E-posta ve SMS orkestrasyonu", "Durum duyarli detay gorunumleri"],
     },
     table: {
-      title: "Kampanya envanteri",
-      description: "Backend API ile desteklenen canli kampanya envanteri.",
+      title: "Operasyon envanteri",
+      description: "Backend API ile desteklenen canli operasyon envanteri.",
       columns: {
-        campaign: "Kampanya",
+        operation: "Operasyon",
         status: "Durum",
         survey: "Anket",
         reach: "Erisim",
@@ -247,12 +247,12 @@ export const tr = {
         action: "Ac",
       },
       states: {
-        errorTitle: "Kampanyalar yuklenemedi",
-        loadingTitle: "Kampanyalar yukleniyor",
-        loadingDescription: "Backend'den en guncel kampanya envanteri getiriliyor.",
-        emptyTitle: "Henuz kampanya yok",
-        emptyDescription: "Bu sirket icin hicbir kampanya kaydi dondurulmedi.",
-        synced: "{{count}} kampanya / backend'den senkronize edildi",
+        errorTitle: "Operasyonlar yuklenemedi",
+        loadingTitle: "Operasyonlar yukleniyor",
+        loadingDescription: "Backend'den en guncel operasyon envanteri getiriliyor.",
+        emptyTitle: "Henuz operasyon yok",
+        emptyDescription: "Bu sirket icin hicbir operasyon kaydi dondurulmedi.",
+        synced: "{{count}} operasyon / backend'den senkronize edildi",
         viewDetail: "Detayi gor",
       },
       filters: {
@@ -322,8 +322,8 @@ export const tr = {
       eyebrow: "Analitik",
       title: "Tek gorunumde portfoy performansi",
       description:
-        "Anket ve kampanya detay sayfalarina inmeden once tamamlanma oranlarini, teslimat ciktilarini ve kampanya donusum trendlerini karsilastirin.",
-      openCampaigns: "Kampanyalari ac",
+        "Anket ve operasyon detay sayfalarina inmeden once tamamlanma oranlarini, teslimat ciktilarini ve operasyon donusum trendlerini karsilastirin.",
+      openOperations: "Operasyonlari ac",
       openSurveys: "Anketleri ac",
     },
     sections: {
@@ -335,7 +335,7 @@ export const tr = {
       priorityDescription: "Gun sonu raporlamasi oncesinde kontrol edilmesi gereken sinyaller.",
       reads: [
         ["Tamamlanma orani yumusadi", "Mobil destekli oturumlar haftalik hedefin altinda.", "Paused"],
-        ["Kurumsal kampanya artisi", "CX Activation Spring 2026 taban cizginin uzerinde performans gosteriyor.", "Active"],
+        ["Kurumsal operasyon artisi", "CX Activation Spring 2026 taban cizginin uzerinde performans gosteriyor.", "Active"],
         ["Kisi kalite riski", "Dogrulama hatalari arama isleri hazirligini etkiliyor.", "Pending"],
       ],
     },
@@ -347,7 +347,7 @@ export const tr = {
       description:
         "Bu yer tutucu, arama operasyonlarini gezinmede gorunur tutar ve koordinatorler icin kuyruk sagligi ile is uretimi takibi icin net bir giris noktasi sunar.",
       uploadContacts: "Kisileri yukle",
-      reviewCampaigns: "Kampanyalari incele",
+      reviewOperations: "Operasyonlari incele",
     },
     queue: {
       title: "Kuyruk Izleme",

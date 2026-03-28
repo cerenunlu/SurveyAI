@@ -12,7 +12,7 @@ public interface CallAttemptRepository extends JpaRepository<CallAttempt, UUID> 
 
     List<CallAttempt> findAllByCallJob_IdOrderByCreatedAtDesc(UUID callJobId);
 
-    List<CallAttempt> findAllByCampaignContact_IdOrderByCreatedAtDesc(UUID campaignContactId);
+    List<CallAttempt> findAllByOperationContact_IdOrderByCreatedAtDesc(UUID operationContactId);
 
     List<CallAttempt> findAllByCompany_IdAndStatusAndDeletedAtIsNull(UUID companyId, CallAttemptStatus status);
 

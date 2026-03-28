@@ -1,6 +1,6 @@
 package com.yourcompany.surveyai.common.domain.entity;
 
-import com.yourcompany.surveyai.campaign.domain.entity.Campaign;
+import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.common.domain.enums.CompanyStatus;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
 import jakarta.persistence.Column;
@@ -44,7 +44,7 @@ public class Company extends AuditableEntity {
     private Set<Survey> surveys = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "company")
-    private Set<Campaign> campaigns = new LinkedHashSet<>();
+    private Set<Operation> operations = new LinkedHashSet<>();
 
     public String getName() {
         return name;

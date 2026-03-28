@@ -8,12 +8,12 @@ export const en = {
       dailyFocus: "Daily Focus",
       readinessTitle: "Operational readiness",
       readinessDescription:
-        "Use the dashboard to triage issues, then move into surveys, campaigns, contacts, and calling workflows to execute.",
+        "Use the dashboard to triage issues, then move into surveys, operations, contacts, and calling workflows to execute.",
       closeNavigation: "Close navigation",
     },
     topbar: {
       menu: "Menu",
-      searchPlaceholder: "Search surveys, campaigns, contacts...",
+      searchPlaceholder: "Search surveys, operations, contacts...",
       notifications: "Notifications",
       createSurvey: "Create Survey",
       languageLabel: "Language",
@@ -24,19 +24,19 @@ export const en = {
       dashboard: {
         title: "Operations Overview",
         subtitle:
-          "Track campaign health, survey readiness, contact flow, and operational issues from one control layer.",
+          "Track operation health, survey readiness, contact flow, and operational issues from one control layer.",
       },
       surveys: {
         title: "Surveys",
         subtitle: "Manage survey drafts, publishing status, and live program inventory.",
       },
-      campaigns: {
-        title: "Campaigns",
+      operations: {
+        title: "Operations",
         subtitle: "Monitor launch readiness, active pacing, and cross-channel execution.",
       },
       contacts: {
         title: "Contacts",
-        subtitle: "Keep contact files validated, segmented, and ready for campaign assignment.",
+        subtitle: "Keep contact files validated, segmented, and ready for operation assignment.",
       },
       analytics: {
         title: "Analytics",
@@ -50,15 +50,15 @@ export const en = {
         title: "Survey Detail",
         subtitle: "Inspect survey health, response posture, and operational notes.",
       },
-      campaignDetail: {
-        title: "Campaign Detail",
+      operationDetail: {
+        title: "Operation Detail",
         subtitle: "Review pacing, channel mix, and lifecycle movement in one view.",
       },
     },
     navigation: {
       dashboard: { label: "Dashboard", description: "Operations overview" },
       surveys: { label: "Surveys", description: "Drafts and live studies" },
-      campaigns: { label: "Campaigns", description: "Launch and pacing" },
+      operations: { label: "Operations", description: "Launch and pacing" },
       contacts: { label: "Contacts", description: "Uploads and validation" },
       analytics: { label: "Analytics", description: "Performance and trends" },
       callingOps: { label: "Calling Ops", description: "Queues and call jobs" },
@@ -83,19 +83,19 @@ export const en = {
   dashboard: {
     kpis: {
       surveysDetail: "Survey records currently available across the company.",
-      campaignsDetail: "Campaign inventory currently surfaced in the dashboard.",
-      contactsDetail: "Contacts loaded from campaign records.",
+      operationsDetail: "Operation inventory currently surfaced in the dashboard.",
+      contactsDetail: "Contacts loaded from operation records.",
     },
     hero: {
       eyebrow: "Product Overview",
       title: "A clean dashboard built from live product records",
       description:
-        "This overview only surfaces backend-backed inventory for surveys, campaigns, and contacts so the dashboard stays useful without drifting into demo metrics.",
+        "This overview only surfaces backend-backed inventory for surveys, operations, and contacts so the dashboard stays useful without drifting into demo metrics.",
       openSurveys: "Open Surveys",
-      openCampaigns: "Open Campaigns",
+      openOperations: "Open Operations",
       openContacts: "Open Contacts",
       surveysSynced: "Surveys",
-      campaignsSynced: "Campaigns",
+      operationsSynced: "Operations",
       contactsSynced: "Contacts",
       syncedSuffix: "synced",
     },
@@ -106,7 +106,7 @@ export const en = {
       single: "{{section}} could not be loaded from the backend.",
       multiple: "{{sections}} could not be fully loaded from the backend.",
       surveys: "Surveys",
-      campaigns: "Campaigns",
+      operations: "Operations",
       contacts: "Contacts",
     },
     sections: {
@@ -116,18 +116,18 @@ export const en = {
         emptyTitle: "No surveys yet",
         emptyDescription: "Survey records will appear here as soon as they exist in the backend.",
       },
-      recentCampaigns: {
-        title: "Recent Campaigns",
-        description: "Current campaign inventory backed by the backend API.",
-        emptyTitle: "No campaigns yet",
-        emptyDescription: "Campaign records will show up here once they are created in the backend.",
+      recentOperations: {
+        title: "Recent Operations",
+        description: "Current operation inventory backed by the backend API.",
+        emptyTitle: "No operations yet",
+        emptyDescription: "Operation records will show up here once they are created in the backend.",
       },
       recentContacts: {
         title: "Recent Contacts",
-        description: "Contacts loaded from campaign contact records already stored in the backend.",
+        description: "Contacts loaded from operation contact records already stored in the backend.",
         action: "Open contacts",
         emptyTitle: "No contacts yet",
-        emptyDescription: "Uploaded campaign contacts will appear here when backend records are available.",
+        emptyDescription: "Uploaded operation contacts will appear here when backend records are available.",
       },
       operationalAnalytics: {
         title: "Operational Analytics",
@@ -190,21 +190,21 @@ export const en = {
       ],
     },
   },
-  campaigns: {
+  operations: {
     hero: {
-      eyebrow: "Campaign Engine",
+      eyebrow: "Operation Engine",
       title: "Cross-channel delivery and pacing in one premium control surface.",
       description:
-        "The campaigns view is tuned for modern analytics workflows: high signal density, clean hierarchy, and reusable structures for future automation layers.",
-      launchCampaign: "Launch Campaign",
+        "The operations view is tuned for modern analytics workflows: high signal density, clean hierarchy, and reusable structures for future automation layers.",
+      launchOperation: "Launch Operation",
       segmentBuilder: "Segment Builder",
       chips: ["Voice AI outreach", "Email + SMS orchestration", "Status-aware detail views"],
     },
     table: {
-      title: "Campaign inventory",
-      description: "Live campaign inventory powered by the backend API.",
+      title: "Operation inventory",
+      description: "Live operation inventory powered by the backend API.",
       columns: {
-        campaign: "Campaign",
+        operation: "Operation",
         status: "Status",
         survey: "Survey",
         reach: "Reach",
@@ -212,12 +212,12 @@ export const en = {
         action: "Open",
       },
       states: {
-        errorTitle: "Unable to load campaigns",
-        loadingTitle: "Loading campaigns",
-        loadingDescription: "Fetching the latest campaign inventory from the backend.",
-        emptyTitle: "No campaigns yet",
-        emptyDescription: "No campaign records were returned for this company.",
-        synced: "{{count}} campaigns / synced from backend",
+        errorTitle: "Unable to load operations",
+        loadingTitle: "Loading operations",
+        loadingDescription: "Fetching the latest operation inventory from the backend.",
+        emptyTitle: "No operations yet",
+        emptyDescription: "No operation records were returned for this company.",
+        synced: "{{count}} operations / synced from backend",
         viewDetail: "View detail",
       },
       filters: {
@@ -287,8 +287,8 @@ export const en = {
       eyebrow: "Analytics",
       title: "Portfolio performance in one view",
       description:
-        "Compare completion rates, delivery output, and campaign conversion trends before drilling into survey and campaign detail pages.",
-      openCampaigns: "Open Campaigns",
+        "Compare completion rates, delivery output, and operation conversion trends before drilling into survey and operation detail pages.",
+      openOperations: "Open Operations",
       openSurveys: "Open Surveys",
     },
     sections: {
@@ -300,7 +300,7 @@ export const en = {
       priorityDescription: "Signals to check before end-of-day reporting.",
       reads: [
         ["Completion rate softened", "Mobile-assisted sessions are below weekly target.", "Paused"],
-        ["Enterprise campaign lift", "CX Activation Spring 2026 is outperforming baseline.", "Active"],
+        ["Enterprise operation lift", "CX Activation Spring 2026 is outperforming baseline.", "Active"],
         ["Contact quality risk", "Validation failures are skewing call-job readiness.", "Pending"],
       ],
     },
@@ -312,7 +312,7 @@ export const en = {
       description:
         "This placeholder keeps calling operations visible in navigation and gives coordinators a clear landing point for queue health and job-generation follow-up.",
       uploadContacts: "Upload Contacts",
-      reviewCampaigns: "Review Campaigns",
+      reviewOperations: "Review Operations",
     },
     queue: {
       title: "Queue Watch",

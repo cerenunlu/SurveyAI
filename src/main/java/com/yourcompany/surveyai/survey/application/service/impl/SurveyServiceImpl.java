@@ -1,6 +1,6 @@
 package com.yourcompany.surveyai.survey.application.service.impl;
 
-import com.yourcompany.surveyai.campaign.repository.CampaignRepository;
+import com.yourcompany.surveyai.operation.repository.OperationRepository;
 import com.yourcompany.surveyai.common.domain.entity.AppUser;
 import com.yourcompany.surveyai.common.domain.entity.Company;
 import com.yourcompany.surveyai.common.exception.NotFoundException;
@@ -38,7 +38,7 @@ public class SurveyServiceImpl implements SurveyService {
     private final SurveyQuestionRepository surveyQuestionRepository;
     private final SurveyQuestionOptionRepository surveyQuestionOptionRepository;
     private final CompanyRepository companyRepository;
-    private final CampaignRepository campaignRepository;
+    private final OperationRepository operationRepository;
     private final SurveyResponseRepository surveyResponseRepository;
     private final AppUserRepository appUserRepository;
     private final Validator validator;
@@ -48,7 +48,7 @@ public class SurveyServiceImpl implements SurveyService {
             SurveyQuestionRepository surveyQuestionRepository,
             SurveyQuestionOptionRepository surveyQuestionOptionRepository,
             CompanyRepository companyRepository,
-            CampaignRepository campaignRepository,
+            OperationRepository operationRepository,
             SurveyResponseRepository surveyResponseRepository,
             AppUserRepository appUserRepository,
             Validator validator
@@ -57,7 +57,7 @@ public class SurveyServiceImpl implements SurveyService {
         this.surveyQuestionRepository = surveyQuestionRepository;
         this.surveyQuestionOptionRepository = surveyQuestionOptionRepository;
         this.companyRepository = companyRepository;
-        this.campaignRepository = campaignRepository;
+        this.operationRepository = operationRepository;
         this.surveyResponseRepository = surveyResponseRepository;
         this.appUserRepository = appUserRepository;
         this.validator = validator;
@@ -105,8 +105,8 @@ public class SurveyServiceImpl implements SurveyService {
         if (survey.getStatus() != SurveyStatus.DRAFT) {
             throw new ValidationException("Only draft surveys can be deleted");
         }
-        if (campaignRepository.existsBySurvey_IdAndDeletedAtIsNull(surveyId)) {
-            throw new ValidationException("Survey cannot be deleted because campaigns already reference it");
+        if (operationRepository.existsBySurvey_IdAndDeletedAtIsNull(surveyId)) {
+            throw new ValidationException("Survey cannot be deleted because operations already reference it");
         }
         if (surveyResponseRepository.existsBySurvey_IdAndDeletedAtIsNull(surveyId)) {
             throw new ValidationException("Survey cannot be deleted because responses already exist");

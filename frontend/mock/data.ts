@@ -1,4 +1,4 @@
-import { ActionItem, ActivityItem, AttentionItem, Campaign, Contact, Kpi, Stat, Survey } from "@/lib/types";
+import { ActionItem, ActivityItem, AttentionItem, Operation, Contact, Kpi, Stat, Survey } from "@/lib/types";
 
 export const dashboardStats: Stat[] = [
   {
@@ -9,7 +9,7 @@ export const dashboardStats: Stat[] = [
     detail: "Across product feedback, onboarding, and customer quality loops.",
   },
   {
-    label: "Campaign reach",
+    label: "Operation reach",
     value: "182K",
     delta: "+8.1%",
     tone: "positive",
@@ -33,7 +33,7 @@ export const dashboardStats: Stat[] = [
 
 export const dashboardKpis: Kpi[] = [
   {
-    label: "Active Campaigns",
+    label: "Active Operations",
     value: "12",
     detail: "3 need pacing review before end of day.",
     tone: "positive",
@@ -125,7 +125,7 @@ export const surveys: Survey[] = [
   },
 ];
 
-export const campaigns: Campaign[] = [
+export const operations: Operation[] = [
   {
     id: "cx-activation-2026",
     name: "CX Activation Spring 2026",
@@ -237,7 +237,7 @@ export const surveysNeedingAttention: AttentionItem[] = [
   {
     id: "support-recovery-audit",
     title: "Support Recovery Audit",
-    detail: "Archived program still linked to a paused recovery campaign.",
+    detail: "Archived program still linked to a paused recovery operation.",
     owner: "Ethan Ross",
     status: "Archived",
   },
@@ -254,7 +254,7 @@ export const contactUploadQueue: AttentionItem[] = [
   {
     id: "orbital-prospects",
     title: "Orbital Commerce prospects",
-    detail: "Validation passed; waiting for campaign assignment.",
+    detail: "Validation passed; waiting for operation assignment.",
     owner: "Growth ops",
     status: "Active",
   },
@@ -278,7 +278,7 @@ export const recentActivity: ActivityItem[] = [
   {
     id: "activity-2",
     title: "Contacts upload finished validation",
-    detail: "1,240 retail records are ready for campaign mapping.",
+    detail: "1,240 retail records are ready for operation mapping.",
     time: "32 min ago",
     status: "Completed",
   },
@@ -308,7 +308,7 @@ export const dashboardAlerts: AttentionItem[] = [
   },
   {
     id: "alert-2",
-    title: "Paused campaign with live survey",
+    title: "Paused operation with live survey",
     detail: "Trial Lift Wave is paused while its linked draft survey is still incomplete.",
     owner: "Jordan Lee",
     status: "Paused",
@@ -333,13 +333,13 @@ export const nextStepActions: ActionItem[] = [
   {
     id: "next-2",
     title: "Publish a survey",
-    detail: "Move approved drafts into campaign-ready status.",
+    detail: "Move approved drafts into operation-ready status.",
     href: "/surveys",
     cta: "Review Drafts",
   },
   {
     id: "next-3",
-    title: "Upload contacts to a campaign",
+    title: "Upload contacts to a operation",
     detail: "Finish today's pending imports and assign them to live outreach.",
     href: "/contacts",
     cta: "Open Contacts",

@@ -5,19 +5,19 @@ import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { fetchCampaignContacts, fetchCompanyCampaigns } from "@/lib/campaigns";
+import { fetchOperationContacts, fetchCompanyOperations } from "@/lib/operations";
 import { useTranslations } from "@/lib/i18n/LanguageContext";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import type { CampaignContact } from "@/lib/types";
+import type { OperationContact } from "@/lib/types";
 
-type DashboardContact = CampaignContact & {
-  campaignName: string;
+type DashboardContact = OperationContact & {
+  operationName: string;
 };
 
 export default function DashboardPage() {
   const { t } = useTranslations();
   const [surveys, setSurveys] = useState<Awaited<ReturnType<typeof fetchCompanySurveys>>>([]);
-  const [campaigns, setCampaigns] = useState<Awaited<ReturnType<typeof fetchCompanyCampaigns>>>([]);
+  const [operations, setOperations] = useState<Awaited<ReturnType<typeof fetchCompanyOperations>>>([]);
   const [contacts, setContacts] = useState<DashboardContact[]>([]);
   const [unavailableSections, setUnavailableSections] = useState<string[]>([]);
 
@@ -25,23 +25,23 @@ export default function DashboardPage() {
     let isMounted = true;
 
     async function loadDashboard() {
-      const [surveysResult, campaignsResult] = await Promise.allSettled([fetchCompanySurveys(), fetchCompanyCampaigns()]);
+      const [surveysResult, operationsResult] = await Promise.allSettled([fetchCompanySurveys(), fetchCompanyOperations()]);
 
       if (!isMounted) {
         return;
       }
 
       const nextSurveys = surveysResult.status === "fulfilled" ? surveysResult.value : [];
-      const nextCampaigns = campaignsResult.status === "fulfilled" ? campaignsResult.value : [];
+      const nextOperations = operationsResult.status === "fulfilled" ? operationsResult.value : [];
 
       setSurveys(nextSurveys);
-      setCampaigns(nextCampaigns);
+      setOperations(nextOperations);
 
-      const contactResults = nextCampaigns.length
+      const contactResults = nextOperations.length
         ? await Promise.allSettled(
-            nextCampaigns.map(async (campaign) => ({
-              campaignName: campaign.name,
-              contacts: await fetchCampaignContacts(campaign.id),
+            nextOperations.map(async (operation) => ({
+              operationName: operation.name,
+              contacts: await fetchOperationContacts(operation.id),
             })),
           )
         : [];
@@ -58,7 +58,7 @@ export default function DashboardPage() {
 
           return result.value.contacts.map((contact) => ({
             ...contact,
-            campaignName: result.value.campaignName,
+            operationName: result.value.operationName,
           }));
         }),
       );
@@ -66,7 +66,7 @@ export default function DashboardPage() {
       setUnavailableSections(
         [
           surveysResult.status === "rejected" ? t("dashboard.unavailable.surveys") : null,
-          campaignsResult.status === "rejected" ? t("dashboard.unavailable.campaigns") : null,
+          operationsResult.status === "rejected" ? t("dashboard.unavailable.operations") : null,
           contactResults.some((result) => result.status === "rejected") ? t("dashboard.unavailable.contacts") : null,
         ].filter((value): value is string => value !== null),
       );
@@ -89,8 +89,8 @@ export default function DashboardPage() {
           <Link href="/surveys" className="button-secondary">
             {t("dashboard.hero.openSurveys")}
           </Link>
-          <Link href="/campaigns" className="button-secondary">
-            {t("dashboard.hero.openCampaigns")}
+          <Link href="/operations" className="button-secondary">
+            {t("dashboard.hero.openOperations")}
           </Link>
           <Link href="/contacts" className="button-secondary">
             {t("dashboard.hero.openContacts")}
@@ -110,11 +110,11 @@ export default function DashboardPage() {
 
         <div className="kpi-card">
           <div className="kpi-card-top">
-            <span className="kpi-label">{t("dashboard.hero.campaignsSynced")}</span>
+            <span className="kpi-label">{t("dashboard.hero.operationsSynced")}</span>
             <span className="kpi-indicator tone-positive" aria-hidden="true" />
           </div>
-          <strong className="kpi-value">{campaigns.length}</strong>
-          <p className="kpi-detail">{t("dashboard.kpis.campaignsDetail")}</p>
+          <strong className="kpi-value">{operations.length}</strong>
+          <p className="kpi-detail">{t("dashboard.kpis.operationsDetail")}</p>
         </div>
 
         <div className="kpi-card">
@@ -171,29 +171,29 @@ export default function DashboardPage() {
           </SectionCard>
 
           <SectionCard
-            title={t("dashboard.sections.recentCampaigns.title")}
-            description={t("dashboard.sections.recentCampaigns.description")}
-            action={<Link href="/campaigns" className="button-secondary compact-button">{t("shell.common.viewAll")}</Link>}
+            title={t("dashboard.sections.recentOperations.title")}
+            description={t("dashboard.sections.recentOperations.description")}
+            action={<Link href="/operations" className="button-secondary compact-button">{t("shell.common.viewAll")}</Link>}
           >
             <div className="stack-list">
-              {campaigns.length > 0 ? (
-                campaigns.slice(0, 5).map((campaign) => (
-                  <div className="list-item operational-row" key={campaign.id}>
+              {operations.length > 0 ? (
+                operations.slice(0, 5).map((operation) => (
+                  <div className="list-item operational-row" key={operation.id}>
                     <div>
-                      <strong>{campaign.name}</strong>
-                      <span>{campaign.summary}</span>
+                      <strong>{operation.name}</strong>
+                      <span>{operation.summary}</span>
                     </div>
                     <div className="operational-meta">
-                      <span>{campaign.updatedAt}</span>
-                      <StatusBadge status={campaign.status} />
+                      <span>{operation.updatedAt}</span>
+                      <StatusBadge status={operation.status} />
                     </div>
                   </div>
                 ))
               ) : (
                 <div className="list-item">
                   <div>
-                    <strong>{t("dashboard.sections.recentCampaigns.emptyTitle")}</strong>
-                    <span>{t("dashboard.sections.recentCampaigns.emptyDescription")}</span>
+                    <strong>{t("dashboard.sections.recentOperations.emptyTitle")}</strong>
+                    <span>{t("dashboard.sections.recentOperations.emptyDescription")}</span>
                   </div>
                 </div>
               )}
@@ -213,7 +213,7 @@ export default function DashboardPage() {
                   <div className="list-item operational-row" key={contact.id}>
                     <div>
                       <strong>{contact.name}</strong>
-                      <span>{contact.campaignName} / {contact.phoneNumber}</span>
+                      <span>{contact.operationName} / {contact.phoneNumber}</span>
                     </div>
                     <div className="operational-meta">
                       <span>{contact.updatedAt}</span>

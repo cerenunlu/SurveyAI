@@ -20,7 +20,7 @@ export default function AnalyticsPage() {
             <p className="overview-text">{t("analytics.hero.description")}</p>
           </div>
           <div className="overview-actions">
-            <Link href="/campaigns" className="button-primary">{t("analytics.hero.openCampaigns")}</Link>
+            <Link href="/operations" className="button-primary">{t("analytics.hero.openOperations")}</Link>
             <Link href="/surveys" className="button-secondary">{t("analytics.hero.openSurveys")}</Link>
           </div>
         </div>

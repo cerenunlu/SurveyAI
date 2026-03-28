@@ -27,7 +27,7 @@ export function SurveyIcon({ className }: IconProps) {
   );
 }
 
-export function CampaignIcon({ className }: IconProps) {
+export function OperationIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
       <path {...strokeProps} d="m4 15 7-7 4 4 5-5" />

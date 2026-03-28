@@ -1,8 +1,8 @@
 package com.yourcompany.surveyai.response.domain.entity;
 
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
-import com.yourcompany.surveyai.campaign.domain.entity.Campaign;
-import com.yourcompany.surveyai.campaign.domain.entity.CampaignContact;
+import com.yourcompany.surveyai.operation.domain.entity.Operation;
+import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.common.domain.entity.CompanyScopedEntity;
 import com.yourcompany.surveyai.response.domain.enums.SurveyResponseStatus;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
@@ -32,12 +32,12 @@ public class SurveyResponse extends CompanyScopedEntity {
     private Survey survey;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "campaign_id", nullable = false)
-    private Campaign campaign;
+    @JoinColumn(name = "operation_id", nullable = false)
+    private Operation operation;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "campaign_contact_id", nullable = false)
-    private CampaignContact campaignContact;
+    @JoinColumn(name = "operation_contact_id", nullable = false)
+    private OperationContact operationContact;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "call_attempt_id", nullable = false, unique = true)

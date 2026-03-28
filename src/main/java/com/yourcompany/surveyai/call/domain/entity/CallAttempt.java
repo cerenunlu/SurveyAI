@@ -2,8 +2,8 @@ package com.yourcompany.surveyai.call.domain.entity;
 
 import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
-import com.yourcompany.surveyai.campaign.domain.entity.Campaign;
-import com.yourcompany.surveyai.campaign.domain.entity.CampaignContact;
+import com.yourcompany.surveyai.operation.domain.entity.Operation;
+import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.common.domain.entity.CompanyScopedEntity;
 import com.yourcompany.surveyai.response.domain.entity.SurveyResponse;
 import jakarta.persistence.Column;
@@ -28,12 +28,12 @@ public class CallAttempt extends CompanyScopedEntity {
     private CallJob callJob;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "campaign_id", nullable = false)
-    private Campaign campaign;
+    @JoinColumn(name = "operation_id", nullable = false)
+    private Operation operation;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "campaign_contact_id", nullable = false)
-    private CampaignContact campaignContact;
+    @JoinColumn(name = "operation_contact_id", nullable = false)
+    private OperationContact operationContact;
 
     @Column(name = "attempt_number", nullable = false)
     private Integer attemptNumber;
