@@ -13,7 +13,7 @@ import { Operation, OperationContact, TableColumn } from "@/lib/types";
 const contactColumns: TableColumn<OperationContact>[] = [
   {
     key: "name",
-    label: "Ki�i",
+    label: "Kişi",
     render: (contact) => (
       <div>
         <div className="table-title">{contact.name}</div>
@@ -33,7 +33,7 @@ const contactColumns: TableColumn<OperationContact>[] = [
   },
   {
     key: "updatedAt",
-    label: "G�ncellendi",
+    label: "Güncellendi",
     render: (contact) => contact.updatedAt,
   },
 ];
@@ -94,40 +94,41 @@ export default function OperationDetailPage() {
   const readiness = useMemo(() => {
     if (!operation) {
       return {
-        title: "Haz�rl�k durumu hesaplan�yor",
-        description: "Operasyon ve ki�i verileri y�klendi�inde bir sonraki ad�m netle�ecek.",
-        startHint: "Operasyon ba�latma durumu kontrol ediliyor.",
+        title: "Hazırlık durumu hesaplanıyor",
+        description: "Operasyon ve kişi verileri yüklendiğinde bir sonraki adım netleşecek.",
+        startHint: "Operasyon başlatma durumu kontrol ediliyor.",
       };
     }
 
     if (contacts.length === 0) {
       return {
-        title: "Ki�i listesi eksik",
-        description: "Bu operasyon �al��t�r�lamaz. Devam etmek i�in �nce ki�ileri y�kleyin ve operasyonla e�leyin.",
-        startHint: "Operasyonu ba�latmak i�in en az bir ki�i gerekli.",
+        title: "Kişi listesi eksik",
+        description: "Bu operasyon çalıştırılamaz. Devam etmek için önce kişileri yükleyin ve operasyonla eşleyin.",
+        startHint: "Operasyonu başlatmak için en az bir kişi gerekli.",
       };
     }
 
     if (operation.status === "Draft") {
       return {
-        title: "Ki�iler haz�r",
-        description: "Operasyonun ba�l� anketi ve ki�i listesi mevcut. Ba�latma ak��� hen�z devrede de�il ama sonraki mant�k bu noktadan �al��acak.",
-        startHint: "Ba�latma ak��� sonraki iterasyonda bu ekrandan a��lacak.",
+        title: "Kişiler hazır",
+        description:
+          "Operasyonun bağlı anketi ve kişi listesi mevcut. Başlatma akışı henüz devrede değil ama sonraki mantık bu noktadan çalışacak.",
+        startHint: "Başlatma akışı sonraki iterasyonda bu ekrandan açılacak.",
       };
     }
 
     if (operation.status === "Paused") {
       return {
-        title: "Operasyon duraklat�lm��",
-        description: "Ki�iler y�kl� g�r�n�yor. Ba�latma yerine devam ettirme mant��� daha sonra bu alanda ele al�nacak.",
-        startHint: "Duraklat�lm�� operasyonlar i�in ba�lat d��mesi kullan�lm�yor.",
+        title: "Operasyon duraklatılmış",
+        description: "Kişiler yüklü görünüyor. Başlatma yerine devam ettirme mantığı daha sonra bu alanda ele alınacak.",
+        startHint: "Duraklatılmış operasyonlar için başlat düğmesi kullanılmıyor.",
       };
     }
 
     return {
       title: "Operasyon hareket halinde",
-      description: "Bu kay�t taslak a�amas�n� ge�mi� durumda. Bu sayfa haz�rl�k ve g�r�n�rl�k i�in kullan�l�yor.",
-      startHint: "Ba�lat d��mesi yaln�zca taslak haz�rl�k ak��� i�in d���n�l�yor.",
+      description: "Bu kayıt taslak aşamasını geçmiş durumda. Bu sayfa hazırlık ve görünürlük için kullanılıyor.",
+      startHint: "Başlat düğmesi yalnızca taslak hazırlık akışı için düşünülüyor.",
     };
   }, [contacts.length, operation]);
 
@@ -139,8 +140,8 @@ export default function OperationDetailPage() {
   const hasContacts = contactCount > 0;
   const canStart = Boolean(operation && hasContacts && operation.status === "Draft");
   const nextActionLabel = hasContacts
-    ? "Ki�iler ba�l�. Ba�latma ak��� aktif oldu�unda bir sonraki ad�m operasyonu �al��t�rmak olacak."
-    : "�lk ad�m ki�i y�klemek. Ki�i listesi eklenmeden operasyon ilerleyemez.";
+    ? "Kişiler bağlı. Başlatma akışı aktif olduğunda bir sonraki adım operasyonu çalıştırmak olacak."
+    : "İlk adım kişi yüklemek. Kişi listesi eklenmeden operasyon ilerleyemez.";
 
   return (
     <PageContainer>
@@ -148,31 +149,29 @@ export default function OperationDetailPage() {
         <div className="eyebrow">Operation Workspace</div>
         <div className="operation-workspace-hero-head">
           <div>
-            <h2 className="hero-title">{operation?.name ?? "Operasyon y�kleniyor"}</h2>
+            <h2 className="hero-title">{operation?.name ?? "Operasyon yükleniyor"}</h2>
             <p className="hero-text">
-              {operation
-                ? nextActionLabel
-                : "Operasyon �zeti, ki�i haz�rl��� ve sonraki aksiyonlar y�kleniyor."}
+              {operation ? nextActionLabel : "Operasyon özeti, kişi hazırlığı ve sonraki aksiyonlar yükleniyor."}
             </p>
           </div>
           <div className="operation-hero-status-cluster">
             <StatusBadge status={operation?.status ?? "Pending"} />
             <span className={hasContacts ? "operation-readiness-pill is-ready" : "operation-readiness-pill is-blocked"}>
-              {hasContacts ? `${contactCount} ki�i haz�r` : "Ki�i bekleniyor"}
+              {hasContacts ? `${contactCount} kişi hazır` : "Kişi bekleniyor"}
             </span>
           </div>
         </div>
         <div className="chip-row">
-          <span className="chip">Ba�l� anket: {operation?.survey ?? "Y�kleniyor"}</span>
-          <span className="chip">Ki�i say�s�: {isLoading ? "..." : String(contactCount)}</span>
-          <span className="chip">Son g�ncelleme: {operation?.updatedAt ?? "Y�kleniyor"}</span>
+          <span className="chip">Bağlı anket: {operation?.survey ?? "Yükleniyor"}</span>
+          <span className="chip">Kişi sayısı: {isLoading ? "..." : String(contactCount)}</span>
+          <span className="chip">Son güncelleme: {operation?.updatedAt ?? "Yükleniyor"}</span>
         </div>
       </section>
 
       {errorMessage ? (
         <section className="panel-card">
           <div className="operation-inline-message is-danger">
-            <strong>Operasyon �al��ma alan� y�klenemedi</strong>
+            <strong>Operasyon çalışma alanı yüklenemedi</strong>
             <span>{errorMessage}</span>
           </div>
         </section>
@@ -180,11 +179,11 @@ export default function OperationDetailPage() {
 
       <div className="operation-workspace-grid">
         <div className="operation-workspace-main">
-          <SectionCard title="Operasyon �zeti" description="Bu operasyonun ne oldu�u ve hangi kay�tlarla y�r�t�lece�i.">
+          <SectionCard title="Operasyon özeti" description="Bu operasyonun ne olduğu ve hangi kayıtlarla yürütüleceği.">
             {operation ? (
               <div className="operation-summary-list operation-workspace-summary-list">
                 <div className="operation-summary-row">
-                  <span>Operasyon ad�</span>
+                  <span>Operasyon adı</span>
                   <strong>{operation.name}</strong>
                 </div>
                 <div className="operation-summary-row">
@@ -192,46 +191,46 @@ export default function OperationDetailPage() {
                   <strong>{operation.status}</strong>
                 </div>
                 <div className="operation-summary-row">
-                  <span>Ba�l� anket</span>
+                  <span>Bağlı anket</span>
                   <strong>{operation.survey}</strong>
                 </div>
                 <div className="operation-summary-row">
-                  <span>Operasyon �zeti</span>
+                  <span>Operasyon özeti</span>
                   <strong>{operation.summary}</strong>
                 </div>
               </div>
             ) : (
               <div className="list-item">
                 <div>
-                  <strong>{isLoading ? "Operasyon y�kleniyor" : "Operasyon bilgisi bulunamad�"}</strong>
-                  <span>{errorMessage ?? "Backend operasyon kayd� bekleniyor."}</span>
+                  <strong>{isLoading ? "Operasyon yükleniyor" : "Operasyon bilgisi bulunamadı"}</strong>
+                  <span>{errorMessage ?? "Backend operasyon kaydı bekleniyor."}</span>
                 </div>
               </div>
             )}
           </SectionCard>
 
           <SectionCard
-            title="Ki�i haz�rl���"
-            description="Operasyonun �al��abilir olmas� i�in ki�i listesinin haz�r olup olmad���n� g�sterir."
+            title="Kişi hazırlığı"
+            description="Operasyonun çalışabilir olması için kişi listesinin hazır olup olmadığını gösterir."
             action={
               <span className={hasContacts ? "operation-readiness-pill is-ready" : "operation-readiness-pill is-blocked"}>
-                {isLoading ? "Kontrol ediliyor" : hasContacts ? "Haz�r" : "Eksik"}
+                {isLoading ? "Kontrol ediliyor" : hasContacts ? "Hazır" : "Eksik"}
               </span>
             }
           >
             {isLoading ? (
               <div className="list-item">
                 <div>
-                  <strong>Ki�i kay�tlar� y�kleniyor</strong>
-                  <span>Operasyona ba�l� ki�i listesi backend �zerinden getiriliyor.</span>
+                  <strong>Kişi kayıtları yükleniyor</strong>
+                  <span>Operasyona bağlı kişi listesi backend üzerinden getiriliyor.</span>
                 </div>
               </div>
             ) : (
               <div className="operation-contact-readiness">
                 <div className="operation-contact-count-card">
-                  <span>Ki�i say�s�</span>
+                  <span>Kişi sayısı</span>
                   <strong>{contactCount}</strong>
-                  <p>{hasContacts ? "Bu operasyon i�in ki�i listesi mevcut." : "Hen�z operasyon ki�isi y�klenmedi."}</p>
+                  <p>{hasContacts ? "Bu operasyon için kişi listesi mevcut." : "Henüz operasyon kişisi yüklenmedi."}</p>
                 </div>
 
                 <div className={`operation-inline-message ${hasContacts ? "is-accent" : "is-danger"}`}>
@@ -241,8 +240,8 @@ export default function OperationDetailPage() {
 
                 {!hasContacts ? (
                   <div className="operation-empty-state">
-                    <strong>Operasyon ba�lat�lamaz</strong>
-                    <p>Ki�iler eklenmeden bu operasyon y�r�tmeye al�namaz. Bir sonraki zorunlu ad�m ki�i y�klemedir.</p>
+                    <strong>Operasyon başlatılamaz</strong>
+                    <p>Kişiler eklenmeden bu operasyon yürütmeye alınamaz. Bir sonraki zorunlu adım kişi yüklemedir.</p>
                   </div>
                 ) : null}
 
@@ -250,21 +249,21 @@ export default function OperationDetailPage() {
                   <DataTable
                     columns={contactColumns}
                     rows={contacts}
-                    toolbar={<span className="table-meta">{contactCount} ki�i / backend senkron</span>}
+                    toolbar={<span className="table-meta">{contactCount} kişi / backend senkron</span>}
                   />
                 ) : null}
               </div>
             )}
           </SectionCard>
 
-          <SectionCard title="Survey referans�" description="Operasyonun ba�l� oldu�u yay�nlanm�� anketin k�sa �zeti.">
+          <SectionCard title="Survey referansı" description="Operasyonun bağlı olduğu yayınlanmış anketin kısa özeti.">
             {operation ? (
               <div className="operation-survey-summary operation-workspace-survey-card">
                 <div className="operation-survey-summary-head">
                   <div>
                     <strong>{operation.survey}</strong>
                     <span>
-                      {operation.surveyGoal?.trim() || "Bu operasyon i�in ek survey a��klamas� backend taraf�ndan hen�z sa�lanm�yor."}
+                      {operation.surveyGoal?.trim() || "Bu operasyon için ek survey açıklaması backend tarafından henüz sağlanmıyor."}
                     </span>
                   </div>
                   <StatusBadge status={operation.surveyStatus ?? "Draft"} />
@@ -280,7 +279,7 @@ export default function OperationDetailPage() {
                     <strong>{operation.surveyAudience ?? "-"}</strong>
                   </div>
                   <div className="mini-metric">
-                    <span>Son survey g�ncellemesi</span>
+                    <span>Son survey güncellemesi</span>
                     <strong>{operation.surveyUpdatedAt ?? "Bilinmiyor"}</strong>
                   </div>
                 </div>
@@ -288,8 +287,8 @@ export default function OperationDetailPage() {
             ) : (
               <div className="list-item">
                 <div>
-                  <strong>Survey referans� y�kleniyor</strong>
-                  <span>Ba�l� survey metadata bilgisi getiriliyor.</span>
+                  <strong>Survey referansı yükleniyor</strong>
+                  <span>Bağlı survey metadata bilgisi getiriliyor.</span>
                 </div>
               </div>
             )}
@@ -300,8 +299,8 @@ export default function OperationDetailPage() {
           <section className="panel-card operation-workspace-action-panel">
             <div className="section-header operation-summary-header">
               <div className="section-copy">
-                <h2>Sonraki ad�m</h2>
-                <p>Bu operasyonu y�r�tmeye haz�rlamak i�in tamamlanmas� gereken aksiyonlar.</p>
+                <h2>Sonraki adım</h2>
+                <p>Bu operasyonu yürütmeye hazırlamak için tamamlanması gereken aksiyonlar.</p>
               </div>
             </div>
 
@@ -312,30 +311,30 @@ export default function OperationDetailPage() {
 
             <div className="operation-workspace-action-group">
               <Link href="/contacts" className="button-primary compact-button">
-                Ki�i y�kle
+                Kişi yükle
               </Link>
               <button type="button" className="button-secondary compact-button operation-disabled-action" disabled>
-                Operasyonu ba�lat
+                Operasyonu başlat
               </button>
             </div>
 
             <div className="operation-summary-list operation-action-checklist">
               <div className="operation-summary-row">
-                <span>Ba�l� anket</span>
-                <strong>{operation?.survey ?? "Y�kleniyor"}</strong>
+                <span>Bağlı anket</span>
+                <strong>{operation?.survey ?? "Yükleniyor"}</strong>
               </div>
               <div className="operation-summary-row">
-                <span>Ki�i haz�r m�</span>
-                <strong>{isLoading ? "Kontrol ediliyor" : hasContacts ? `Evet, ${contactCount} ki�i ba�l�` : "Hay�r"}</strong>
+                <span>Kişi hazır mı</span>
+                <strong>{isLoading ? "Kontrol ediliyor" : hasContacts ? `Evet, ${contactCount} kişi bağlı` : "Hayır"}</strong>
               </div>
               <div className="operation-summary-row">
-                <span>Ba�latma durumu</span>
-                <strong>{canStart ? "Yak�nda bu ekrandan ba�lat�lacak" : readiness.startHint}</strong>
+                <span>Başlatma durumu</span>
+                <strong>{canStart ? "Yakında bu ekrandan başlatılacak" : readiness.startHint}</strong>
               </div>
             </div>
 
             <p className="operation-action-footnote">
-              Ba�latma mant��� hen�z uygulanmad�. Bu blok gelecekte ki�i do�rulamas� tamamland�ktan sonra operasyonu �al��t�ran ana kontrol noktas� olacak.
+              Başlatma mantığı henüz uygulanmadı. Bu blok gelecekte kişi doğrulaması tamamlandıktan sonra operasyonu çalıştıran ana kontrol noktası olacak.
             </p>
           </section>
         </aside>
