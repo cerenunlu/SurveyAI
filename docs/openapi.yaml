@@ -1,0 +1,814 @@
+openapi: 3.0.3
+info:
+  title: SurveyAI API
+  version: 1.0.0
+  description: OpenAPI specification for the current SurveyAI backend endpoints.
+
+servers:
+  - url: http://localhost:8080
+    description: Local Docker/Desktop backend
+
+tags:
+  - name: Surveys
+  - name: Survey Questions
+  - name: Survey Question Options
+  - name: Operations
+  - name: Operation Contacts
+
+paths:
+  /api/v1/companies/{companyId}/surveys:
+    get:
+      tags: [Surveys]
+      summary: List surveys by company
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+      responses:
+        "200":
+          description: Surveys returned successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SurveyResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      tags: [Surveys]
+      summary: Create survey
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSurveyRequest"
+      responses:
+        "201":
+          description: Survey created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/companies/{companyId}/surveys/{surveyId}:
+    get:
+      tags: [Surveys]
+      summary: Get survey by id
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+      responses:
+        "200":
+          description: Survey returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    put:
+      tags: [Surveys]
+      summary: Update survey
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSurveyRequest"
+      responses:
+        "200":
+          description: Survey updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    delete:
+      tags: [Surveys]
+      summary: Delete survey
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+      responses:
+        "204":
+          description: Survey deleted successfully
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/companies/{companyId}/surveys/{surveyId}/questions:
+    get:
+      tags: [Survey Questions]
+      summary: List survey questions
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+      responses:
+        "200":
+          description: Questions returned successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SurveyQuestionResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      tags: [Survey Questions]
+      summary: Add question to survey
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSurveyQuestionRequest"
+      responses:
+        "201":
+          description: Question created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyQuestionResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/companies/{companyId}/surveys/{surveyId}/questions/{questionId}:
+    put:
+      tags: [Survey Questions]
+      summary: Update survey question
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+        - $ref: "#/components/parameters/QuestionIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSurveyQuestionRequest"
+      responses:
+        "200":
+          description: Question updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyQuestionResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    delete:
+      tags: [Survey Questions]
+      summary: Delete survey question
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+        - $ref: "#/components/parameters/QuestionIdPath"
+      responses:
+        "204":
+          description: Question deleted successfully
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/companies/{companyId}/surveys/{surveyId}/questions/{questionId}/options:
+    get:
+      tags: [Survey Question Options]
+      summary: List survey question options
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+        - $ref: "#/components/parameters/QuestionIdPath"
+      responses:
+        "200":
+          description: Options returned successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SurveyQuestionOptionResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      tags: [Survey Question Options]
+      summary: Add option to survey question
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+        - $ref: "#/components/parameters/QuestionIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSurveyQuestionOptionRequest"
+      responses:
+        "201":
+          description: Option created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyQuestionOptionResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/companies/{companyId}/surveys/{surveyId}/questions/{questionId}/options/{optionId}:
+    put:
+      tags: [Survey Question Options]
+      summary: Update survey question option
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+        - $ref: "#/components/parameters/QuestionIdPath"
+        - $ref: "#/components/parameters/OptionIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSurveyQuestionOptionRequest"
+      responses:
+        "200":
+          description: Option updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyQuestionOptionResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    delete:
+      tags: [Survey Question Options]
+      summary: Delete survey question option
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdPath"
+        - $ref: "#/components/parameters/SurveyIdPath"
+        - $ref: "#/components/parameters/QuestionIdPath"
+        - $ref: "#/components/parameters/OptionIdPath"
+      responses:
+        "204":
+          description: Option deleted successfully
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/operations:
+    get:
+      tags: [Operations]
+      summary: List operations by company
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      responses:
+        "200":
+          description: Operations returned successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OperationResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      tags: [Operations]
+      summary: Create operation
+      parameters:
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOperationRequest"
+      responses:
+        "201":
+          description: Operation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/operations/{operationId}:
+    get:
+      tags: [Operations]
+      summary: Get operation by id
+      parameters:
+        - $ref: "#/components/parameters/OperationIdPath"
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      responses:
+        "200":
+          description: Operation returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+  /api/v1/operations/{operationId}/contacts:
+    get:
+      tags: [Operation Contacts]
+      summary: List operation contacts
+      parameters:
+        - $ref: "#/components/parameters/OperationIdPath"
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      responses:
+        "200":
+          description: Contacts returned successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OperationContactResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+    post:
+      tags: [Operation Contacts]
+      summary: Upload operation contacts
+      parameters:
+        - $ref: "#/components/parameters/OperationIdPath"
+        - $ref: "#/components/parameters/CompanyIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadOperationContactsRequest"
+      responses:
+        "200":
+          description: Contacts uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OperationContactResponse"
+        default:
+          $ref: "#/components/responses/ApiError"
+
+components:
+  parameters:
+    CompanyIdPath:
+      name: companyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CompanyIdQuery:
+      name: companyId
+      in: query
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SurveyIdPath:
+      name: surveyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    QuestionIdPath:
+      name: questionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    OptionIdPath:
+      name: optionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    OperationIdPath:
+      name: operationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ApiError:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+
+  schemas:
+    CreateSurveyRequest:
+      type: object
+      required:
+        - name
+        - languageCode
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 5000
+        languageCode:
+          type: string
+          maxLength: 10
+        introPrompt:
+          type: string
+          maxLength: 10000
+        closingPrompt:
+          type: string
+          maxLength: 10000
+        maxRetryPerQuestion:
+          type: integer
+          minimum: 0
+          maximum: 10
+        createdByUserId:
+          type: string
+          format: uuid
+
+    UpdateSurveyRequest:
+      type: object
+      required:
+        - name
+        - languageCode
+        - maxRetryPerQuestion
+        - status
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 5000
+        languageCode:
+          type: string
+          maxLength: 10
+        introPrompt:
+          type: string
+          maxLength: 10000
+        closingPrompt:
+          type: string
+          maxLength: 10000
+        maxRetryPerQuestion:
+          type: integer
+          minimum: 0
+          maximum: 10
+        status:
+          $ref: "#/components/schemas/SurveyStatus"
+
+    SurveyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/SurveyStatus"
+        languageCode:
+          type: string
+        introPrompt:
+          type: string
+          nullable: true
+        closingPrompt:
+          type: string
+          nullable: true
+        maxRetryPerQuestion:
+          type: integer
+          nullable: true
+        createdByUserId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateSurveyQuestionRequest:
+      type: object
+      required:
+        - code
+        - questionOrder
+        - questionType
+        - title
+      properties:
+        code:
+          type: string
+          maxLength: 100
+        questionOrder:
+          type: integer
+          minimum: 1
+        questionType:
+          $ref: "#/components/schemas/QuestionType"
+        title:
+          type: string
+          maxLength: 10000
+        description:
+          type: string
+          maxLength: 10000
+          nullable: true
+        required:
+          type: boolean
+          default: true
+        retryPrompt:
+          type: string
+          maxLength: 10000
+          nullable: true
+        branchConditionJson:
+          type: string
+          maxLength: 20000
+          nullable: true
+        settingsJson:
+          type: string
+          maxLength: 20000
+          nullable: true
+
+    UpdateSurveyQuestionRequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateSurveyQuestionRequest"
+
+    SurveyQuestionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        surveyId:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        questionOrder:
+          type: integer
+        questionType:
+          $ref: "#/components/schemas/QuestionType"
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        required:
+          type: boolean
+        retryPrompt:
+          type: string
+          nullable: true
+        branchConditionJson:
+          type: string
+          nullable: true
+        settingsJson:
+          type: string
+          nullable: true
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/SurveyQuestionOptionResponse"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateSurveyQuestionOptionRequest:
+      type: object
+      required:
+        - optionOrder
+        - optionCode
+        - label
+        - value
+      properties:
+        optionOrder:
+          type: integer
+          minimum: 1
+        optionCode:
+          type: string
+          maxLength: 100
+        label:
+          type: string
+          maxLength: 500
+        value:
+          type: string
+          maxLength: 255
+        active:
+          type: boolean
+          default: true
+
+    UpdateSurveyQuestionOptionRequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateSurveyQuestionOptionRequest"
+
+    SurveyQuestionOptionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        questionId:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        optionOrder:
+          type: integer
+        optionCode:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateOperationRequest:
+      type: object
+      required:
+        - name
+        - surveyId
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        surveyId:
+          type: string
+          format: uuid
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdByUserId:
+          type: string
+          format: uuid
+          nullable: true
+
+    OperationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        surveyId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/OperationStatus"
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdByUserId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UploadOperationContactsRequest:
+      type: object
+      required:
+        - contacts
+      properties:
+        contacts:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/OperationContactInput"
+
+    OperationContactInput:
+      type: object
+      required:
+        - name
+        - phoneNumber
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        phoneNumber:
+          type: string
+          maxLength: 30
+
+    OperationContactResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        companyId:
+          type: string
+          format: uuid
+        operationId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phoneNumber:
+          type: string
+        status:
+          $ref: "#/components/schemas/OperationContactStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ApiErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+
+    SurveyStatus:
+      type: string
+      enum:
+        - DRAFT
+        - PUBLISHED
+        - ARCHIVED
+
+    QuestionType:
+      type: string
+      enum:
+        - SINGLE_CHOICE
+        - MULTI_CHOICE
+        - OPEN_ENDED
+        - RATING
+
+    OperationStatus:
+      type: string
+      enum:
+        - DRAFT
+        - SCHEDULED
+        - RUNNING
+        - PAUSED
+        - COMPLETED
+        - CANCELLED
+
+    OperationContactStatus:
+      type: string
+      enum:
+        - PENDING
+        - CALLING
+        - COMPLETED
+        - FAILED
+        - RETRY
+        - INVALID

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -37,7 +38,7 @@ public class OperationController {
                 .body(response);
     }
 
-    @GetMapping("/{operationId}")
+    @RequestMapping(value = "/{operationId}", method = RequestMethod.GET)
     public ResponseEntity<OperationResponseDto> getOperationById(
             @PathVariable UUID operationId,
             @RequestParam UUID companyId
@@ -45,7 +46,7 @@ public class OperationController {
         return ResponseEntity.ok(operationService.getOperationById(companyId, operationId));
     }
 
-    @GetMapping
+    @RequestMapping(method = RequestMethod.GET)
     public ResponseEntity<List<OperationResponseDto>> listOperationsByCompany(@RequestParam UUID companyId) {
         return ResponseEntity.ok(operationService.listOperationsByCompany(companyId));
     }
