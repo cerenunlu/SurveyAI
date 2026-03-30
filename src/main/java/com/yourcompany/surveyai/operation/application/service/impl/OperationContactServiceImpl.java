@@ -4,7 +4,11 @@ import com.yourcompany.surveyai.common.exception.NotFoundException;
 import com.yourcompany.surveyai.common.exception.ValidationException;
 import com.yourcompany.surveyai.operation.application.dto.request.OperationContactInput;
 import com.yourcompany.surveyai.operation.application.dto.request.UploadOperationContactsRequest;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationContactPageResponseDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationContactReadinessDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationContactResponseDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationContactStatusCountDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationContactSummaryResponseDto;
 import com.yourcompany.surveyai.operation.application.service.OperationContactService;
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
@@ -18,7 +22,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -77,6 +85,106 @@ public class OperationContactServiceImpl implements OperationContactService {
                 .stream()
                 .map(this::toDto)
                 .toList();
+    }
+
+    @Override
+    public OperationContactSummaryResponseDto getContactSummary(UUID companyId, UUID operationId, int latestLimit) {
+        getOperation(companyId, operationId);
+
+        List<OperationContact> contacts = operationContactRepository
+                .findAllByOperation_IdAndCompany_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId, companyId);
+
+        List<OperationContactStatusCountDto> statusCounts = List.of(OperationContactStatus.values()).stream()
+                .map(status -> new OperationContactStatusCountDto(
+                        status,
+                        contacts.stream().filter(contact -> contact.getStatus() == status).count()
+                ))
+                .filter(item -> item.count() > 0)
+                .toList();
+
+        List<OperationContactResponseDto> latestContacts = contacts.stream()
+                .limit(Math.max(0, latestLimit))
+                .map(this::toDto)
+                .toList();
+
+        long totalContactCount = contacts.size();
+        OperationContactReadinessDto readiness = totalContactCount > 0
+                ? new OperationContactReadinessDto(true, "READY", "Operation has contacts and is ready for contact-based workflows.")
+                : new OperationContactReadinessDto(false, "MISSING_CONTACTS", "Operation exists but does not have any contacts yet.");
+
+        return new OperationContactSummaryResponseDto(
+                totalContactCount,
+                totalContactCount,
+                statusCounts,
+                latestContacts,
+                readiness
+        );
+    }
+
+    @Override
+    public OperationContactPageResponseDto listContactsPage(
+            UUID companyId,
+            UUID operationId,
+            int page,
+            int size,
+            String query,
+            OperationContactStatus status
+    ) {
+        getOperation(companyId, operationId);
+
+        int normalizedPage = Math.max(page, 0);
+        int normalizedSize = Math.min(Math.max(size, 1), 100);
+        String normalizedQuery = query == null || query.isBlank() ? null : query.trim();
+
+        Specification<OperationContact> specification = buildOperationContactSpecification(
+                operationId,
+                companyId,
+                status,
+                normalizedQuery
+        );
+
+        var pageResult = operationContactRepository.findAll(
+                specification,
+                PageRequest.of(normalizedPage, normalizedSize, Sort.by(Sort.Direction.DESC, "createdAt"))
+        );
+
+        return new OperationContactPageResponseDto(
+                pageResult.getContent().stream().map(this::toDto).toList(),
+                pageResult.getTotalElements(),
+                pageResult.getTotalPages(),
+                pageResult.getNumber(),
+                pageResult.getSize()
+        );
+    }
+
+    private Specification<OperationContact> buildOperationContactSpecification(
+            UUID operationId,
+            UUID companyId,
+            OperationContactStatus status,
+            String query
+    ) {
+        return (root, criteriaQuery, criteriaBuilder) -> {
+            List<Predicate> predicates = new java.util.ArrayList<>();
+
+            predicates.add(criteriaBuilder.equal(root.get("operation").get("id"), operationId));
+            predicates.add(criteriaBuilder.equal(root.get("company").get("id"), companyId));
+            predicates.add(criteriaBuilder.isNull(root.get("deletedAt")));
+
+            if (status != null) {
+                predicates.add(criteriaBuilder.equal(root.get("status"), status));
+            }
+
+            if (query != null) {
+                String likeQuery = "%" + query.toLowerCase() + "%";
+                predicates.add(criteriaBuilder.or(
+                        criteriaBuilder.like(criteriaBuilder.lower(criteriaBuilder.coalesce(root.get("firstName"), "")), likeQuery),
+                        criteriaBuilder.like(criteriaBuilder.lower(criteriaBuilder.coalesce(root.get("lastName"), "")), likeQuery),
+                        criteriaBuilder.like(root.get("phoneNumber"), "%" + query + "%")
+                ));
+            }
+
+            return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
+        };
     }
 
     private void validateRequest(UploadOperationContactsRequest request) {

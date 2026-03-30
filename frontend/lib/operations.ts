@@ -43,6 +43,25 @@ type OperationContactApiResponse = {
   updatedAt: string;
 };
 
+type OperationContactStatusApi = OperationContactApiResponse["status"];
+
+type OperationContactPageApiResponse = {
+  items: OperationContactApiResponse[];
+  totalItems: number;
+  totalPages: number;
+  page: number;
+  size: number;
+};
+
+type OperationContactSummaryApiResponse = {
+  totalContacts: number;
+  statusCounts: Array<{
+    status: OperationContactStatusApi;
+    count: number;
+  }>;
+  latestContacts: OperationContactApiResponse[];
+};
+
 type CreateOperationRequest = {
   name: string;
   surveyId: string;
@@ -55,6 +74,25 @@ type CreateOperationContactsRequest = {
     name: string;
     phoneNumber: string;
   }>;
+};
+
+export type OperationContactStatusSummary = {
+  status: OperationContact["status"];
+  count: number;
+};
+
+export type OperationContactSummary = {
+  totalContacts: number;
+  statusCounts: OperationContactStatusSummary[];
+  latestContacts: OperationContact[];
+};
+
+export type OperationContactPage = {
+  items: OperationContact[];
+  totalItems: number;
+  totalPages: number;
+  page: number;
+  size: number;
 };
 
 export async function fetchCompanyOperations(
@@ -94,6 +132,101 @@ export async function fetchOperationContacts(
   );
 
   return response.map(mapOperationContactDtoToContact);
+}
+
+export async function fetchOperationContactsPage(
+  operationId: string,
+  options?: {
+    companyId?: string;
+    page?: number;
+    size?: number;
+    query?: string;
+    status?: OperationContact["status"] | "All";
+    init?: RequestInit;
+  },
+): Promise<OperationContactPage> {
+  const companyId = options?.companyId ?? COMPANY_ID;
+  const searchParams = new URLSearchParams({ companyId });
+
+  searchParams.set("page", String(options?.page ?? 0));
+  searchParams.set("size", String(options?.size ?? 25));
+
+  if (options?.query?.trim()) {
+    searchParams.set("query", options.query.trim());
+  }
+
+  const status = mapOperationContactStatusToApi(options?.status);
+  if (status) {
+    searchParams.set("status", status);
+  }
+
+  const response = await fetchJson<OperationContactPageApiResponse>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/contacts/list?${searchParams.toString()}`,
+    options?.init,
+    "operation contacts page",
+  );
+
+  return {
+    items: response.items.map(mapOperationContactDtoToContact),
+    totalItems: response.totalItems,
+    totalPages: response.totalPages,
+    page: response.page,
+    size: response.size,
+  };
+}
+
+export async function fetchOperationContactSummary(
+  operationId: string,
+  options?: {
+    companyId?: string;
+    latestLimit?: number;
+    init?: RequestInit;
+  },
+): Promise<OperationContactSummary> {
+  const companyId = options?.companyId ?? COMPANY_ID;
+  const latestLimit = options?.latestLimit ?? 5;
+  const response = await fetchJson<OperationContactSummaryApiResponse>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/contacts/summary?companyId=${companyId}&latestLimit=${latestLimit}`,
+    options?.init,
+    "operation contact summary",
+  );
+
+  return {
+    totalContacts: response.totalContacts,
+    statusCounts: response.statusCounts.map((item) => ({
+      status: mapOperationContactStatus(item.status),
+      count: item.count,
+    })),
+    latestContacts: response.latestContacts.map(mapOperationContactDtoToContact),
+  };
+}
+
+export async function exportOperationContacts(
+  operationId: string,
+  companyId: string = COMPANY_ID,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/operations/${operationId}/contacts/export?companyId=${companyId}`, {
+    headers: {
+      Accept: "text/csv",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "operation contacts export"));
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const fileNameMatch = disposition.match(/filename="?([^\"]+)"?/i);
+  const fileName = fileNameMatch?.[1] ?? `operation-${operationId}-contacts.csv`;
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = objectUrl;
+  link.download = fileName;
+  link.click();
+  window.URL.revokeObjectURL(objectUrl);
 }
 
 export async function createOperation(
@@ -231,6 +364,29 @@ function mapOperationContactStatus(status: OperationContactApiResponse["status"]
   }
 }
 
+function mapOperationContactStatusToApi(
+  status: OperationContact["status"] | "All" | undefined,
+): OperationContactStatusApi | null {
+  switch (status) {
+    case "Active":
+      return "CALLING";
+    case "Completed":
+      return "COMPLETED";
+    case "Failed":
+      return "FAILED";
+    case "Retry":
+      return "RETRY";
+    case "Invalid":
+      return "INVALID";
+    case "Pending":
+      return "PENDING";
+    case "All":
+    case undefined:
+    default:
+      return null;
+  }
+}
+
 function formatDateTime(value: string | null): string {
   if (!value) {
     return "Not scheduled";
@@ -302,4 +458,5 @@ function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
 
   return `${statusLabel} operation linked to ${surveyLabel} with schedule ${scheduleLabel}.`;
 }
+
 
