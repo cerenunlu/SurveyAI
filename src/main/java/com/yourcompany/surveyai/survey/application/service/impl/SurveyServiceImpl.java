@@ -1,5 +1,6 @@
 package com.yourcompany.surveyai.survey.application.service.impl;
 
+import com.yourcompany.surveyai.auth.application.RequestAuthContext;
 import com.yourcompany.surveyai.operation.repository.OperationRepository;
 import com.yourcompany.surveyai.common.domain.entity.AppUser;
 import com.yourcompany.surveyai.common.domain.entity.Company;
@@ -41,6 +42,7 @@ public class SurveyServiceImpl implements SurveyService {
     private final OperationRepository operationRepository;
     private final SurveyResponseRepository surveyResponseRepository;
     private final AppUserRepository appUserRepository;
+    private final RequestAuthContext requestAuthContext;
     private final Validator validator;
 
     public SurveyServiceImpl(
@@ -51,6 +53,7 @@ public class SurveyServiceImpl implements SurveyService {
             OperationRepository operationRepository,
             SurveyResponseRepository surveyResponseRepository,
             AppUserRepository appUserRepository,
+            RequestAuthContext requestAuthContext,
             Validator validator
     ) {
         this.surveyRepository = surveyRepository;
@@ -60,6 +63,7 @@ public class SurveyServiceImpl implements SurveyService {
         this.operationRepository = operationRepository;
         this.surveyResponseRepository = surveyResponseRepository;
         this.appUserRepository = appUserRepository;
+        this.requestAuthContext = requestAuthContext;
         this.validator = validator;
     }
 
@@ -168,7 +172,8 @@ public class SurveyServiceImpl implements SurveyService {
 
     private AppUser resolveUserForCompany(UUID companyId, UUID userId) {
         if (userId == null) {
-            return null;
+            AppUser authenticatedUser = requestAuthContext.requireUser();
+            return authenticatedUser.getCompany().getId().equals(companyId) ? authenticatedUser : null;
         }
 
         return appUserRepository.findById(userId)

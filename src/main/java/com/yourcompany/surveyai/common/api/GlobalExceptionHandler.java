@@ -1,6 +1,7 @@
 package com.yourcompany.surveyai.common.api;
 
 import com.yourcompany.surveyai.common.exception.NotFoundException;
+import com.yourcompany.surveyai.common.exception.UnauthorizedException;
 import com.yourcompany.surveyai.common.exception.ValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -35,6 +36,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({ValidationException.class, ConstraintViolationException.class})
     public ResponseEntity<ApiErrorResponse> handleValidation(RuntimeException ex, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ex.getMessage(), List.of(), request.getRequestURI());
+    }
+
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnauthorized(UnauthorizedException ex, HttpServletRequest request) {
+        return build(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", ex.getMessage(), List.of(), request.getRequestURI());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -114,3 +120,4 @@ public class GlobalExceptionHandler {
         );
     }
 }
+

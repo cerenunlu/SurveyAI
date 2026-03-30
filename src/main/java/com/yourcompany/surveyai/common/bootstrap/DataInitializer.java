@@ -5,6 +5,7 @@ import com.yourcompany.surveyai.common.domain.entity.Company;
 import com.yourcompany.surveyai.common.domain.enums.AppUserRole;
 import com.yourcompany.surveyai.common.domain.enums.AppUserStatus;
 import com.yourcompany.surveyai.common.domain.enums.CompanyStatus;
+import com.yourcompany.surveyai.auth.application.PasswordHashService;
 import com.yourcompany.surveyai.common.repository.AppUserRepository;
 import com.yourcompany.surveyai.common.repository.CompanyRepository;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
@@ -40,19 +41,22 @@ public class DataInitializer implements CommandLineRunner {
     private final SurveyRepository surveyRepository;
     private final SurveyQuestionRepository surveyQuestionRepository;
     private final SurveyQuestionOptionRepository surveyQuestionOptionRepository;
+    private final PasswordHashService passwordHashService;
 
     public DataInitializer(
             CompanyRepository companyRepository,
             AppUserRepository appUserRepository,
             SurveyRepository surveyRepository,
             SurveyQuestionRepository surveyQuestionRepository,
-            SurveyQuestionOptionRepository surveyQuestionOptionRepository
+            SurveyQuestionOptionRepository surveyQuestionOptionRepository,
+            PasswordHashService passwordHashService
     ) {
         this.companyRepository = companyRepository;
         this.appUserRepository = appUserRepository;
         this.surveyRepository = surveyRepository;
         this.surveyQuestionRepository = surveyQuestionRepository;
         this.surveyQuestionOptionRepository = surveyQuestionOptionRepository;
+        this.passwordHashService = passwordHashService;
     }
 
     @Override
@@ -76,7 +80,7 @@ public class DataInitializer implements CommandLineRunner {
         AppUser user = new AppUser();
         user.setCompany(company);
         user.setEmail(USER_EMAIL);
-        user.setPasswordHash("{noop}change-me");
+        user.setPasswordHash(passwordHashService.hash("change-me-123"));
         user.setFirstName("Seed");
         user.setLastName("Owner");
         user.setRole(AppUserRole.OWNER);
@@ -142,7 +146,7 @@ public class DataInitializer implements CommandLineRunner {
         surveyQuestionRepository.save(q3);
 
         log.info("Seed data created: companyId={}, userId={}, surveyId={}", company.getId(), user.getId(), survey.getId());
-        log.info("Seed data details: companySlug={}, userEmail={}", COMPANY_SLUG, USER_EMAIL);
+        log.info("Seed data details: companySlug={}, userEmail={}, password={}", COMPANY_SLUG, USER_EMAIL, "change-me-123");
     }
 
     private void saveOption(

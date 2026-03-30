@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/layout/AppShell";
+import { AuthProvider } from "@/lib/auth";
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import "./globals.css";
 
@@ -25,7 +26,9 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     <html lang="tr">
       <body className={`${bodyFont.variable} ${displayFont.variable}`}>
         <LanguageProvider>
-          <AppShell>{children}</AppShell>
+          <AuthProvider>
+            <AppShell>{children}</AppShell>
+          </AuthProvider>
         </LanguageProvider>
       </body>
     </html>

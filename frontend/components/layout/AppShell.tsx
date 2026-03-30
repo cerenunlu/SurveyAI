@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { getNavigationItems } from "@/components/layout/navigation";
 import { PageHeaderProvider, useResolvedPageHeader } from "@/components/layout/PageHeaderContext";
 import { BellIcon, CollapseIcon, MenuIcon, SearchIcon, SparkIcon } from "@/components/ui/Icons";
+import { useAuth } from "@/lib/auth";
 import { useLanguage, useTranslations } from "@/lib/i18n/LanguageContext";
 import type { Language } from "@/lib/i18n";
 
@@ -28,13 +29,38 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 function AppShellFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
+  const { status, currentUser, logout } = useAuth();
   const { t } = useTranslations();
   const pageHeaderOverride = useResolvedPageHeader();
 
   const navigationItems = getNavigationItems(t);
+  const isAuthRoute = pathname === "/login";
+
+  useEffect(() => {
+    if (status === "unauthenticated" && !isAuthRoute) {
+      router.replace("/login");
+    }
+  }, [isAuthRoute, router, status]);
+
+  if (isAuthRoute) {
+    return <>{children}</>;
+  }
+
+  if (status !== "authenticated" || !currentUser) {
+    return (
+      <div className="auth-shell-loading">
+        <div className="panel-card auth-shell-loading-card">
+          <span className="eyebrow">Session</span>
+          <h1>Loading your workspace</h1>
+          <p>We are resolving your current user and company context before opening the app.</p>
+        </div>
+      </div>
+    );
+  }
 
   const currentMeta = (() => {
     let key = pageMetaKeys[pathname] ?? pageMetaKeys["/"];
@@ -59,6 +85,11 @@ function AppShellFrame({ children }: { children: ReactNode }) {
       subtitle: pageHeaderOverride?.subtitle ?? baseMeta.subtitle,
     };
   })();
+
+  async function handleLogout() {
+    await logout();
+    router.replace("/login");
+  }
 
   return (
     <div className={["app-shell", isSidebarCollapsed ? "is-sidebar-collapsed" : ""].filter(Boolean).join(" ")}>
@@ -151,6 +182,15 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                 <SearchIcon className="nav-icon" />
                 <input placeholder={t("shell.topbar.searchPlaceholder")} />
               </label>
+              <div className="topbar-account">
+                <div className="topbar-account-copy">
+                  <strong>{currentUser.user.fullName}</strong>
+                  <span>{currentUser.company.name}</span>
+                </div>
+                <button type="button" className="button-secondary compact-button" onClick={() => void handleLogout()}>
+                  Log Out
+                </button>
+              </div>
               <button className="icon-button notification-button" style={{ padding: "12px" }} aria-label={t("shell.topbar.notifications")}>
                 <BellIcon className="nav-icon" />
               </button>
@@ -186,4 +226,3 @@ function LanguageButton({
     </button>
   );
 }
-

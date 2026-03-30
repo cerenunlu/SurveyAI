@@ -11,5 +11,7 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
 
     Optional<AppUser> findByCompany_IdAndEmailAndDeletedAtIsNull(UUID companyId, String email);
 
+    List<AppUser> findAllByEmailIgnoreCaseAndDeletedAtIsNull(String email);
+
     List<AppUser> findAllByCompany_IdAndStatusAndDeletedAtIsNull(UUID companyId, AppUserStatus status);
 }

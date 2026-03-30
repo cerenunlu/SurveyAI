@@ -1,5 +1,5 @@
-import { API_BASE_URL } from "@/lib/api";
-import { COMPANY_ID } from "@/lib/company";
+import { API_BASE_URL, apiFetch } from "@/lib/api";
+import { requireCompanyId } from "@/lib/auth";
 import { Survey } from "@/lib/types";
 
 type SurveyApiResponse = {
@@ -18,16 +18,16 @@ type SurveyApiResponse = {
 };
 
 export async function fetchCompanySurveys(
-  companyId: string = COMPANY_ID,
+  companyId?: string,
   init?: RequestInit,
 ): Promise<Survey[]> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/companies/${companyId}/surveys`, {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const response = await apiFetch(`${API_BASE_URL}/api/v1/companies/${resolvedCompanyId}/surveys`, {
     ...init,
     headers: {
       Accept: "application/json",
       ...init?.headers,
     },
-    cache: "no-store",
   });
 
   if (!response.ok) {

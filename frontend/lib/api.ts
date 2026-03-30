@@ -3,4 +3,10 @@ const internalApiBaseUrl = process.env.INTERNAL_API_BASE_URL ?? publicApiBaseUrl
 
 export const API_BASE_URL = typeof window === "undefined" ? internalApiBaseUrl : publicApiBaseUrl;
 
-
+export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    credentials: "include",
+    cache: "no-store",
+  });
+}

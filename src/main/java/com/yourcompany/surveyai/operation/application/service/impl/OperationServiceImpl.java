@@ -1,5 +1,6 @@
 package com.yourcompany.surveyai.operation.application.service.impl;
 
+import com.yourcompany.surveyai.auth.application.RequestAuthContext;
 import com.yourcompany.surveyai.operation.application.dto.request.CreateOperationRequest;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationResponseDto;
 import com.yourcompany.surveyai.operation.application.service.OperationService;
@@ -32,6 +33,7 @@ public class OperationServiceImpl implements OperationService {
     private final CompanyRepository companyRepository;
     private final SurveyRepository surveyRepository;
     private final AppUserRepository appUserRepository;
+    private final RequestAuthContext requestAuthContext;
     private final Validator validator;
 
     public OperationServiceImpl(
@@ -39,12 +41,14 @@ public class OperationServiceImpl implements OperationService {
             CompanyRepository companyRepository,
             SurveyRepository surveyRepository,
             AppUserRepository appUserRepository,
+            RequestAuthContext requestAuthContext,
             Validator validator
     ) {
         this.operationRepository = operationRepository;
         this.companyRepository = companyRepository;
         this.surveyRepository = surveyRepository;
         this.appUserRepository = appUserRepository;
+        this.requestAuthContext = requestAuthContext;
         this.validator = validator;
     }
 
@@ -109,7 +113,8 @@ public class OperationServiceImpl implements OperationService {
 
     private AppUser resolveUserForCompany(UUID companyId, UUID userId) {
         if (userId == null) {
-            return null;
+            AppUser authenticatedUser = requestAuthContext.requireUser();
+            return authenticatedUser.getCompany().getId().equals(companyId) ? authenticatedUser : null;
         }
 
         return appUserRepository.findById(userId)

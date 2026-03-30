@@ -1,5 +1,5 @@
-import { API_BASE_URL } from "@/lib/api";
-import { COMPANY_ID } from "@/lib/company";
+import { API_BASE_URL, apiFetch } from "@/lib/api";
+import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import { fetchCompanySurveys } from "@/lib/surveys";
 import { Operation, OperationContact } from "@/lib/types";
 
@@ -66,7 +66,7 @@ type CreateOperationRequest = {
   name: string;
   surveyId: string;
   scheduledAt: string | null;
-  createdByUserId: string | null;
+  createdByUserId?: string | null;
 };
 
 type CreateOperationContactsRequest = {
@@ -96,12 +96,13 @@ export type OperationContactPage = {
 };
 
 export async function fetchCompanyOperations(
-  companyId: string = COMPANY_ID,
+  companyId?: string,
   init?: RequestInit,
 ): Promise<Operation[]> {
+  const resolvedCompanyId = requireCompanyId(companyId);
   const [operationsResponse, surveys] = await Promise.all([
-    fetchJson<OperationApiResponse[]>(`${API_BASE_URL}/api/v1/operations?companyId=${companyId}`, init, "operations"),
-    fetchCompanySurveys(companyId, init),
+    fetchJson<OperationApiResponse[]>(`${API_BASE_URL}/api/v1/operations?companyId=${resolvedCompanyId}`, init, "operations"),
+    fetchCompanySurveys(resolvedCompanyId, init),
   ]);
 
   return operationsResponse.map((dto) => mapOperationDtoToOperation(dto, surveys));
@@ -109,12 +110,13 @@ export async function fetchCompanyOperations(
 
 export async function fetchOperationById(
   operationId: string,
-  companyId: string = COMPANY_ID,
+  companyId?: string,
   init?: RequestInit,
 ): Promise<Operation> {
+  const resolvedCompanyId = requireCompanyId(companyId);
   const [operationResponse, surveys] = await Promise.all([
-    fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations/${operationId}?companyId=${companyId}`, init, "operation"),
-    fetchCompanySurveys(companyId, init),
+    fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations/${operationId}?companyId=${resolvedCompanyId}`, init, "operation"),
+    fetchCompanySurveys(resolvedCompanyId, init),
   ]);
 
   return mapOperationDtoToOperation(operationResponse, surveys);
@@ -122,11 +124,12 @@ export async function fetchOperationById(
 
 export async function fetchOperationContacts(
   operationId: string,
-  companyId: string = COMPANY_ID,
+  companyId?: string,
   init?: RequestInit,
 ): Promise<OperationContact[]> {
+  const resolvedCompanyId = requireCompanyId(companyId);
   const response = await fetchJson<OperationContactApiResponse[]>(
-    `${API_BASE_URL}/api/v1/operations/${operationId}/contacts?companyId=${companyId}`,
+    `${API_BASE_URL}/api/v1/operations/${operationId}/contacts?companyId=${resolvedCompanyId}`,
     init,
     "operation contacts",
   );
@@ -145,7 +148,7 @@ export async function fetchOperationContactsPage(
     init?: RequestInit;
   },
 ): Promise<OperationContactPage> {
-  const companyId = options?.companyId ?? COMPANY_ID;
+  const companyId = requireCompanyId(options?.companyId);
   const searchParams = new URLSearchParams({ companyId });
 
   searchParams.set("page", String(options?.page ?? 0));
@@ -183,7 +186,7 @@ export async function fetchOperationContactSummary(
     init?: RequestInit;
   },
 ): Promise<OperationContactSummary> {
-  const companyId = options?.companyId ?? COMPANY_ID;
+  const companyId = requireCompanyId(options?.companyId);
   const latestLimit = options?.latestLimit ?? 5;
   const response = await fetchJson<OperationContactSummaryApiResponse>(
     `${API_BASE_URL}/api/v1/operations/${operationId}/contacts/summary?companyId=${companyId}&latestLimit=${latestLimit}`,
@@ -203,13 +206,13 @@ export async function fetchOperationContactSummary(
 
 export async function exportOperationContacts(
   operationId: string,
-  companyId: string = COMPANY_ID,
+  companyId?: string,
 ): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/operations/${operationId}/contacts/export?companyId=${companyId}`, {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const response = await apiFetch(`${API_BASE_URL}/api/v1/operations/${operationId}/contacts/export?companyId=${resolvedCompanyId}`, {
     headers: {
       Accept: "text/csv",
     },
-    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -231,21 +234,26 @@ export async function exportOperationContacts(
 
 export async function createOperation(
   request: CreateOperationRequest,
-  companyId: string = COMPANY_ID,
+  companyId?: string,
 ): Promise<OperationApiResponse> {
-  return fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations?companyId=${companyId}`, {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  return fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations?companyId=${resolvedCompanyId}`, {
     method: "POST",
-    body: JSON.stringify(request),
+    body: JSON.stringify({
+      ...request,
+      createdByUserId: requireCurrentUserId(request.createdByUserId),
+    }),
   }, "operation");
 }
 
 export async function createOperationContacts(
   operationId: string,
   request: CreateOperationContactsRequest,
-  companyId: string = COMPANY_ID,
+  companyId?: string,
 ): Promise<OperationContact[]> {
+  const resolvedCompanyId = requireCompanyId(companyId);
   const response = await fetchJson<OperationContactApiResponse[]>(
-    `${API_BASE_URL}/api/v1/operations/${operationId}/contacts?companyId=${companyId}`,
+    `${API_BASE_URL}/api/v1/operations/${operationId}/contacts?companyId=${resolvedCompanyId}`,
     {
       method: "POST",
       body: JSON.stringify(request),
@@ -261,14 +269,13 @@ async function fetchJson<T>(
   init: RequestInit | undefined,
   resourceName: string,
 ): Promise<T> {
-  const response = await fetch(input, {
+  const response = await apiFetch(input, {
     ...init,
     headers: {
       Accept: "application/json",
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
-    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -458,5 +465,3 @@ function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
 
   return `${statusLabel} operation linked to ${surveyLabel} with schedule ${scheduleLabel}.`;
 }
-
-

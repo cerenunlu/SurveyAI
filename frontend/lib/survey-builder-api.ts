@@ -1,5 +1,5 @@
-import { API_BASE_URL } from "@/lib/api";
-import { COMPANY_ID } from "@/lib/company";
+import { API_BASE_URL, apiFetch } from "@/lib/api";
+import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import type { SurveyBuilderQuestion, SurveyBuilderSurvey, SurveyQuestionOption, SurveyQuestionType } from "@/lib/types";
 
 type SurveyStatusDto = "DRAFT" | "PUBLISHED" | "ARCHIVED";
@@ -64,7 +64,7 @@ type CreateSurveyRequest = {
   introPrompt: string | null;
   closingPrompt: string | null;
   maxRetryPerQuestion: number;
-  createdByUserId: null;
+  createdByUserId: string;
 };
 
 type UpdateSurveyRequest = Omit<CreateSurveyRequest, "createdByUserId"> & {
@@ -105,15 +105,16 @@ export type BuilderSaveResult = {
 
 export async function fetchSurveyBuilderSurvey(
   surveyId: string,
-  companyId: string = COMPANY_ID,
+  companyId?: string,
   init?: RequestInit,
 ): Promise<SurveyBuilderSurvey> {
+  const resolvedCompanyId = requireCompanyId(companyId);
   const [survey, questions] = await Promise.all([
-    fetchJson<SurveyApiResponse>(`${API_BASE_URL}/api/v1/companies/${companyId}/surveys/${surveyId}`, {
+    fetchJson<SurveyApiResponse>(`${API_BASE_URL}/api/v1/companies/${resolvedCompanyId}/surveys/${surveyId}`, {
       ...init,
       method: "GET",
     }),
-    fetchJson<SurveyQuestionApiResponse[]>(`${API_BASE_URL}/api/v1/companies/${companyId}/surveys/${surveyId}/questions`, {
+    fetchJson<SurveyQuestionApiResponse[]>(`${API_BASE_URL}/api/v1/companies/${resolvedCompanyId}/surveys/${surveyId}/questions`, {
       ...init,
       method: "GET",
     }),
@@ -125,33 +126,34 @@ export async function fetchSurveyBuilderSurvey(
 export async function saveSurveyBuilderSurvey(
   survey: SurveyBuilderSurvey,
   action: BuilderSaveAction,
-  companyId: string = COMPANY_ID,
+  companyId?: string,
 ): Promise<BuilderSaveResult> {
+  const resolvedCompanyId = requireCompanyId(companyId);
   const persistedSurvey = isUuid(survey.id);
   const syncAction = survey.status === "Draft" ? "draft" : action;
   let surveyResponse: SurveyApiResponse;
 
   if (persistedSurvey) {
-    surveyResponse = await updateSurvey(companyId, survey.id, buildSurveyUpdateRequest(survey, syncAction));
+    surveyResponse = await updateSurvey(resolvedCompanyId, survey.id, buildSurveyUpdateRequest(survey, syncAction));
   } else {
-    surveyResponse = await createSurvey(companyId, buildSurveyCreateRequest(survey));
+    surveyResponse = await createSurvey(resolvedCompanyId, buildSurveyCreateRequest(survey));
   }
 
   const surveyId = surveyResponse.id;
-  const existingQuestions = await listSurveyQuestions(companyId, surveyId);
-  const syncedQuestions = await syncQuestions(companyId, surveyId, survey.questions, existingQuestions);
+  const existingQuestions = await listSurveyQuestions(resolvedCompanyId, surveyId);
+  const syncedQuestions = await syncQuestions(resolvedCompanyId, surveyId, survey.questions, existingQuestions);
 
   let finalizedSurvey = mapApiSurveyToBuilder(surveyResponse, syncedQuestions);
 
   if (action === "publish") {
-    surveyResponse = await updateSurvey(companyId, surveyId, buildSurveyUpdateRequest(finalizedSurvey, "publish"));
+    surveyResponse = await updateSurvey(resolvedCompanyId, surveyId, buildSurveyUpdateRequest(finalizedSurvey, "publish"));
     finalizedSurvey = {
       ...finalizedSurvey,
       status: mapSurveyStatusToBuilder(surveyResponse.status),
       updatedAt: formatDateTime(surveyResponse.updatedAt),
     };
   } else if (!persistedSurvey || survey.status === "Draft" || action === "draft") {
-    surveyResponse = await updateSurvey(companyId, surveyId, buildSurveyUpdateRequest(finalizedSurvey, "draft"));
+    surveyResponse = await updateSurvey(resolvedCompanyId, surveyId, buildSurveyUpdateRequest(finalizedSurvey, "draft"));
     finalizedSurvey = {
       ...finalizedSurvey,
       status: mapSurveyStatusToBuilder(surveyResponse.status),
@@ -284,7 +286,7 @@ function buildSurveyCreateRequest(survey: SurveyBuilderSurvey): CreateSurveyRequ
     introPrompt: toNullableText(survey.introPrompt),
     closingPrompt: toNullableText(survey.closingPrompt),
     maxRetryPerQuestion: normalizeRetryCount(survey.maxRetryPerQuestion),
-    createdByUserId: null,
+    createdByUserId: requireCurrentUserId(),
   };
 }
 
@@ -672,14 +674,13 @@ async function deleteOption(companyId: string, surveyId: string, questionId: str
 }
 
 async function fetchJson<T>(input: string, init: RequestInit): Promise<T> {
-  const response = await fetch(input, {
+  const response = await apiFetch(input, {
     ...init,
     headers: {
       Accept: "application/json",
       ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...init.headers,
     },
-    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -703,4 +704,11 @@ async function readApiError(response: Response): Promise<string> {
     return `Request failed (${response.status})`;
   }
 }
+
+
+
+
+
+
+
 
