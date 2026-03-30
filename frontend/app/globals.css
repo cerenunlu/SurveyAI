@@ -2648,6 +2648,71 @@ img {
   gap: 18px;
 }
 
+.operation-bulk-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.operation-bulk-import-actions .button-secondary.is-active {
+  border-color: rgba(91, 231, 255, 0.34);
+  background:
+    linear-gradient(180deg, rgba(91, 231, 255, 0.12), rgba(63, 179, 255, 0.04)),
+    rgba(255, 255, 255, 0.03);
+  color: #dffaff;
+}
+
+.operation-manual-entry-panel {
+  display: grid;
+  gap: 18px;
+  max-height: 0;
+  overflow: hidden;
+  padding: 0 20px;
+  border-radius: 22px;
+  border: 1px solid transparent;
+  background: rgba(7, 18, 32, 0);
+  opacity: 0;
+  transform: translateY(-6px);
+  transition:
+    max-height 220ms ease,
+    padding 220ms ease,
+    opacity 180ms ease,
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.operation-manual-entry-panel.is-open {
+  max-height: 960px;
+  padding: 20px;
+  border-color: rgba(142, 168, 199, 0.14);
+  background:
+    radial-gradient(circle at top right, rgba(91, 231, 255, 0.06), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015)),
+    rgba(7, 18, 32, 0.52);
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.operation-manual-entry-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.operation-manual-entry-head strong {
+  display: block;
+  font-size: 0.98rem;
+}
+
+.operation-manual-entry-head p {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.7;
+}
+
 .operation-import-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2750,4 +2815,10 @@ img {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .operation-manual-entry-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
+

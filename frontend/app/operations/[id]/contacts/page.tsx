@@ -242,6 +242,7 @@ export default function OperationContactsPage() {
     ignoredRows: 0,
   });
   const [isMissing, setIsMissing] = useState(false);
+  const [isManualFormOpen, setIsManualFormOpen] = useState(false);
 
   async function refreshContacts(nextOperationId: string, signal?: AbortSignal) {
     const nextContacts = await fetchOperationContacts(nextOperationId, undefined, signal ? { signal } : undefined);
@@ -334,6 +335,7 @@ export default function OperationContactsPage() {
     setSuccessMessage(null);
 
     if (Object.keys(nextErrors).length > 0 || !operationId) {
+      setIsManualFormOpen(true);
       return;
     }
 
@@ -353,7 +355,9 @@ export default function OperationContactsPage() {
       setPhoneNumber("");
       setErrors({});
       setSuccessMessage("Kisi operasyona eklendi. Hazirlik durumu guncellendi.");
+      setIsManualFormOpen(true);
     } catch (error) {
+      setIsManualFormOpen(true);
       setSubmitError(error instanceof Error ? error.message : "Kisi operasyona eklenemedi.");
     } finally {
       setIsSubmitting(false);
@@ -607,72 +611,13 @@ export default function OperationContactsPage() {
 
           <aside className="operation-workspace-side">
             <SectionCard
-              title="Kisi ekle"
-              description="MVP akisinda tek tek kisi ekleyerek bu operasyonu hazir hale getirin."
-            >
-              <form className="survey-form-fields" onSubmit={(event) => void handleAddContact(event)}>
-                <label className="builder-field">
-                  <strong>Ad soyad</strong>
-                  <input
-                    value={contactName}
-                    onChange={(event) => {
-                      setContactName(event.target.value);
-                      if (errors.name) {
-                        setErrors((current) => ({ ...current, name: undefined }));
-                      }
-                    }}
-                    placeholder="Orn. Ayse Yilmaz"
-                    aria-invalid={Boolean(errors.name)}
-                  />
-                  <span>Kayit olustugunda kisi dogrudan bu operasyona baglanir.</span>
-                  {errors.name ? <span className="field-error-message">{errors.name}</span> : null}
-                </label>
-
-                <label className="builder-field">
-                  <strong>Telefon numarasi</strong>
-                  <input
-                    value={phoneNumber}
-                    onChange={(event) => {
-                      setPhoneNumber(event.target.value);
-                      if (errors.phoneNumber) {
-                        setErrors((current) => ({ ...current, phoneNumber: undefined }));
-                      }
-                    }}
-                    placeholder="Orn. +90 555 123 45 67"
-                    aria-invalid={Boolean(errors.phoneNumber)}
-                  />
-                  <span>Bu alan backend tarafina `phoneNumber` olarak gonderilir.</span>
-                  {errors.phoneNumber ? <span className="field-error-message">{errors.phoneNumber}</span> : null}
-                </label>
-
-                {submitError ? (
-                  <div className="operation-inline-message is-danger compact">
-                    <strong>Kisi eklenemedi</strong>
-                    <span>{submitError}</span>
-                  </div>
-                ) : null}
-
-                {successMessage ? (
-                  <div className="operation-inline-message is-accent compact">
-                    <strong>Hazirlik guncellendi</strong>
-                    <span>{successMessage}</span>
-                  </div>
-                ) : null}
-
-                <button type="submit" className="button-primary compact-button" disabled={isSubmitting || isLoading || !operation}>
-                  {isSubmitting ? "Kisi ekleniyor..." : "Bu operasyona kisi ekle"}
-                </button>
-              </form>
-            </SectionCard>
-
-            <SectionCard
               title="Toplu kisi yukleme"
               description="CSV veya Excel dosyasindan bu operasyona toplu kisi ekleyin."
             >
               <div className="operation-bulk-import">
                 <div className="operation-upload-placeholder">
-                  <strong>CSV veya XLSX secin</strong>
-                  <p>Beklenen kolonlar: `adSoyad` ve `telefonNumarasi`. Ek kolonlar su an yok sayilir.</p>
+                  <strong>Toplu kisi yukleme</strong>
+                  <p>CSV veya Excel dosyasindan bu operasyona toplu kisi ekleyin. Beklenen kolonlar: `adSoyad` ve `telefonNumarasi`.</p>
                 </div>
 
                 <label className="builder-field">
@@ -681,9 +626,20 @@ export default function OperationContactsPage() {
                   <span>{selectedFileName ? `Secilen dosya: ${selectedFileName}` : "Desteklenen formatlar: .csv ve .xlsx"}</span>
                 </label>
 
-                <button type="button" className="button-secondary compact-button" onClick={downloadTemplate}>
-                  Ornek sablon indir
-                </button>
+                <div className="operation-bulk-import-actions">
+                  <button type="button" className="button-secondary compact-button" onClick={downloadTemplate}>
+                    Ornek sablon indir
+                  </button>
+                  <button
+                    type="button"
+                    className={`button-secondary compact-button ${isManualFormOpen ? "is-active" : ""}`}
+                    aria-expanded={isManualFormOpen}
+                    aria-controls="manual-contact-form-panel"
+                    onClick={() => setIsManualFormOpen((current) => !current)}
+                  >
+                    Manuel ekleme
+                  </button>
+                </div>
 
                 {(importSummary.totalRows > 0 || importSummary.ignoredRows > 0) && !importError ? (
                   <div className="operation-import-stats">
@@ -759,6 +715,80 @@ export default function OperationContactsPage() {
                 >
                   {isImporting ? "Kisiler ice aktariliyor..." : "Gecerli kisileri operasyona aktar"}
                 </button>
+
+                <div
+                  id="manual-contact-form-panel"
+                  className={`operation-manual-entry-panel ${isManualFormOpen ? "is-open" : ""}`}
+                  aria-hidden={!isManualFormOpen}
+                >
+                  <div className="operation-manual-entry-head">
+                    <div>
+                      <strong>Tek kisi ekleme</strong>
+                      <p>Toplu yukleme yerine ihtiyac olursa bu operasyona tek bir kisi manuel olarak ekleyin.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="button-secondary compact-button"
+                      onClick={() => setIsManualFormOpen(false)}
+                    >
+                      Kapat
+                    </button>
+                  </div>
+
+                  <form className="survey-form-fields" onSubmit={(event) => void handleAddContact(event)}>
+                    <label className="builder-field">
+                      <strong>Ad soyad</strong>
+                      <input
+                        value={contactName}
+                        onChange={(event) => {
+                          setContactName(event.target.value);
+                          if (errors.name) {
+                            setErrors((current) => ({ ...current, name: undefined }));
+                          }
+                        }}
+                        placeholder="Orn. Ayse Yilmaz"
+                        aria-invalid={Boolean(errors.name)}
+                      />
+                      <span>Kayit olustugunda kisi dogrudan bu operasyona baglanir.</span>
+                      {errors.name ? <span className="field-error-message">{errors.name}</span> : null}
+                    </label>
+
+                    <label className="builder-field">
+                      <strong>Telefon numarasi</strong>
+                      <input
+                        value={phoneNumber}
+                        onChange={(event) => {
+                          setPhoneNumber(event.target.value);
+                          if (errors.phoneNumber) {
+                            setErrors((current) => ({ ...current, phoneNumber: undefined }));
+                          }
+                        }}
+                        placeholder="Orn. +90 555 123 45 67"
+                        aria-invalid={Boolean(errors.phoneNumber)}
+                      />
+                      <span>Bu alan backend tarafina `phoneNumber` olarak gonderilir.</span>
+                      {errors.phoneNumber ? <span className="field-error-message">{errors.phoneNumber}</span> : null}
+                    </label>
+
+                    {submitError ? (
+                      <div className="operation-inline-message is-danger compact">
+                        <strong>Kisi eklenemedi</strong>
+                        <span>{submitError}</span>
+                      </div>
+                    ) : null}
+
+                    {successMessage ? (
+                      <div className="operation-inline-message is-accent compact">
+                        <strong>Hazirlik guncellendi</strong>
+                        <span>{successMessage}</span>
+                      </div>
+                    ) : null}
+
+                    <button type="submit" className="button-primary compact-button" disabled={isSubmitting || isLoading || !operation}>
+                      {isSubmitting ? "Kisi ekleniyor..." : "Bu operasyona kisi ekle"}
+                    </button>
+                  </form>
+                </div>
               </div>
             </SectionCard>
           </aside>
@@ -767,3 +797,4 @@ export default function OperationContactsPage() {
     </PageContainer>
   );
 }
+
