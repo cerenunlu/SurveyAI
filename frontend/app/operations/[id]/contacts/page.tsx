@@ -1,8 +1,9 @@
 "use client";
 
+import * as XLSX from "xlsx";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { DataTable } from "@/components/ui/DataTable";
 import { SectionCard } from "@/components/ui/SectionCard";
@@ -43,6 +44,179 @@ type FormErrors = {
   phoneNumber?: string;
 };
 
+type ImportPreviewRow = {
+  rowNumber: number;
+  name: string;
+  phoneNumber: string;
+  normalizedPhoneNumber: string;
+  isValid: boolean;
+  reason: string | null;
+};
+
+type ImportSummary = {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  ignoredRows: number;
+};
+
+const ACCEPTED_FILE_TYPES = ".csv,.xlsx";
+const PREVIEW_LIMIT = 8;
+const PHONE_NUMBER_PATTERN = /^\+?[1-9]\d{7,14}$/;
+
+function normalizeHeader(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLocaleLowerCase("tr-TR")
+    .replace(/�/g, "g")
+    .replace(/�/g, "u")
+    .replace(/�/g, "s")
+    .replace(/�/g, "i")
+    .replace(/�/g, "o")
+    .replace(/�/g, "c")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeCellValue(value: unknown): string {
+  if (value == null) {
+    return "";
+  }
+
+  return String(value).trim();
+}
+
+function normalizePhoneNumber(phoneNumber: string): string {
+  return phoneNumber.replace(/[\s()-]/g, "");
+}
+
+function isPhoneNumberValid(phoneNumber: string): boolean {
+  return PHONE_NUMBER_PATTERN.test(phoneNumber);
+}
+
+function resolveColumnIndex(headerRow: unknown[], aliases: string[]): number {
+  const normalizedAliases = new Set(aliases.map((alias) => normalizeHeader(alias)));
+  return headerRow.findIndex((cell) => normalizedAliases.has(normalizeHeader(cell)));
+}
+
+function buildPreviewRows(rows: unknown[][]): { previewRows: ImportPreviewRow[]; summary: ImportSummary } {
+  if (rows.length === 0) {
+    return {
+      previewRows: [],
+      summary: {
+        totalRows: 0,
+        validRows: 0,
+        invalidRows: 0,
+        ignoredRows: 0,
+      },
+    };
+  }
+
+  const [headerRow, ...dataRows] = rows;
+  const nameColumnIndex = resolveColumnIndex(headerRow, ["adSoyad", "ad_soyad"]);
+  const phoneColumnIndex = resolveColumnIndex(headerRow, ["telefonNumarasi", "telefon", "phoneNumber"]);
+
+  if (nameColumnIndex === -1 || phoneColumnIndex === -1) {
+    const reasonParts = [
+      nameColumnIndex === -1 ? "`adSoyad` kolonu bulunamadi." : null,
+      phoneColumnIndex === -1 ? "`telefonNumarasi` kolonu bulunamadi." : null,
+    ].filter(Boolean);
+
+    return {
+      previewRows: [
+        {
+          rowNumber: 1,
+          name: "",
+          phoneNumber: "",
+          normalizedPhoneNumber: "",
+          isValid: false,
+          reason: reasonParts.join(" "),
+        },
+      ],
+      summary: {
+        totalRows: dataRows.length,
+        validRows: 0,
+        invalidRows: dataRows.length > 0 ? dataRows.length : 1,
+        ignoredRows: 0,
+      },
+    };
+  }
+
+  const rawPreviewRows = dataRows.reduce<ImportPreviewRow[]>((accumulator, row, index) => {
+    const name = normalizeCellValue(row[nameColumnIndex]);
+    const phoneNumber = normalizeCellValue(row[phoneColumnIndex]);
+
+    if (!name && !phoneNumber) {
+      return accumulator;
+    }
+
+    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+    const reasons: string[] = [];
+
+    if (!name) {
+      reasons.push("Ad soyad gerekli.");
+    }
+
+    if (!phoneNumber) {
+      reasons.push("Telefon numarasi gerekli.");
+    } else if (!isPhoneNumberValid(normalizedPhoneNumber)) {
+      reasons.push("Telefon formati gecersiz.");
+    }
+
+    accumulator.push({
+      rowNumber: index + 2,
+      name,
+      phoneNumber,
+      normalizedPhoneNumber,
+      isValid: reasons.length === 0,
+      reason: reasons.length > 0 ? reasons.join(" ") : null,
+    });
+
+    return accumulator;
+  }, []);
+
+  const seenPhoneNumbers = new Set<string>();
+  const previewRows = rawPreviewRows.map((row) => {
+    if (!row.normalizedPhoneNumber) {
+      return row;
+    }
+
+    if (seenPhoneNumbers.has(row.normalizedPhoneNumber)) {
+      return {
+        ...row,
+        isValid: false,
+        reason: row.reason ? `${row.reason} Dosyada tekrar eden telefon numarasi.` : "Dosyada tekrar eden telefon numarasi.",
+      };
+    }
+
+    seenPhoneNumbers.add(row.normalizedPhoneNumber);
+    return row;
+  });
+
+  const validRows = previewRows.filter((row) => row.isValid).length;
+  const invalidRows = previewRows.length - validRows;
+
+  return {
+    previewRows,
+    summary: {
+      totalRows: previewRows.length,
+      validRows,
+      invalidRows,
+      ignoredRows: dataRows.length - previewRows.length,
+    },
+  };
+}
+
+function downloadTemplate() {
+  const templateContent = "adSoyad,telefonNumarasi\nAyse Yilmaz,+905551234567\nMehmet Demir,+905321112233\n";
+  const blob = new Blob([templateContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "ornek-operasyon-kisileri.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function OperationContactsPage() {
   const params = useParams<{ id: string }>();
   const operationId = params.id;
@@ -53,10 +227,26 @@ export default function OperationContactsPage() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [importRows, setImportRows] = useState<ImportPreviewRow[]>([]);
+  const [importSummary, setImportSummary] = useState<ImportSummary>({
+    totalRows: 0,
+    validRows: 0,
+    invalidRows: 0,
+    ignoredRows: 0,
+  });
   const [isMissing, setIsMissing] = useState(false);
+
+  async function refreshContacts(nextOperationId: string, signal?: AbortSignal) {
+    const nextContacts = await fetchOperationContacts(nextOperationId, undefined, signal ? { signal } : undefined);
+    setContacts(nextContacts);
+  }
 
   useEffect(() => {
     if (!operationId) {
@@ -118,6 +308,8 @@ export default function OperationContactsPage() {
     };
   }, [contacts.length]);
 
+  const previewRows = useMemo(() => importRows.slice(0, PREVIEW_LIMIT), [importRows]);
+
   if (isMissing) {
     notFound();
   }
@@ -156,8 +348,7 @@ export default function OperationContactsPage() {
         ],
       });
 
-      const nextContacts = await fetchOperationContacts(operationId);
-      setContacts(nextContacts);
+      await refreshContacts(operationId);
       setContactName("");
       setPhoneNumber("");
       setErrors({});
@@ -166,6 +357,141 @@ export default function OperationContactsPage() {
       setSubmitError(error instanceof Error ? error.message : "Kisi operasyona eklenemedi.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    setImportError(null);
+    setImportSuccessMessage(null);
+    setImportRows([]);
+    setImportSummary({
+      totalRows: 0,
+      validRows: 0,
+      invalidRows: 0,
+      ignoredRows: 0,
+    });
+    setSelectedFileName(file?.name ?? null);
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const firstSheetName = workbook.SheetNames[0];
+
+      if (!firstSheetName) {
+        throw new Error("Dosyada okunabilir bir sayfa bulunamadi.");
+      }
+
+      const firstSheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, {
+        header: 1,
+        raw: false,
+        defval: "",
+        blankrows: false,
+      });
+
+      const { previewRows: nextImportRows, summary } = buildPreviewRows(rows);
+      setImportRows(nextImportRows);
+      setImportSummary(summary);
+
+      if (summary.totalRows === 0 && summary.ignoredRows === 0) {
+        setImportError("Dosyada veri satiri bulunamadi.");
+      }
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Dosya okunamadi.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function handleImportContacts() {
+    if (!operationId) {
+      return;
+    }
+
+    const validRows = importRows.filter((row) => row.isValid);
+
+    setImportError(null);
+    setImportSuccessMessage(null);
+
+    if (validRows.length === 0) {
+      setImportError("Iceri aktarilacak gecerli kisi bulunamadi.");
+      return;
+    }
+
+    try {
+      setIsImporting(true);
+
+      const importedRows: ImportPreviewRow[] = [];
+      const failedRows: Array<{ rowNumber: number; reason: string }> = [];
+
+      for (const row of validRows) {
+        try {
+          await createOperationContacts(operationId, {
+            contacts: [
+              {
+                name: row.name,
+                phoneNumber: row.normalizedPhoneNumber,
+              },
+            ],
+          });
+          importedRows.push(row);
+        } catch (error) {
+          failedRows.push({
+            rowNumber: row.rowNumber,
+            reason: error instanceof Error ? error.message : "Kisi eklenemedi.",
+          });
+        }
+      }
+
+      await refreshContacts(operationId);
+
+      if (importedRows.length > 0) {
+        setImportSuccessMessage(
+          failedRows.length > 0
+            ? `${importedRows.length} kisi operasyona eklendi. ${failedRows.length} satir backend tarafinda basarisiz oldu.`
+            : `${importedRows.length} kisi operasyona basariyla eklendi.`,
+        );
+      }
+
+      if (failedRows.length > 0) {
+        const summary = failedRows
+          .slice(0, 4)
+          .map((item) => `Satir ${item.rowNumber}: ${item.reason}`)
+          .join(" ");
+        setImportError(
+          failedRows.length > 4
+            ? `${failedRows.length} satir ice aktarilamadi. ${summary} Daha fazla satir icin dosyayi gozden gecirin.`
+            : `${failedRows.length} satir ice aktarilamadi. ${summary}`,
+        );
+      }
+
+      if (importedRows.length > 0) {
+        setImportRows((currentRows) => {
+          const importedRowNumbers = new Set(importedRows.map((row) => row.rowNumber));
+          const remainingRows = currentRows.filter((row) => !importedRowNumbers.has(row.rowNumber));
+          const remainingValidRows = remainingRows.filter((row) => row.isValid).length;
+
+          setImportSummary((currentSummary) => ({
+            totalRows: remainingRows.length,
+            validRows: remainingValidRows,
+            invalidRows: remainingRows.length - remainingValidRows,
+            ignoredRows: currentSummary.ignoredRows,
+          }));
+
+          if (remainingRows.length === 0) {
+            setSelectedFileName(null);
+          }
+
+          return remainingRows;
+        });
+      }
+    } finally {
+      setIsImporting(false);
     }
   }
 
@@ -340,12 +666,99 @@ export default function OperationContactsPage() {
             </SectionCard>
 
             <SectionCard
-              title="Toplu yukleme"
-              description="CSV akisi daha sonra bu operasyon baglamina eklenecek."
+              title="Toplu kisi yukleme"
+              description="CSV veya Excel dosyasindan bu operasyona toplu kisi ekleyin."
             >
-              <div className="operation-upload-placeholder">
-                <strong>CSV import sonraki adimda gelecek</strong>
-                <p>Bu MVP iterasyonunda toplu parse ve dogrulama kurulmedi. Ancak yerlesim operasyon bazli tutuldugu icin ayni sayfaya toplu yukleme kolayca eklenebilir.</p>
+              <div className="operation-bulk-import">
+                <div className="operation-upload-placeholder">
+                  <strong>CSV veya XLSX secin</strong>
+                  <p>Beklenen kolonlar: `adSoyad` ve `telefonNumarasi`. Ek kolonlar su an yok sayilir.</p>
+                </div>
+
+                <label className="builder-field">
+                  <strong>Dosya secimi</strong>
+                  <input type="file" accept={ACCEPTED_FILE_TYPES} onChange={(event) => void handleFileSelection(event)} />
+                  <span>{selectedFileName ? `Secilen dosya: ${selectedFileName}` : "Desteklenen formatlar: .csv ve .xlsx"}</span>
+                </label>
+
+                <button type="button" className="button-secondary compact-button" onClick={downloadTemplate}>
+                  Ornek sablon indir
+                </button>
+
+                {(importSummary.totalRows > 0 || importSummary.ignoredRows > 0) && !importError ? (
+                  <div className="operation-import-stats">
+                    <div className="operation-import-stat">
+                      <span>Toplam satir</span>
+                      <strong>{importSummary.totalRows}</strong>
+                    </div>
+                    <div className="operation-import-stat">
+                      <span>Gecerli</span>
+                      <strong>{importSummary.validRows}</strong>
+                    </div>
+                    <div className="operation-import-stat">
+                      <span>Gecersiz</span>
+                      <strong>{importSummary.invalidRows}</strong>
+                    </div>
+                    <div className="operation-import-stat">
+                      <span>Bos gecilen</span>
+                      <strong>{importSummary.ignoredRows}</strong>
+                    </div>
+                  </div>
+                ) : null}
+
+                {importRows.length > 0 ? (
+                  <div className="operation-import-preview">
+                    <div className="operation-import-preview-head">
+                      <strong>Onizleme</strong>
+                      <span>Ilk {Math.min(importRows.length, PREVIEW_LIMIT)} satir gosteriliyor.</span>
+                    </div>
+                    <div className="operation-import-table-wrap">
+                      <table className="operation-import-table">
+                        <thead>
+                          <tr>
+                            <th>Satir</th>
+                            <th>Ad soyad</th>
+                            <th>Telefon</th>
+                            <th>Durum</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewRows.map((row) => (
+                            <tr key={row.rowNumber} className={row.isValid ? "is-valid" : "is-invalid"}>
+                              <td>{row.rowNumber}</td>
+                              <td>{row.name || "-"}</td>
+                              <td>{row.phoneNumber || "-"}</td>
+                              <td>{row.isValid ? "Hazir" : row.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+
+                {importError ? (
+                  <div className="operation-inline-message is-danger compact">
+                    <strong>Toplu yukleme sorunu</strong>
+                    <span>{importError}</span>
+                  </div>
+                ) : null}
+
+                {importSuccessMessage ? (
+                  <div className="operation-inline-message is-accent compact">
+                    <strong>Toplu yukleme tamamlandi</strong>
+                    <span>{importSuccessMessage}</span>
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="button-primary compact-button"
+                  disabled={isLoading || isImporting || !operation || importSummary.validRows === 0}
+                  onClick={() => void handleImportContacts()}
+                >
+                  {isImporting ? "Kisiler ice aktariliyor..." : "Gecerli kisileri operasyona aktar"}
+                </button>
               </div>
             </SectionCard>
           </aside>
@@ -354,6 +767,3 @@ export default function OperationContactsPage() {
     </PageContainer>
   );
 }
-
-
-
