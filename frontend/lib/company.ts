@@ -1,2 +1,2 @@
 // Single source of truth for the frontend's backend company scope.
-export const COMPANY_ID = "c5289d28-3a2e-4c59-9f3c-a7b5f74796ce";
+export const COMPANY_ID = "ffcf3697-8bf0-42a8-860e-4ab05374189e";
