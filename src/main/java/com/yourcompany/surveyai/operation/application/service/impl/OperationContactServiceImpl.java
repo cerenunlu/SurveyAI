@@ -1,5 +1,7 @@
 package com.yourcompany.surveyai.operation.application.service.impl;
 
+import com.yourcompany.surveyai.common.exception.NotFoundException;
+import com.yourcompany.surveyai.common.exception.ValidationException;
 import com.yourcompany.surveyai.operation.application.dto.request.OperationContactInput;
 import com.yourcompany.surveyai.operation.application.dto.request.UploadOperationContactsRequest;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationContactResponseDto;
@@ -9,8 +11,6 @@ import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
 import com.yourcompany.surveyai.operation.repository.OperationContactRepository;
 import com.yourcompany.surveyai.operation.repository.OperationRepository;
-import com.yourcompany.surveyai.common.exception.NotFoundException;
-import com.yourcompany.surveyai.common.exception.ValidationException;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import java.util.HashSet;
@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,7 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class OperationContactServiceImpl implements OperationContactService {
 
-    private static final Pattern PHONE_NUMBER_PATTERN = Pattern.compile("^\\+?[1-9]\\d{7,14}$");
+    private static final Pattern PHONE_NUMBER_PATTERN = Pattern.compile("^[1-9]\\d{7,14}$");
 
     private final OperationRepository operationRepository;
     private final OperationContactRepository operationContactRepository;
@@ -51,15 +52,20 @@ public class OperationContactServiceImpl implements OperationContactService {
         validateRequest(request);
 
         Operation operation = getOperation(companyId, operationId);
-        ensureNoDuplicatePhoneNumbers(request.getContacts());
+        Set<String> normalizedPhoneNumbers = ensureNoDuplicatePhoneNumbers(request.getContacts());
+        ensurePhoneNumbersDoNotAlreadyExist(operation, normalizedPhoneNumbers);
 
         List<OperationContact> contacts = request.getContacts().stream()
                 .map(input -> buildContact(operation, input))
                 .toList();
 
-        return operationContactRepository.saveAll(contacts).stream()
-                .map(this::toDto)
-                .toList();
+        try {
+            return operationContactRepository.saveAllAndFlush(contacts).stream()
+                    .map(this::toDto)
+                    .toList();
+        } catch (DataIntegrityViolationException ex) {
+            throw new ValidationException("This operation already has a contact with the same normalized phone number.");
+        }
     }
 
     @Override
@@ -85,14 +91,37 @@ public class OperationContactServiceImpl implements OperationContactService {
                 .orElseThrow(() -> new NotFoundException("Operation not found for company: " + operationId));
     }
 
-    private void ensureNoDuplicatePhoneNumbers(List<OperationContactInput> contacts) {
+    private Set<String> ensureNoDuplicatePhoneNumbers(List<OperationContactInput> contacts) {
         Set<String> seenPhoneNumbers = new HashSet<>();
 
         for (OperationContactInput input : contacts) {
             String normalizedPhoneNumber = normalizePhoneNumber(input.getPhoneNumber());
+            validatePhoneNumber(normalizedPhoneNumber);
+
             if (!seenPhoneNumbers.add(normalizedPhoneNumber)) {
                 throw new ValidationException("Duplicate phone number in upload payload: " + normalizedPhoneNumber);
             }
+        }
+
+        return seenPhoneNumbers;
+    }
+
+    private void ensurePhoneNumbersDoNotAlreadyExist(Operation operation, Set<String> normalizedPhoneNumbers) {
+        if (normalizedPhoneNumbers.isEmpty()) {
+            return;
+        }
+
+        List<OperationContact> existingContacts = operationContactRepository
+                .findAllByOperation_IdAndCompany_IdAndPhoneNumberInAndDeletedAtIsNull(
+                        operation.getId(),
+                        operation.getCompany().getId(),
+                        normalizedPhoneNumbers
+                );
+
+        if (!existingContacts.isEmpty()) {
+            throw new ValidationException(
+                    "Phone number already exists in this operation: " + existingContacts.get(0).getPhoneNumber()
+            );
         }
     }
 
@@ -113,12 +142,22 @@ public class OperationContactServiceImpl implements OperationContactService {
 
     private void validatePhoneNumber(String phoneNumber) {
         if (!PHONE_NUMBER_PATTERN.matcher(phoneNumber).matches()) {
-            throw new ValidationException("Invalid phone number format. Use an international-style number like +905551112233");
+            throw new ValidationException("Invalid phone number format. Use a normalized number like 905551112233");
         }
     }
 
     private String normalizePhoneNumber(String phoneNumber) {
-        return phoneNumber.replaceAll("[\\s()\\-]", "");
+        String digitsOnly = phoneNumber == null ? "" : phoneNumber.replaceAll("\\D", "");
+
+        if (digitsOnly.startsWith("00")) {
+            digitsOnly = digitsOnly.substring(2);
+        }
+
+        if (digitsOnly.startsWith("0")) {
+            return "90" + digitsOnly.substring(1);
+        }
+
+        return digitsOnly;
     }
 
     private OperationContactResponseDto toDto(OperationContact contact) {

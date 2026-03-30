@@ -8,6 +8,16 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { DataTable } from "@/components/ui/DataTable";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import {
+  ACCEPTED_OPERATION_CONTACT_FILE_TYPES,
+  OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT,
+  buildPreviewRows,
+  createEmptyImportSummary,
+  downloadOperationContactsTemplate,
+  normalizePhoneNumber,
+  type ImportPreviewRow,
+  type ImportSummary,
+} from "@/lib/operation-contact-import";
 import { createOperationContacts, fetchOperationById, fetchOperationContacts } from "@/lib/operations";
 import { Operation, OperationContact, TableColumn } from "@/lib/types";
 
@@ -44,179 +54,6 @@ type FormErrors = {
   phoneNumber?: string;
 };
 
-type ImportPreviewRow = {
-  rowNumber: number;
-  name: string;
-  phoneNumber: string;
-  normalizedPhoneNumber: string;
-  isValid: boolean;
-  reason: string | null;
-};
-
-type ImportSummary = {
-  totalRows: number;
-  validRows: number;
-  invalidRows: number;
-  ignoredRows: number;
-};
-
-const ACCEPTED_FILE_TYPES = ".csv,.xlsx";
-const PREVIEW_LIMIT = 8;
-const PHONE_NUMBER_PATTERN = /^\+?[1-9]\d{7,14}$/;
-
-function normalizeHeader(value: unknown): string {
-  return String(value ?? "")
-    .trim()
-    .toLocaleLowerCase("tr-TR")
-    .replace(/�/g, "g")
-    .replace(/�/g, "u")
-    .replace(/�/g, "s")
-    .replace(/�/g, "i")
-    .replace(/�/g, "o")
-    .replace(/�/g, "c")
-    .replace(/[^a-z0-9]/g, "");
-}
-
-function normalizeCellValue(value: unknown): string {
-  if (value == null) {
-    return "";
-  }
-
-  return String(value).trim();
-}
-
-function normalizePhoneNumber(phoneNumber: string): string {
-  return phoneNumber.replace(/[\s()-]/g, "");
-}
-
-function isPhoneNumberValid(phoneNumber: string): boolean {
-  return PHONE_NUMBER_PATTERN.test(phoneNumber);
-}
-
-function resolveColumnIndex(headerRow: unknown[], aliases: string[]): number {
-  const normalizedAliases = new Set(aliases.map((alias) => normalizeHeader(alias)));
-  return headerRow.findIndex((cell) => normalizedAliases.has(normalizeHeader(cell)));
-}
-
-function buildPreviewRows(rows: unknown[][]): { previewRows: ImportPreviewRow[]; summary: ImportSummary } {
-  if (rows.length === 0) {
-    return {
-      previewRows: [],
-      summary: {
-        totalRows: 0,
-        validRows: 0,
-        invalidRows: 0,
-        ignoredRows: 0,
-      },
-    };
-  }
-
-  const [headerRow, ...dataRows] = rows;
-  const nameColumnIndex = resolveColumnIndex(headerRow, ["adSoyad", "ad_soyad"]);
-  const phoneColumnIndex = resolveColumnIndex(headerRow, ["telefonNumarasi", "telefon", "phoneNumber"]);
-
-  if (nameColumnIndex === -1 || phoneColumnIndex === -1) {
-    const reasonParts = [
-      nameColumnIndex === -1 ? "`adSoyad` kolonu bulunamadi." : null,
-      phoneColumnIndex === -1 ? "`telefonNumarasi` kolonu bulunamadi." : null,
-    ].filter(Boolean);
-
-    return {
-      previewRows: [
-        {
-          rowNumber: 1,
-          name: "",
-          phoneNumber: "",
-          normalizedPhoneNumber: "",
-          isValid: false,
-          reason: reasonParts.join(" "),
-        },
-      ],
-      summary: {
-        totalRows: dataRows.length,
-        validRows: 0,
-        invalidRows: dataRows.length > 0 ? dataRows.length : 1,
-        ignoredRows: 0,
-      },
-    };
-  }
-
-  const rawPreviewRows = dataRows.reduce<ImportPreviewRow[]>((accumulator, row, index) => {
-    const name = normalizeCellValue(row[nameColumnIndex]);
-    const phoneNumber = normalizeCellValue(row[phoneColumnIndex]);
-
-    if (!name && !phoneNumber) {
-      return accumulator;
-    }
-
-    const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
-    const reasons: string[] = [];
-
-    if (!name) {
-      reasons.push("Ad soyad gerekli.");
-    }
-
-    if (!phoneNumber) {
-      reasons.push("Telefon numarasi gerekli.");
-    } else if (!isPhoneNumberValid(normalizedPhoneNumber)) {
-      reasons.push("Telefon formati gecersiz.");
-    }
-
-    accumulator.push({
-      rowNumber: index + 2,
-      name,
-      phoneNumber,
-      normalizedPhoneNumber,
-      isValid: reasons.length === 0,
-      reason: reasons.length > 0 ? reasons.join(" ") : null,
-    });
-
-    return accumulator;
-  }, []);
-
-  const seenPhoneNumbers = new Set<string>();
-  const previewRows = rawPreviewRows.map((row) => {
-    if (!row.normalizedPhoneNumber) {
-      return row;
-    }
-
-    if (seenPhoneNumbers.has(row.normalizedPhoneNumber)) {
-      return {
-        ...row,
-        isValid: false,
-        reason: row.reason ? `${row.reason} Dosyada tekrar eden telefon numarasi.` : "Dosyada tekrar eden telefon numarasi.",
-      };
-    }
-
-    seenPhoneNumbers.add(row.normalizedPhoneNumber);
-    return row;
-  });
-
-  const validRows = previewRows.filter((row) => row.isValid).length;
-  const invalidRows = previewRows.length - validRows;
-
-  return {
-    previewRows,
-    summary: {
-      totalRows: previewRows.length,
-      validRows,
-      invalidRows,
-      ignoredRows: dataRows.length - previewRows.length,
-    },
-  };
-}
-
-function downloadTemplate() {
-  const templateContent = "adSoyad,telefonNumarasi\nAyse Yilmaz,+905551234567\nMehmet Demir,+905321112233\n";
-  const blob = new Blob([templateContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "ornek-operasyon-kisileri.csv";
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function OperationContactsPage() {
   const params = useParams<{ id: string }>();
   const operationId = params.id;
@@ -235,14 +72,14 @@ export default function OperationContactsPage() {
   const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [importRows, setImportRows] = useState<ImportPreviewRow[]>([]);
-  const [importSummary, setImportSummary] = useState<ImportSummary>({
-    totalRows: 0,
-    validRows: 0,
-    invalidRows: 0,
-    ignoredRows: 0,
-  });
+  const [importSummary, setImportSummary] = useState<ImportSummary>(createEmptyImportSummary());
   const [isMissing, setIsMissing] = useState(false);
   const [isManualFormOpen, setIsManualFormOpen] = useState(false);
+
+  const existingOperationPhoneNumbers = useMemo(
+    () => contacts.map((contact) => normalizePhoneNumber(contact.phoneNumber)).filter(Boolean),
+    [contacts],
+  );
 
   async function refreshContacts(nextOperationId: string, signal?: AbortSignal) {
     const nextContacts = await fetchOperationContacts(nextOperationId, undefined, signal ? { signal } : undefined);
@@ -309,7 +146,7 @@ export default function OperationContactsPage() {
     };
   }, [contacts.length]);
 
-  const previewRows = useMemo(() => importRows.slice(0, PREVIEW_LIMIT), [importRows]);
+  const previewRows = useMemo(() => importRows.slice(0, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT), [importRows]);
 
   if (isMissing) {
     notFound();
@@ -370,12 +207,7 @@ export default function OperationContactsPage() {
     setImportError(null);
     setImportSuccessMessage(null);
     setImportRows([]);
-    setImportSummary({
-      totalRows: 0,
-      validRows: 0,
-      invalidRows: 0,
-      ignoredRows: 0,
-    });
+    setImportSummary(createEmptyImportSummary());
     setSelectedFileName(file?.name ?? null);
 
     if (!file) {
@@ -398,7 +230,10 @@ export default function OperationContactsPage() {
         blankrows: false,
       });
 
-      const { previewRows: nextImportRows, summary } = buildPreviewRows(rows);
+      const { previewRows: nextImportRows, summary } = buildPreviewRows(rows, {
+        existingPhoneNumbers: existingOperationPhoneNumbers,
+      });
+
       setImportRows(nextImportRows);
       setImportSummary(summary);
 
@@ -455,10 +290,14 @@ export default function OperationContactsPage() {
       await refreshContacts(operationId);
 
       if (importedRows.length > 0) {
+        const duplicateFeedback = importSummary.duplicateRows > 0
+          ? ` ${importSummary.duplicateRows} tekrar satiri disarida birakildi.`
+          : "";
+
         setImportSuccessMessage(
           failedRows.length > 0
-            ? `${importedRows.length} kisi operasyona eklendi. ${failedRows.length} satir backend tarafinda basarisiz oldu.`
-            : `${importedRows.length} kisi operasyona basariyla eklendi.`,
+            ? `${importedRows.length} kisi operasyona eklendi.${duplicateFeedback} ${failedRows.length} satir backend tarafinda basarisiz oldu.`
+            : `${importedRows.length} kisi operasyona basariyla eklendi.${duplicateFeedback}`,
         );
       }
 
@@ -478,14 +317,7 @@ export default function OperationContactsPage() {
         setImportRows((currentRows) => {
           const importedRowNumbers = new Set(importedRows.map((row) => row.rowNumber));
           const remainingRows = currentRows.filter((row) => !importedRowNumbers.has(row.rowNumber));
-          const remainingValidRows = remainingRows.filter((row) => row.isValid).length;
-
-          setImportSummary((currentSummary) => ({
-            totalRows: remainingRows.length,
-            validRows: remainingValidRows,
-            invalidRows: remainingRows.length - remainingValidRows,
-            ignoredRows: currentSummary.ignoredRows,
-          }));
+          setImportSummary(createImportSummaryFromRows(remainingRows, importSummary.ignoredRows));
 
           if (remainingRows.length === 0) {
             setSelectedFileName(null);
@@ -622,12 +454,12 @@ export default function OperationContactsPage() {
 
                 <label className="builder-field">
                   <strong>Dosya secimi</strong>
-                  <input type="file" accept={ACCEPTED_FILE_TYPES} onChange={(event) => void handleFileSelection(event)} />
+                  <input type="file" accept={ACCEPTED_OPERATION_CONTACT_FILE_TYPES} onChange={(event) => void handleFileSelection(event)} />
                   <span>{selectedFileName ? `Secilen dosya: ${selectedFileName}` : "Desteklenen formatlar: .csv ve .xlsx"}</span>
                 </label>
 
                 <div className="operation-bulk-import-actions">
-                  <button type="button" className="button-secondary compact-button" onClick={downloadTemplate}>
+                  <button type="button" className="button-secondary compact-button" onClick={downloadOperationContactsTemplate}>
                     Ornek sablon indir
                   </button>
                   <button
@@ -656,6 +488,14 @@ export default function OperationContactsPage() {
                       <strong>{importSummary.invalidRows}</strong>
                     </div>
                     <div className="operation-import-stat">
+                      <span>Dosya tekrari</span>
+                      <strong>{importSummary.duplicateInFileRows}</strong>
+                    </div>
+                    <div className="operation-import-stat">
+                      <span>Operasyonda var</span>
+                      <strong>{importSummary.duplicateInOperationRows}</strong>
+                    </div>
+                    <div className="operation-import-stat">
                       <span>Bos gecilen</span>
                       <strong>{importSummary.ignoredRows}</strong>
                     </div>
@@ -666,7 +506,7 @@ export default function OperationContactsPage() {
                   <div className="operation-import-preview">
                     <div className="operation-import-preview-head">
                       <strong>Onizleme</strong>
-                      <span>Ilk {Math.min(importRows.length, PREVIEW_LIMIT)} satir gosteriliyor.</span>
+                      <span>Ilk {Math.min(importRows.length, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT)} satir gosteriliyor.</span>
                     </div>
                     <div className="operation-import-table-wrap">
                       <table className="operation-import-table">
@@ -675,21 +515,36 @@ export default function OperationContactsPage() {
                             <th>Satir</th>
                             <th>Ad soyad</th>
                             <th>Telefon</th>
+                            <th>Normalize telefon</th>
                             <th>Durum</th>
                           </tr>
                         </thead>
                         <tbody>
                           {previewRows.map((row) => (
-                            <tr key={row.rowNumber} className={row.isValid ? "is-valid" : "is-invalid"}>
+                            <tr
+                              key={row.rowNumber}
+                              className={[
+                                row.isValid ? "is-valid" : "is-invalid",
+                                row.isDuplicateInFile || row.isDuplicateInOperation ? "is-duplicate" : "",
+                              ].filter(Boolean).join(" ")}
+                            >
                               <td>{row.rowNumber}</td>
                               <td>{row.name || "-"}</td>
                               <td>{row.phoneNumber || "-"}</td>
+                              <td>{row.normalizedPhoneNumber || "-"}</td>
                               <td>{row.isValid ? "Hazir" : row.reason}</td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
+                  </div>
+                ) : null}
+
+                {importSummary.duplicateRows > 0 && !importError ? (
+                  <div className="operation-inline-message is-danger compact">
+                    <strong>Tekrar eden telefonlar import edilmeyecek</strong>
+                    <span>Onizlemede dosya icindeki tekrarlar ve bu operasyonda zaten bulunan numaralar acikca isaretlenir. Yalnizca benzersiz satirlar aktarilir.</span>
                   </div>
                 ) : null}
 
@@ -798,3 +653,20 @@ export default function OperationContactsPage() {
   );
 }
 
+function createImportSummaryFromRows(rows: ImportPreviewRow[], ignoredRows: number): ImportSummary {
+  const validRows = rows.filter((row) => row.isValid).length;
+  const invalidRows = rows.length - validRows;
+  const duplicateInFileRows = rows.filter((row) => row.isDuplicateInFile).length;
+  const duplicateInOperationRows = rows.filter((row) => row.isDuplicateInOperation).length;
+  const duplicateRows = rows.filter((row) => row.isDuplicateInFile || row.isDuplicateInOperation).length;
+
+  return {
+    totalRows: rows.length,
+    validRows,
+    invalidRows,
+    ignoredRows,
+    duplicateRows,
+    duplicateInFileRows,
+    duplicateInOperationRows,
+  };
+}

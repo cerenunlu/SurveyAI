@@ -2772,7 +2772,7 @@ img {
 .operation-import-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 520px;
+  min-width: 640px;
 }
 
 .operation-import-table th,
@@ -2802,6 +2802,14 @@ img {
   color: #ffd2da;
 }
 
+.operation-import-table tbody tr.is-duplicate {
+  box-shadow: inset 4px 0 0 rgba(251, 191, 36, 0.7);
+}
+
+.operation-import-table tbody tr.is-duplicate td:nth-child(5) {
+  color: #fde7a6;
+}
+
 .operation-import-table tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -2821,4 +2829,5 @@ img {
     align-items: stretch;
   }
 }
+
 

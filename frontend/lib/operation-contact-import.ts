@@ -3,6 +3,8 @@ export type ImportPreviewRow = {
   name: string;
   phoneNumber: string;
   normalizedPhoneNumber: string;
+  isDuplicateInFile: boolean;
+  isDuplicateInOperation: boolean;
   isValid: boolean;
   reason: string | null;
 };
@@ -12,12 +14,15 @@ export type ImportSummary = {
   validRows: number;
   invalidRows: number;
   ignoredRows: number;
+  duplicateRows: number;
+  duplicateInFileRows: number;
+  duplicateInOperationRows: number;
 };
 
 export const ACCEPTED_OPERATION_CONTACT_FILE_TYPES = ".csv,.xlsx";
 export const OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT = 8;
 
-const PHONE_NUMBER_PATTERN = /^\+?[1-9]\d{7,14}$/;
+const PHONE_NUMBER_PATTERN = /^[1-9]\d{7,14}$/;
 
 export function createEmptyImportSummary(): ImportSummary {
   return {
@@ -25,6 +30,9 @@ export function createEmptyImportSummary(): ImportSummary {
     validRows: 0,
     invalidRows: 0,
     ignoredRows: 0,
+    duplicateRows: 0,
+    duplicateInFileRows: 0,
+    duplicateInOperationRows: 0,
   };
 }
 
@@ -37,10 +45,27 @@ export function normalizeCellValue(value: unknown): string {
 }
 
 export function normalizePhoneNumber(phoneNumber: string): string {
-  return phoneNumber.replace(/[\s()-]/g, "");
+  const digitsOnly = phoneNumber.replace(/\D/g, "");
+
+  if (!digitsOnly) {
+    return "";
+  }
+
+  if (digitsOnly.startsWith("00")) {
+    return digitsOnly.slice(2);
+  }
+
+  if (digitsOnly.startsWith("0")) {
+    return `90${digitsOnly.slice(1)}`;
+  }
+
+  return digitsOnly;
 }
 
-export function buildPreviewRows(rows: unknown[][]): { previewRows: ImportPreviewRow[]; summary: ImportSummary } {
+export function buildPreviewRows(
+  rows: unknown[][],
+  options?: { existingPhoneNumbers?: Iterable<string> },
+): { previewRows: ImportPreviewRow[]; summary: ImportSummary } {
   if (rows.length === 0) {
     return {
       previewRows: [],
@@ -65,6 +90,8 @@ export function buildPreviewRows(rows: unknown[][]): { previewRows: ImportPrevie
           name: "",
           phoneNumber: "",
           normalizedPhoneNumber: "",
+          isDuplicateInFile: false,
+          isDuplicateInOperation: false,
           isValid: false,
           reason: reasonParts.join(" "),
         },
@@ -74,9 +101,16 @@ export function buildPreviewRows(rows: unknown[][]): { previewRows: ImportPrevie
         validRows: 0,
         invalidRows: dataRows.length > 0 ? dataRows.length : 1,
         ignoredRows: 0,
+        duplicateRows: 0,
+        duplicateInFileRows: 0,
+        duplicateInOperationRows: 0,
       },
     };
   }
+
+  const existingPhoneNumbers = new Set(
+    Array.from(options?.existingPhoneNumbers ?? [], (phoneNumber) => normalizePhoneNumber(phoneNumber)).filter(Boolean),
+  );
 
   const rawPreviewRows = dataRows.reduce<ImportPreviewRow[]>((accumulator, row, index) => {
     const name = normalizeCellValue(row[nameColumnIndex]);
@@ -104,6 +138,8 @@ export function buildPreviewRows(rows: unknown[][]): { previewRows: ImportPrevie
       name,
       phoneNumber,
       normalizedPhoneNumber,
+      isDuplicateInFile: false,
+      isDuplicateInOperation: false,
       isValid: reasons.length === 0,
       reason: reasons.length > 0 ? reasons.join(" ") : null,
     });
@@ -111,26 +147,46 @@ export function buildPreviewRows(rows: unknown[][]): { previewRows: ImportPrevie
     return accumulator;
   }, []);
 
-  const seenPhoneNumbers = new Set<string>();
-  const previewRows = rawPreviewRows.map((row) => {
+  const phoneNumberCounts = rawPreviewRows.reduce<Map<string, number>>((counts, row) => {
     if (!row.normalizedPhoneNumber) {
-      return row;
+      return counts;
     }
 
-    if (seenPhoneNumbers.has(row.normalizedPhoneNumber)) {
-      return {
-        ...row,
-        isValid: false,
-        reason: row.reason ? `${row.reason} Dosyada tekrar eden telefon numarasi.` : "Dosyada tekrar eden telefon numarasi.",
-      };
+    counts.set(row.normalizedPhoneNumber, (counts.get(row.normalizedPhoneNumber) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+
+  const previewRows = rawPreviewRows.map((row) => {
+    const isDuplicateInFile = Boolean(
+      row.normalizedPhoneNumber && (phoneNumberCounts.get(row.normalizedPhoneNumber) ?? 0) > 1,
+    );
+    const isDuplicateInOperation = Boolean(
+      row.normalizedPhoneNumber && existingPhoneNumbers.has(row.normalizedPhoneNumber),
+    );
+    const reasons = row.reason ? [row.reason] : [];
+
+    if (isDuplicateInFile) {
+      reasons.push("Dosyada yinelenen telefon numarasi.");
     }
 
-    seenPhoneNumbers.add(row.normalizedPhoneNumber);
-    return row;
+    if (isDuplicateInOperation) {
+      reasons.push("Bu operasyonda ayni telefon numarasi zaten var.");
+    }
+
+    return {
+      ...row,
+      isDuplicateInFile,
+      isDuplicateInOperation,
+      isValid: reasons.length === 0,
+      reason: reasons.length > 0 ? reasons.join(" ") : null,
+    };
   });
 
   const validRows = previewRows.filter((row) => row.isValid).length;
   const invalidRows = previewRows.length - validRows;
+  const duplicateInFileRows = previewRows.filter((row) => row.isDuplicateInFile).length;
+  const duplicateInOperationRows = previewRows.filter((row) => row.isDuplicateInOperation).length;
+  const duplicateRows = previewRows.filter((row) => row.isDuplicateInFile || row.isDuplicateInOperation).length;
 
   return {
     previewRows,
@@ -139,6 +195,9 @@ export function buildPreviewRows(rows: unknown[][]): { previewRows: ImportPrevie
       validRows,
       invalidRows,
       ignoredRows: dataRows.length - previewRows.length,
+      duplicateRows,
+      duplicateInFileRows,
+      duplicateInOperationRows,
     },
   };
 }
