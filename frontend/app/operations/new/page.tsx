@@ -1,11 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { createOperation } from "@/lib/operations";
+import {
+  createOperation,
+  createOperationContacts,
+} from "@/lib/operations";
+import {
+  ACCEPTED_OPERATION_CONTACT_FILE_TYPES,
+  OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT,
+  buildPreviewRows,
+  createEmptyImportSummary,
+  downloadOperationContactsTemplate,
+  type ImportPreviewRow,
+  type ImportSummary,
+} from "@/lib/operation-contact-import";
 import { fetchSurveyBuilderSurvey } from "@/lib/survey-builder-api";
 import { fetchCompanySurveys } from "@/lib/surveys";
 import type { Survey, SurveyBuilderSurvey } from "@/lib/types";
@@ -16,6 +29,9 @@ type FormErrors = {
   name?: string;
   surveyId?: string;
 };
+
+type SubmitIntent = "draft" | "create";
+type SubmitPhase = "idle" | "creating" | "importing";
 
 export default function NewOperationPage() {
   const router = useRouter();
@@ -28,10 +44,15 @@ export default function NewOperationPage() {
   const [isLoadingSurveys, setIsLoadingSurveys] = useState(true);
   const [isLoadingSurveyDetail, setIsLoadingSurveyDetail] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitIntent, setSubmitIntent] = useState<"draft" | "create" | null>(null);
+  const [submitIntent, setSubmitIntent] = useState<SubmitIntent | null>(null);
+  const [submitPhase, setSubmitPhase] = useState<SubmitPhase>("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [importRows, setImportRows] = useState<ImportPreviewRow[]>([]);
+  const [importSummary, setImportSummary] = useState<ImportSummary>(createEmptyImportSummary());
+  const [importError, setImportError] = useState<string | null>(null);
 
   const publishedSurveys = useMemo(
     () => surveys.filter((survey) => survey.status === "Live"),
@@ -41,6 +62,16 @@ export default function NewOperationPage() {
   const selectedSurvey = useMemo(
     () => publishedSurveys.find((survey) => survey.id === selectedSurveyId) ?? null,
     [publishedSurveys, selectedSurveyId],
+  );
+
+  const previewRows = useMemo(
+    () => importRows.slice(0, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT),
+    [importRows],
+  );
+
+  const validImportRows = useMemo(
+    () => importRows.filter((row) => row.isValid),
+    [importRows],
   );
 
   useEffect(() => {
@@ -102,7 +133,49 @@ export default function NewOperationPage() {
     return () => controller.abort();
   }, [selectedSurveyId]);
 
-  async function submitOperation(intent: "draft" | "create") {
+  async function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    setImportError(null);
+    setImportRows([]);
+    setImportSummary(createEmptyImportSummary());
+    setSelectedFileName(file?.name ?? null);
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const firstSheetName = workbook.SheetNames[0];
+
+      if (!firstSheetName) {
+        throw new Error("Dosyada okunabilir bir sayfa bulunamadi.");
+      }
+
+      const firstSheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, {
+        header: 1,
+        raw: false,
+        defval: "",
+        blankrows: false,
+      });
+
+      const { previewRows: nextImportRows, summary } = buildPreviewRows(rows);
+      setImportRows(nextImportRows);
+      setImportSummary(summary);
+
+      if (summary.totalRows === 0 && summary.ignoredRows === 0) {
+        setImportError("Dosyada veri satiri bulunamadi.");
+      }
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Dosya okunamadi.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function submitOperation(intent: SubmitIntent) {
     const nextErrors: FormErrors = {};
     const trimmedName = operationName.trim();
 
@@ -124,6 +197,7 @@ export default function NewOperationPage() {
     try {
       setIsSubmitting(true);
       setSubmitIntent(intent);
+      setSubmitPhase("creating");
 
       const createdOperation = await createOperation({
         name: trimmedName,
@@ -132,12 +206,49 @@ export default function NewOperationPage() {
         createdByUserId: null,
       });
 
-      router.push(`/operations/${createdOperation.id}`);
+      const searchParams = new URLSearchParams();
+      searchParams.set("created", "1");
+
+      if (contactMode === "now") {
+        searchParams.set("importRequested", "1");
+
+        if (validImportRows.length > 0) {
+          setSubmitPhase("importing");
+
+          try {
+            const importedContacts = await createOperationContacts(createdOperation.id, {
+              contacts: validImportRows.map((row) => ({
+                name: row.name,
+                phoneNumber: row.normalizedPhoneNumber,
+              })),
+            });
+
+            if (importedContacts.length > 0) {
+              searchParams.set("imported", String(importedContacts.length));
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Gecerli kisiler operasyona aktarilamadi.";
+            searchParams.set("importError", message);
+          }
+        }
+
+        if (importSummary.invalidRows > 0) {
+          searchParams.set("invalid", String(importSummary.invalidRows));
+        }
+
+        if (importSummary.ignoredRows > 0) {
+          searchParams.set("ignored", String(importSummary.ignoredRows));
+        }
+      } else {
+        searchParams.set("contacts", "skipped");
+      }
+
+      router.push(`/operations/${createdOperation.id}?${searchParams.toString()}`);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Operasyon olusturulamadi.");
-    } finally {
       setIsSubmitting(false);
       setSubmitIntent(null);
+      setSubmitPhase("idle");
     }
   }
 
@@ -149,8 +260,22 @@ export default function NewOperationPage() {
 
   const surveyLanguage = selectedSurveyDetail?.languageCode?.toUpperCase() ?? selectedSurvey?.audience ?? "-";
   const surveyStatus = selectedSurveyDetail?.status ?? selectedSurvey?.status ?? "Live";
-  const personStatus = contactMode === "now" ? "Kisi yuklemesi bekleniyor" : "Henuz kisi yuklenmedi";
+  const personStatus =
+    contactMode === "now"
+      ? importSummary.validRows > 0
+        ? `${importSummary.validRows} kisi olusturma sonrasi baglanacak`
+        : selectedFileName
+          ? "Gecerli kisi bekleniyor"
+          : "Toplu import dosyasi bekleniyor"
+      : "Kisiler daha sonra eklenecek";
   const isSubmitDisabled = isSubmitting || isLoadingSurveys || publishedSurveys.length === 0;
+  const isImportVisible = contactMode === "now";
+  const actionLabel =
+    submitPhase === "creating"
+      ? intentLabel(submitIntent, "creating")
+      : submitPhase === "importing"
+        ? "Gecerli kisiler yeni operasyona baglaniyor..."
+        : null;
 
   return (
     <PageContainer>
@@ -305,19 +430,106 @@ export default function NewOperationPage() {
                     aria-pressed={contactMode === "now"}
                   >
                     <strong>Kisileri simdi yukle</strong>
-                    <span>Bu adimda sadece hazirlik bilgisi gosterilir; tam yukleme akisi sonraki iterasyonda gelecek.</span>
+                    <span>CSV veya XLSX dosyasini simdi yukleyin; gecerli kisiler operasyon olustuktan hemen sonra baglanir.</span>
                   </button>
                 </div>
 
-                {contactMode === "now" ? (
-                  <div className="operation-inline-message is-accent">
-                    <strong>Kisi yukleme bu adimda hafif tutuldu</strong>
-                    <span>Operasyon olusturulduktan sonra detay sayfasindan kisi yukleme ve dogrulama surecine devam edebilirsiniz.</span>
-                  </div>
+                {isImportVisible ? (
+                  <>
+                    <div className="operation-inline-message is-accent">
+                      <strong>Toplu import yeni operasyona baglanacak</strong>
+                      <span>Burada parse edilen gecerli kisiler, once operasyon olusturulduktan sonra otomatik olarak yeni operasyon kaydina eklenecek.</span>
+                    </div>
+
+                    <div className="operation-bulk-import">
+                      <div className="operation-upload-placeholder">
+                        <strong>Toplu kisi yukleme</strong>
+                        <p>CSV veya Excel dosyasi secin. Beklenen kolonlar: `adSoyad` ve `telefonNumarasi`.</p>
+                      </div>
+
+                      <label className="builder-field">
+                        <strong>Dosya secimi</strong>
+                        <input type="file" accept={ACCEPTED_OPERATION_CONTACT_FILE_TYPES} onChange={(event) => void handleFileSelection(event)} />
+                        <span>{selectedFileName ? `Secilen dosya: ${selectedFileName}` : "Desteklenen formatlar: .csv ve .xlsx"}</span>
+                      </label>
+
+                      <div className="operation-bulk-import-actions">
+                        <button type="button" className="button-secondary compact-button" onClick={downloadOperationContactsTemplate}>
+                          Ornek sablon indir
+                        </button>
+                      </div>
+
+                      {(importSummary.totalRows > 0 || importSummary.ignoredRows > 0) && !importError ? (
+                        <div className="operation-import-stats">
+                          <div className="operation-import-stat">
+                            <span>Toplam satir</span>
+                            <strong>{importSummary.totalRows}</strong>
+                          </div>
+                          <div className="operation-import-stat">
+                            <span>Gecerli</span>
+                            <strong>{importSummary.validRows}</strong>
+                          </div>
+                          <div className="operation-import-stat">
+                            <span>Gecersiz</span>
+                            <strong>{importSummary.invalidRows}</strong>
+                          </div>
+                          <div className="operation-import-stat">
+                            <span>Bos gecilen</span>
+                            <strong>{importSummary.ignoredRows}</strong>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {importRows.length > 0 ? (
+                        <div className="operation-import-preview">
+                          <div className="operation-import-preview-head">
+                            <strong>Onizleme</strong>
+                            <span>Ilk {Math.min(importRows.length, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT)} satir gosteriliyor.</span>
+                          </div>
+                          <div className="operation-import-table-wrap">
+                            <table className="operation-import-table">
+                              <thead>
+                                <tr>
+                                  <th>Satir</th>
+                                  <th>Ad soyad</th>
+                                  <th>Telefon</th>
+                                  <th>Durum</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {previewRows.map((row) => (
+                                  <tr key={row.rowNumber} className={row.isValid ? "is-valid" : "is-invalid"}>
+                                    <td>{row.rowNumber}</td>
+                                    <td>{row.name || "-"}</td>
+                                    <td>{row.phoneNumber || "-"}</td>
+                                    <td>{row.isValid ? "Hazir" : row.reason}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {importSummary.invalidRows > 0 && !importError ? (
+                        <div className="operation-inline-message is-danger compact">
+                          <strong>Gecersiz satirlar import edilmeyecek</strong>
+                          <span>Sadece gecerli satirlar yeni operasyona baglanir. Gecersiz satirlari duzeltebilir veya bu haliyle devam edebilirsiniz.</span>
+                        </div>
+                      ) : null}
+
+                      {importError ? (
+                        <div className="operation-inline-message is-danger compact">
+                          <strong>Toplu yukleme sorunu</strong>
+                          <span>{importError}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </>
                 ) : (
                   <div className="operation-inline-message">
                     <strong>Kisi listesi daha sonra eklenebilir</strong>
-                    <span>Bu secim operasyonu taslak olarak hazirlar ve cagri oncesi kisi baglama esnekligi birakir.</span>
+                    <span>Bu secim operasyonu hemen olusturur. Kisi importu operasyon detayindaki mevcut akisla daha sonra yapilabilir.</span>
                   </div>
                 )}
               </div>
@@ -355,8 +567,19 @@ export default function NewOperationPage() {
 
               <div className="operation-summary-helper">
                 <strong>Sonraki adim</strong>
-                <p>Operasyon olusturulduktan sonra kisi yukleyebilir ve cagri surecine hazirlayabilirsiniz.</p>
+                <p>
+                  {contactMode === "now"
+                    ? "Operasyon once backendde olusturulur, sonra previewde gecerli gorunen kisiler yeni operasyona toplu olarak baglanir."
+                    : "Operasyon olusturulduktan sonra kisi yukleme mevcut operasyon detay akisindan devam eder."}
+                </p>
               </div>
+
+              {actionLabel ? (
+                <div className="operation-inline-message is-accent compact">
+                  <strong>Akis isleniyor</strong>
+                  <span>{actionLabel}</span>
+                </div>
+              ) : null}
 
               {submitError ? (
                 <div className="operation-inline-message is-danger compact">
@@ -379,7 +602,11 @@ export default function NewOperationPage() {
               onClick={() => void submitOperation("draft")}
               disabled={isSubmitDisabled}
             >
-              {isSubmitting && submitIntent === "draft" ? "Taslak olusturuluyor..." : "Taslak olarak olustur"}
+              {isSubmitting && submitIntent === "draft"
+                ? submitPhase === "importing"
+                  ? "Taslak olusturuldu, kisiler baglaniyor..."
+                  : "Taslak olusturuluyor..."
+                : "Taslak olarak olustur"}
             </button>
             <button
               type="button"
@@ -387,7 +614,11 @@ export default function NewOperationPage() {
               onClick={() => void submitOperation("create")}
               disabled={isSubmitDisabled}
             >
-              {isSubmitting && submitIntent === "create" ? "Operasyon olusturuluyor..." : "Operasyonu olustur"}
+              {isSubmitting && submitIntent === "create"
+                ? submitPhase === "importing"
+                  ? "Operasyon olustu, kisiler baglaniyor..."
+                  : "Operasyon olusturuluyor..."
+                : "Operasyonu olustur"}
             </button>
           </div>
         </div>
@@ -396,6 +627,10 @@ export default function NewOperationPage() {
   );
 }
 
+function intentLabel(intent: SubmitIntent | null, phase: "creating"): string {
+  if (phase === "creating") {
+    return intent === "draft" ? "Taslak operasyon backendde olusturuluyor..." : "Operasyon backendde olusturuluyor...";
+  }
 
-
-
+  return "Akis isleniyor...";
+}
