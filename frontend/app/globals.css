@@ -2832,13 +2832,15 @@ img {
 
 
 .operation-command-deck {
-  gap: 24px;
+  gap: 14px;
+  padding: 20px 22px;
 }
 
 .operation-detail-sections {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
+  margin-top: -8px;
 }
 
 .operation-workspace-hero-head-clean {
@@ -2852,16 +2854,16 @@ img {
 .operation-first-view-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.95fr) minmax(300px, 1fr);
-  gap: 18px;
+  gap: 14px;
   align-items: stretch;
 }
 
 .operation-overview-card {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   min-height: 100%;
-  padding: 22px;
+  padding: 20px;
   border-radius: 26px;
   border: 1px solid rgba(142, 168, 199, 0.12);
   background:
@@ -2902,7 +2904,7 @@ img {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 18px 20px;
+  padding: 16px 18px;
   border-radius: 20px;
   border: 1px solid rgba(142, 168, 199, 0.08);
   background: rgba(255, 255, 255, 0.03);
@@ -2918,8 +2920,8 @@ img {
 .operation-next-step-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 18px;
+  gap: 14px;
+  padding: 16px;
   border-radius: 22px;
   border: 1px solid rgba(142, 168, 199, 0.08);
   background:
@@ -2940,13 +2942,13 @@ img {
 }
 
 .operation-control-surface {
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 
 .operation-top-actions {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .operation-top-actions .button-primary,

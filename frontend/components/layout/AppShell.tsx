@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { getNavigationItems } from "@/components/layout/navigation";
+import { PageHeaderProvider, useResolvedPageHeader } from "@/components/layout/PageHeaderContext";
 import { BellIcon, CollapseIcon, MenuIcon, SearchIcon, SparkIcon } from "@/components/ui/Icons";
 import { useLanguage, useTranslations } from "@/lib/i18n/LanguageContext";
 import type { Language } from "@/lib/i18n";
@@ -18,11 +19,20 @@ const pageMetaKeys: Record<string, string> = {
 };
 
 export function AppShell({ children }: { children: ReactNode }) {
+  return (
+    <PageHeaderProvider>
+      <AppShellFrame>{children}</AppShellFrame>
+    </PageHeaderProvider>
+  );
+}
+
+function AppShellFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
   const { t } = useTranslations();
+  const pageHeaderOverride = useResolvedPageHeader();
 
   const navigationItems = getNavigationItems(t);
 
@@ -39,9 +49,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       key = "shell.pageMeta.operationDetail";
     }
 
-    return {
+    const baseMeta = {
       title: t(`${key}.title`),
       subtitle: t(`${key}.subtitle`),
+    };
+
+    return {
+      title: pageHeaderOverride?.title ?? baseMeta.title,
+      subtitle: pageHeaderOverride?.subtitle ?? baseMeta.subtitle,
     };
   })();
 
@@ -171,8 +186,4 @@ function LanguageButton({
     </button>
   );
 }
-
-
-
-
 

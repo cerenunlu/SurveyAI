@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { notFound, useParams, useSearchParams } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
 import { DataTable } from "@/components/ui/DataTable";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -18,6 +19,7 @@ import {
   type ImportPreviewRow,
   type ImportSummary,
 } from "@/lib/operation-contact-import";
+import { useTranslations } from "@/lib/i18n/LanguageContext";
 import { createOperationContacts, fetchOperationById, fetchOperationContacts } from "@/lib/operations";
 import { Operation, OperationContact, TableColumn } from "@/lib/types";
 
@@ -61,6 +63,7 @@ type NextStepState = {
 export default function OperationDetailPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const { t } = useTranslations();
   const operationId = params.id;
   const importSectionRef = useRef<HTMLElement | null>(null);
   const [operation, setOperation] = useState<Operation | null>(null);
@@ -262,6 +265,16 @@ export default function OperationDetailPage() {
     nextStep.tone === "ready" ? "is-ready" : nextStep.tone === "blocked" ? "is-blocked" : "",
   ].filter(Boolean).join(" ");
 
+  const pageHeader = useMemo(
+    () => ({
+      title: operation?.name?.trim() || t("shell.pageMeta.operationDetail.title"),
+      subtitle: t("shell.pageMeta.operationDetail.subtitle"),
+    }),
+    [operation?.name, t],
+  );
+
+  usePageHeaderOverride(pageHeader);
+
   async function refreshContacts(nextOperationId: string, signal?: AbortSignal) {
     const nextContacts = await fetchOperationContacts(nextOperationId, undefined, signal ? { signal } : undefined);
     setContacts(nextContacts);
@@ -410,9 +423,6 @@ export default function OperationDetailPage() {
     <PageContainer>
       <section className="hero-card is-compact operation-workspace-hero operation-command-deck">
         <div className="eyebrow">Operation Workspace</div>
-        <div className="operation-workspace-hero-head operation-workspace-hero-head-clean">
-          <h2 className="hero-title">{operation?.name ?? "Operasyon yukleniyor"}</h2>
-        </div>
 
         <div className="operation-first-view-grid">
           <div className="operation-overview-card operation-summary-surface">
