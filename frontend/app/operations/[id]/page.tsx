@@ -183,7 +183,7 @@ export default function OperationDetailPage() {
         headline: "Kisi yukle",
         description: "Bu operasyonun ilerleyebilmesi icin once en az bir kisi yuklenmeli. Contact Import aksiyonu sizi bu sayfadaki import alanina indirir.",
         tone: "blocked",
-        actionLabel: "Contact Import",
+        actionLabel: "Kisi yukle",
         isActionDisabled: false,
       };
     }
@@ -216,7 +216,7 @@ export default function OperationDetailPage() {
         headline: "Akis zaten calisiyor",
         description: "Bu operasyon aktif durumda. Bu ekranda su an icin en anlamli hareket kisi listesini ve import ihtiyacini yonetmek.",
         tone: "ready",
-        actionLabel: "Contact Import",
+        actionLabel: "Kisi yukle",
         isActionDisabled: false,
       };
     }
@@ -257,10 +257,10 @@ export default function OperationDetailPage() {
   const showCreationSummary = importRequested || contactsSkipped;
   const contactCount = contacts.length;
   const hasContacts = contactCount > 0;
-  const canStart = Boolean(operation && hasContacts && operation.status === "Draft");
-  const nextActionLabel = hasContacts
-    ? "Kisiler bagli. Baslatma akisi aktif oldugunda bir sonraki adim operasyonu calistirmak olacak."
-    : "Ilk adim kisi yuklemek. Kisi listesi eklenmeden operasyon ilerleyemez.";
+  const nextStepToneClass = [
+    "operation-readiness-pill",
+    nextStep.tone === "ready" ? "is-ready" : nextStep.tone === "blocked" ? "is-blocked" : "",
+  ].filter(Boolean).join(" ");
 
   async function refreshContacts(nextOperationId: string, signal?: AbortSignal) {
     const nextContacts = await fetchOperationContacts(nextOperationId, undefined, signal ? { signal } : undefined);
@@ -410,32 +410,16 @@ export default function OperationDetailPage() {
     <PageContainer>
       <section className="hero-card is-compact operation-workspace-hero operation-command-deck">
         <div className="eyebrow">Operation Workspace</div>
-        <div className="operation-workspace-hero-head">
-          <div>
-            <h2 className="hero-title">{operation?.name ?? "Operasyon yukleniyor"}</h2>
-            <p className="hero-text">
-              {operation ? nextActionLabel : "Operasyon ozeti, kisi hazirligi ve sonraki aksiyonlar yukleniyor."}
-            </p>
-          </div>
-          <div className="operation-hero-status-cluster">
-            <StatusBadge status={operation?.status ?? "Pending"} />
-            <span className={hasContacts ? "operation-readiness-pill is-ready" : "operation-readiness-pill is-blocked"}>
-              {hasContacts ? `${contactCount} kisi hazir` : "Kisi bekleniyor"}
-            </span>
-          </div>
-        </div>
-        <div className="chip-row">
-          <span className="chip">Bagli anket: {operation?.survey ?? "Yukleniyor"}</span>
-          <span className="chip">Kisi sayisi: {isLoading ? "..." : String(contactCount)}</span>
-          <span className="chip">Son guncelleme: {operation?.updatedAt ?? "Yukleniyor"}</span>
+        <div className="operation-workspace-hero-head operation-workspace-hero-head-clean">
+          <h2 className="hero-title">{operation?.name ?? "Operasyon yukleniyor"}</h2>
         </div>
 
-        <div className="operation-overview-grid">
-          <div className="operation-overview-card">
+        <div className="operation-first-view-grid">
+          <div className="operation-overview-card operation-summary-surface">
             <div className="operation-overview-card-head">
               <div>
                 <span className="operation-kicker">Operasyon ozeti</span>
-                <h3>Kontrol merkezinin ilk gorunumu</h3>
+                <h3>Ilk gorunumde gerekli cekirdek bilgiler</h3>
               </div>
             </div>
 
@@ -446,7 +430,9 @@ export default function OperationDetailPage() {
               </div>
               <div className="operation-summary-row">
                 <span>Durum</span>
-                <strong>{operation?.status ?? "Yukleniyor"}</strong>
+                <strong>
+                  <StatusBadge status={operation?.status ?? "Pending"} />
+                </strong>
               </div>
               <div className="operation-summary-row">
                 <span>Bagli anket</span>
@@ -459,59 +445,16 @@ export default function OperationDetailPage() {
             </div>
 
             <div className="operation-summary-note">
-              <span>Operasyon aciklamasi</span>
+              <span>Kisa operasyon ozeti</span>
               <strong>{operation?.summary?.trim() || "Bu operasyon icin kisa aciklama henuz bulunmuyor."}</strong>
             </div>
           </div>
 
-          <div className="operation-overview-card operation-next-step-card">
-            <div className="operation-overview-card-head">
-              <div>
-                <span className="operation-kicker">{nextStep.label}</span>
-                <h3>{nextStep.headline}</h3>
-              </div>
-              <span
-                className={[
-                  "operation-readiness-pill",
-                  nextStep.tone === "ready" ? "is-ready" : nextStep.tone === "blocked" ? "is-blocked" : "",
-                ].filter(Boolean).join(" ")}
-              >
-                {nextStep.actionLabel}
-              </span>
-            </div>
-
-            <p className="operation-next-step-text">{nextStep.description}</p>
-
-            <div className="operation-next-step-points">
-              <div className="operation-next-step-point">
-                <span>Bagli anket</span>
-                <strong>{operation?.survey ?? "Yukleniyor"}</strong>
-              </div>
-              <div className="operation-next-step-point">
-                <span>Kisi hazirligi</span>
-                <strong>{isLoading ? "Kontrol ediliyor" : hasContacts ? `${contactCount} kisi mevcut` : "Kisi yok"}</strong>
-              </div>
-              <div className="operation-next-step-point">
-                <span>Hazirlik notu</span>
-                <strong>{readiness.startHint}</strong>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className={`compact-button ${nextStep.isActionDisabled ? "button-secondary operation-disabled-action" : "button-primary"}`}
-              disabled={nextStep.isActionDisabled}
-              onClick={nextStep.isActionDisabled ? undefined : scrollToImportSection}
-            >
-              {nextStep.actionLabel}
-            </button>
-          </div>
-
-          <div className="operation-overview-card operation-control-surface">
+          <aside className="operation-overview-card operation-control-surface">
             <div className="operation-overview-card-head">
               <div>
                 <span className="operation-kicker">Aksiyonlar</span>
-                <h3>Operasyon kontrol yuzu</h3>
+                <h3>Kontroller ve sonraki adim</h3>
               </div>
             </div>
 
@@ -532,15 +475,36 @@ export default function OperationDetailPage() {
               </button>
             </div>
 
+            <div className="operation-next-step-panel">
+              <div className="operation-overview-card-head">
+                <div>
+                  <span className="operation-kicker">{nextStep.label}</span>
+                  <h3>{nextStep.headline}</h3>
+                </div>
+                <span className={nextStepToneClass}>{nextStep.actionLabel}</span>
+              </div>
+
+              <p className="operation-next-step-text">{nextStep.description}</p>
+
+              <button
+                type="button"
+                className={`compact-button ${nextStep.isActionDisabled ? "button-secondary operation-disabled-action" : "button-primary"}`}
+                disabled={nextStep.isActionDisabled}
+                onClick={nextStep.isActionDisabled ? undefined : scrollToImportSection}
+              >
+                {nextStep.actionLabel}
+              </button>
+            </div>
+
             <div className="operation-inline-message compact is-accent">
-              <strong>En hizli aksiyon burada</strong>
-              <span>Contact Import butonu sayfanin altindaki toplu import alanina yumusak sekilde kaydirir. Silme ve guncelleme aksiyonlari henuz urun akisi olarak devrede degil.</span>
+              <strong>Kisa bilgi</strong>
+              <span>{readiness.startHint}</span>
             </div>
 
             <Link href={`/operations/${operationId}/contacts`} className="button-secondary compact-button">
               Kisi calisma alanini ac
             </Link>
-          </div>
+          </aside>
         </div>
       </section>
 
@@ -758,81 +722,43 @@ export default function OperationDetailPage() {
           </section>
         </SectionCard>
 
-        <div className="operation-workspace-grid">
-          <div className="operation-workspace-main">
-            <SectionCard title="Survey referansi" description="Operasyonun bagli oldugu yayinlanmis anketin kisa ozeti.">
-              {operation ? (
-                <div className="operation-survey-summary operation-workspace-survey-card">
-                  <div className="operation-survey-summary-head">
-                    <div>
-                      <strong>{operation.survey}</strong>
-                      <span>
-                        {operation.surveyGoal?.trim() || "Bu operasyon icin ek survey aciklamasi backend tarafindan henuz saglanmiyor."}
-                      </span>
-                    </div>
-                    <StatusBadge status={operation.surveyStatus ?? "Draft"} />
-                  </div>
-
-                  <div className="operation-summary-metrics">
-                    <div className="mini-metric">
-                      <span>Survey durumu</span>
-                      <strong>{operation.surveyStatus ?? "Bilinmiyor"}</strong>
-                    </div>
-                    <div className="mini-metric">
-                      <span>Dil / kitle</span>
-                      <strong>{operation.surveyAudience ?? "-"}</strong>
-                    </div>
-                    <div className="mini-metric">
-                      <span>Son survey guncellemesi</span>
-                      <strong>{operation.surveyUpdatedAt ?? "Bilinmiyor"}</strong>
-                    </div>
-                  </div>
+        <SectionCard title="Survey referansi" description="Operasyonun bagli oldugu yayinlanmis anketin kisa ozeti.">
+          {operation ? (
+            <div className="operation-survey-summary operation-workspace-survey-card">
+              <div className="operation-survey-summary-head">
+                <div>
+                  <strong>{operation.survey}</strong>
+                  <span>
+                    {operation.surveyGoal?.trim() || "Bu operasyon icin ek survey aciklamasi backend tarafindan henuz saglanmiyor."}
+                  </span>
                 </div>
-              ) : (
-                <div className="list-item">
-                  <div>
-                    <strong>Survey referansi yukleniyor</strong>
-                    <span>Bagli survey metadata bilgisi getiriliyor.</span>
-                  </div>
-                </div>
-              )}
-            </SectionCard>
-          </div>
-
-          <aside className="operation-workspace-side">
-            <section className="panel-card operation-workspace-action-panel">
-              <div className="section-header operation-summary-header">
-                <div className="section-copy">
-                  <h2>Detay ozeti</h2>
-                  <p>Ilk gorunumdeki kritik bilgiler bu yan panelde de hizli referans olarak sabit kalir.</p>
-                </div>
+                <StatusBadge status={operation.surveyStatus ?? "Draft"} />
               </div>
 
-              <div className="operation-summary-list operation-action-checklist">
-                <div className="operation-summary-row">
-                  <span>Sonraki adim</span>
-                  <strong>{nextStep.headline}</strong>
+              <div className="operation-summary-metrics">
+                <div className="mini-metric">
+                  <span>Survey durumu</span>
+                  <strong>{operation.surveyStatus ?? "Bilinmiyor"}</strong>
                 </div>
-                <div className="operation-summary-row">
-                  <span>Bagli anket</span>
-                  <strong>{operation?.survey ?? "Yukleniyor"}</strong>
+                <div className="mini-metric">
+                  <span>Dil / kitle</span>
+                  <strong>{operation.surveyAudience ?? "-"}</strong>
                 </div>
-                <div className="operation-summary-row">
-                  <span>Kisi hazir mi</span>
-                  <strong>{isLoading ? "Kontrol ediliyor" : hasContacts ? `Evet, ${contactCount} kisi bagli` : "Hayir"}</strong>
-                </div>
-                <div className="operation-summary-row">
-                  <span>Baslatma durumu</span>
-                  <strong>{canStart ? "Akisi baslatmaya hazir" : readiness.startHint}</strong>
+                <div className="mini-metric">
+                  <span>Son survey guncellemesi</span>
+                  <strong>{operation.surveyUpdatedAt ?? "Bilinmiyor"}</strong>
                 </div>
               </div>
-
-              <p className="operation-action-footnote">
-                Bu panel ilk ekrandaki karar alaninin kisaltilmis hali. Alt bolumler kisi importu ve survey detaylari icin derinlesir.
-              </p>
-            </section>
-          </aside>
-        </div>
+            </div>
+          ) : (
+            <div className="list-item">
+              <div>
+                <strong>Survey referansi yukleniyor</strong>
+                <span>Bagli survey metadata bilgisi getiriliyor.</span>
+              </div>
+            </div>
+          )}
+        </SectionCard>
       </div>
     </PageContainer>
   );
@@ -855,3 +781,4 @@ function createImportSummaryFromRows(rows: ImportPreviewRow[], ignoredRows: numb
     duplicateInOperationRows,
   };
 }
+
