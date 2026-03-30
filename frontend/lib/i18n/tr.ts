@@ -88,6 +88,9 @@ export const tr = {
       draft: "Taslak",
       archived: "Arsivlendi",
       active: "Aktif",
+      ready: "Hazir",
+      running: "Yurutuluyor",
+      scheduled: "Planlandi",
       paused: "Duraklatildi",
       completed: "Tamamlandi",
       cancelled: "Iptal edildi",
@@ -386,5 +389,7 @@ export const tr = {
     },
   },
 } as const;
+
+
 
 

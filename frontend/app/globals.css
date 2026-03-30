@@ -3292,3 +3292,101 @@ img {
     justify-content: space-between;
   }
 }
+
+.operation-readiness-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.operation-readiness-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(142, 168, 199, 0.12);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.operation-readiness-item strong,
+.operation-readiness-item span {
+  display: block;
+}
+
+.operation-readiness-item span {
+  color: var(--text-muted);
+}
+
+.operation-readiness-item.is-ready {
+  border-color: rgba(52, 211, 153, 0.18);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.operation-readiness-item.is-blocked {
+  border-color: rgba(251, 113, 133, 0.18);
+  background: rgba(251, 113, 133, 0.08);
+}
+
+.operation-readiness-dot {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.operation-readiness-dot.is-ready {
+  color: #b7ffdf;
+  background: rgba(52, 211, 153, 0.14);
+}
+
+.operation-readiness-dot.is-blocked {
+  color: #ffd2da;
+  background: rgba(251, 113, 133, 0.14);
+}
+
+.operation-start-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(142, 168, 199, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(91, 231, 255, 0.1), transparent 24%),
+    linear-gradient(180deg, rgba(13, 30, 49, 0.95), rgba(8, 20, 35, 0.84));
+}
+
+.operation-blocker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.operation-execution-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.operation-control-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 820px) {
+  .operation-readiness-item,
+  .operation-control-metrics,
+  .operation-execution-summary-grid {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .operation-readiness-dot {
+    align-self: stretch;
+    text-align: center;
+  }
+}
+

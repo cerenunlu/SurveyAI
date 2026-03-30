@@ -87,7 +87,7 @@ export type SurveyBuilderSurvey = {
 export type Operation = {
   id: string;
   name: string;
-  status: "Active" | "Paused" | "Completed" | "Draft" | "Cancelled";
+  status: "Draft" | "Ready" | "Running" | "Completed" | "Failed" | "Scheduled" | "Paused" | "Cancelled";
   surveyId: string;
   survey: string;
   surveyStatus: Survey["status"] | null;
@@ -101,6 +101,22 @@ export type Operation = {
   owner: string;
   channels: string[];
   summary: string;
+  readiness: {
+    surveyLinked: boolean;
+    surveyPublished: boolean;
+    contactsLoaded: boolean;
+    startableState: boolean;
+    readyToStart: boolean;
+    blockingReasons: string[];
+  };
+  executionSummary: {
+    totalCallJobs: number;
+    pendingCallJobs: number;
+    newlyPreparedCallJobs: number;
+  };
+  startedAt: string | null;
+  completedAt: string | null;
+  scheduledAt: string | null;
 };
 
 export type OperationContact = {

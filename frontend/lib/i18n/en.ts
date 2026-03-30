@@ -79,6 +79,9 @@ export const en = {
       draft: "Draft",
       archived: "Archived",
       active: "Active",
+      ready: "Ready",
+      running: "Running",
+      scheduled: "Scheduled",
       paused: "Paused",
       completed: "Completed",
       cancelled: "Cancelled",
@@ -351,6 +354,8 @@ export const en = {
     },
   },
 } as const;
+
+
 
 
 

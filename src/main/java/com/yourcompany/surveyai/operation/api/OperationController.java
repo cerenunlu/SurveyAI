@@ -50,4 +50,12 @@ public class OperationController {
     public ResponseEntity<List<OperationResponseDto>> listOperationsByCompany(@RequestParam UUID companyId) {
         return ResponseEntity.ok(operationService.listOperationsByCompany(companyId));
     }
+
+    @PostMapping("/{operationId}/start")
+    public ResponseEntity<OperationResponseDto> startOperation(
+            @PathVariable UUID operationId,
+            @RequestParam UUID companyId
+    ) {
+        return ResponseEntity.ok(operationService.startOperation(companyId, operationId));
+    }
 }

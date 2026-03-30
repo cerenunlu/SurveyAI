@@ -129,7 +129,7 @@ export const operations: Operation[] = [
   {
     id: "cx-activation-2026",
     name: "CX Activation Spring 2026",
-    status: "Active",
+    status: "Running",
     surveyId: "brand-health-q1",
     survey: "Brand Health Pulse Q1",
     surveyStatus: "Live",
@@ -143,6 +143,22 @@ export const operations: Operation[] = [
     owner: "Lena Morris",
     channels: ["Voice AI", "Email", "SMS"],
     summary: "High-priority enterprise engagement across strategic accounts and recent renewals.",
+    readiness: {
+      surveyLinked: true,
+      surveyPublished: true,
+      contactsLoaded: true,
+      startableState: false,
+      readyToStart: false,
+      blockingReasons: ["Operation is already running."],
+    },
+    executionSummary: {
+      totalCallJobs: 128,
+      pendingCallJobs: 42,
+      newlyPreparedCallJobs: 0,
+    },
+    startedAt: "2026-03-30T09:00:00Z",
+    completedAt: null,
+    scheduledAt: null,
   },
   {
     id: "trial-lift-wave",
@@ -161,6 +177,22 @@ export const operations: Operation[] = [
     owner: "Jordan Lee",
     channels: ["Email", "SMS"],
     summary: "Paused to refine targeting and update fallback copy for low-intent cohorts.",
+    readiness: {
+      surveyLinked: true,
+      surveyPublished: false,
+      contactsLoaded: false,
+      startableState: false,
+      readyToStart: false,
+      blockingReasons: ["Linked survey is not published.", "No contacts have been loaded yet."],
+    },
+    executionSummary: {
+      totalCallJobs: 0,
+      pendingCallJobs: 0,
+      newlyPreparedCallJobs: 0,
+    },
+    startedAt: null,
+    completedAt: null,
+    scheduledAt: null,
   },
   {
     id: "renewal-safeguard",
@@ -179,6 +211,22 @@ export const operations: Operation[] = [
     owner: "Mina Patel",
     channels: ["Voice AI", "Email"],
     summary: "Completed retention-focused run with strong reactivation across at-risk renewals.",
+    readiness: {
+      surveyLinked: true,
+      surveyPublished: true,
+      contactsLoaded: true,
+      startableState: false,
+      readyToStart: false,
+      blockingReasons: ["Operation is already completed."],
+    },
+    executionSummary: {
+      totalCallJobs: 96,
+      pendingCallJobs: 0,
+      newlyPreparedCallJobs: 0,
+    },
+    startedAt: "2026-03-26T09:00:00Z",
+    completedAt: "2026-03-27T16:30:00Z",
+    scheduledAt: null,
   },
 ];
 
@@ -367,5 +415,6 @@ export const nextStepActions: ActionItem[] = [
     cta: "Open Calling Ops",
   },
 ];
+
 
 

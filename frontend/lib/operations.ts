@@ -18,18 +18,33 @@ type SurveyReference = {
   updatedAt: string | null;
 };
 
+type OperationApiStatus = "DRAFT" | "READY" | "RUNNING" | "COMPLETED" | "FAILED" | "SCHEDULED" | "PAUSED" | "CANCELLED";
+
 type OperationApiResponse = {
   id: string;
   companyId: string;
   surveyId: string;
   name: string;
-  status: "DRAFT" | "SCHEDULED" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED";
+  status: OperationApiStatus;
   scheduledAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
   createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
+  readiness: {
+    surveyLinked: boolean;
+    surveyPublished: boolean;
+    contactsLoaded: boolean;
+    startableState: boolean;
+    readyToStart: boolean;
+    blockingReasons: string[];
+  };
+  executionSummary: {
+    totalCallJobs: number;
+    pendingCallJobs: number;
+    newlyPreparedCallJobs: number;
+  };
 };
 
 type OperationContactApiResponse = {
@@ -117,6 +132,21 @@ export async function fetchOperationById(
   const [operationResponse, surveys] = await Promise.all([
     fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations/${operationId}?companyId=${resolvedCompanyId}`, init, "operation"),
     fetchCompanySurveys(resolvedCompanyId, init),
+  ]);
+
+  return mapOperationDtoToOperation(operationResponse, surveys);
+}
+
+export async function startOperation(
+  operationId: string,
+  companyId?: string,
+): Promise<Operation> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const [operationResponse, surveys] = await Promise.all([
+    fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations/${operationId}/start?companyId=${resolvedCompanyId}`, {
+      method: "POST",
+    }, "operation start"),
+    fetchCompanySurveys(resolvedCompanyId),
   ]);
 
   return mapOperationDtoToOperation(operationResponse, surveys);
@@ -293,11 +323,11 @@ async function readApiError(response: Response, resourceName: string): Promise<s
   try {
     const payload = (await response.json()) as ApiErrorResponse;
     const details = payload.details?.filter(Boolean) ?? [];
-    const fallback = `Failed to load ${resourceName} (${response.status})`;
+    const fallback = `${resourceName} yuklenemedi (${response.status})`;
     const message = payload.message?.trim() || fallback;
     return details.length > 0 ? `${message}: ${details.join(" ")}` : message;
   } catch {
-    return `Failed to load ${resourceName} (${response.status})`;
+    return `${resourceName} yuklenemedi (${response.status})`;
   }
 }
 
@@ -315,13 +345,18 @@ function mapOperationDtoToOperation(dto: OperationApiResponse, surveys: SurveyRe
     surveyGoal: survey?.goal ?? null,
     surveyAudience: survey?.audience ?? null,
     surveyUpdatedAt: survey?.updatedAt ?? null,
-    budget: "Not available",
-    reach: formatReach(dto),
-    conversion: "N/A",
+    budget: "Hazirlaniyor",
+    reach: formatReach(dto.status, dto.startedAt, dto.completedAt),
+    conversion: dto.executionSummary.totalCallJobs > 0 ? `${dto.executionSummary.pendingCallJobs} bekleyen is` : "Henuz yok",
     updatedAt: formatDateTime(updatedAtSource),
     owner: formatOwner(dto.createdByUserId),
     channels: buildChannels(dto.status),
     summary: buildSummary(dto, survey?.name),
+    readiness: dto.readiness,
+    executionSummary: dto.executionSummary,
+    startedAt: dto.startedAt,
+    completedAt: dto.completedAt,
+    scheduledAt: dto.scheduledAt,
   };
 }
 
@@ -336,15 +371,20 @@ function mapOperationContactDtoToContact(dto: OperationContactApiResponse): Oper
   };
 }
 
-function mapOperationStatus(status: OperationApiResponse["status"]): Operation["status"] {
+function mapOperationStatus(status: OperationApiStatus): Operation["status"] {
   switch (status) {
+    case "READY":
+      return "Ready";
     case "RUNNING":
-    case "SCHEDULED":
-      return "Active";
-    case "PAUSED":
-      return "Paused";
+      return "Running";
     case "COMPLETED":
       return "Completed";
+    case "FAILED":
+      return "Failed";
+    case "SCHEDULED":
+      return "Scheduled";
+    case "PAUSED":
+      return "Paused";
     case "CANCELLED":
       return "Cancelled";
     case "DRAFT":
@@ -396,72 +436,91 @@ function mapOperationContactStatusToApi(
 
 function formatDateTime(value: string | null): string {
   if (!value) {
-    return "Not scheduled";
+    return "Planlanmadi";
   }
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return "Recently updated";
+    return "Guncel";
   }
 
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat("tr-TR", {
+    day: "2-digit",
     month: "short",
-    day: "numeric",
     year: "numeric",
-    hour: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
   }).format(date);
 }
 
 function formatSurveyFallback(surveyId: string): string {
-  return `Survey ${surveyId.slice(0, 8)}`;
+  return `Anket ${surveyId.slice(0, 8)}`;
 }
 
 function formatOwner(createdByUserId: string | null): string {
   if (!createdByUserId) {
-    return "Unassigned";
+    return "Atanmadi";
   }
 
-  return `User ${createdByUserId.slice(0, 8)}`;
+  return `Kullanici ${createdByUserId.slice(0, 8)}`;
 }
 
-function formatReach(dto: OperationApiResponse): string {
-  if (dto.status === "COMPLETED" && dto.completedAt) {
-    return "Closed";
+function formatReach(status: OperationApiStatus, startedAt: string | null, completedAt: string | null): string {
+  if (status === "COMPLETED" && completedAt) {
+    return "Tamamlandi";
   }
 
-  if (dto.startedAt) {
-    return "In progress";
+  if (status === "RUNNING" || startedAt) {
+    return "Yurutuluyor";
   }
 
-  if (dto.scheduledAt) {
-    return "Scheduled";
+  if (status === "READY" || status === "SCHEDULED") {
+    return "Hazir";
   }
 
-  return "Planned";
+  if (status === "FAILED") {
+    return "Mudahale gerekli";
+  }
+
+  return "Hazirlaniyor";
 }
 
-function buildChannels(status: OperationApiResponse["status"]): string[] {
+function buildChannels(status: OperationApiStatus): string[] {
   switch (status) {
     case "RUNNING":
-      return ["Voice AI", "Email", "SMS"];
-    case "SCHEDULED":
-      return ["Email", "SMS"];
-    case "PAUSED":
-      return ["Voice AI", "Email"];
+      return ["Ses operasyoni", "Kuyruk hazir"];
+    case "READY":
+      return ["Baslatmaya hazir", "Anket bagli"];
     case "COMPLETED":
-      return ["Voice AI"];
+      return ["Yurutme tamamlandi"];
+    case "FAILED":
+      return ["Hata incelemesi"];
+    case "PAUSED":
+      return ["Duraklatildi"];
     case "CANCELLED":
+      return ["Kapatildi"];
+    case "SCHEDULED":
+      return ["Planlandi"];
     case "DRAFT":
     default:
-      return ["Configuration pending"];
+      return ["Hazirlik asamasi"];
   }
 }
 
 function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
-  const statusLabel = mapOperationStatus(dto.status);
-  const scheduleLabel = formatDateTime(dto.scheduledAt);
   const surveyLabel = surveyName ?? formatSurveyFallback(dto.surveyId);
 
-  return `${statusLabel} operation linked to ${surveyLabel} with schedule ${scheduleLabel}.`;
+  if (dto.status === "RUNNING") {
+    return `${surveyLabel} icin yurutme acildi. ${dto.executionSummary.pendingCallJobs} is kuyrukta bekliyor.`;
+  }
+
+  if (dto.readiness.readyToStart) {
+    return `${surveyLabel} bagli, kisiler yuklu. Operasyon baslatmaya hazir.`;
+  }
+
+  if (dto.readiness.blockingReasons.length > 0) {
+    return dto.readiness.blockingReasons[0];
+  }
+
+  return `${surveyLabel} icin operasyon hazirlikta.`;
 }

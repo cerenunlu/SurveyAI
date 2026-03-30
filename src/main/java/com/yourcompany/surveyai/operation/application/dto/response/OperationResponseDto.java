@@ -15,6 +15,8 @@ public record OperationResponseDto(
         OffsetDateTime completedAt,
         UUID createdByUserId,
         OffsetDateTime createdAt,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        OperationReadinessDto readiness,
+        OperationExecutionSummaryDto executionSummary
 ) {
 }

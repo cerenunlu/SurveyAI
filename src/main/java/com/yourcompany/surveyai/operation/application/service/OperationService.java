@@ -12,4 +12,6 @@ public interface OperationService {
     OperationResponseDto getOperationById(UUID companyId, UUID operationId);
 
     List<OperationResponseDto> listOperationsByCompany(UUID companyId);
+
+    OperationResponseDto startOperation(UUID companyId, UUID operationId);
 }

@@ -65,4 +65,112 @@ public class CallJob extends CompanyScopedEntity {
 
     @OneToMany(mappedBy = "callJob")
     private Set<CallAttempt> callAttempts = new LinkedHashSet<>();
+
+    public Operation getOperation() {
+        return operation;
+    }
+
+    public void setOperation(Operation operation) {
+        this.operation = operation;
+    }
+
+    public OperationContact getOperationContact() {
+        return operationContact;
+    }
+
+    public void setOperationContact(OperationContact operationContact) {
+        this.operationContact = operationContact;
+    }
+
+    public CallJobStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(CallJobStatus status) {
+        this.status = status;
+    }
+
+    public Short getPriority() {
+        return priority;
+    }
+
+    public void setPriority(Short priority) {
+        this.priority = priority;
+    }
+
+    public OffsetDateTime getScheduledFor() {
+        return scheduledFor;
+    }
+
+    public void setScheduledFor(OffsetDateTime scheduledFor) {
+        this.scheduledFor = scheduledFor;
+    }
+
+    public OffsetDateTime getAvailableAt() {
+        return availableAt;
+    }
+
+    public void setAvailableAt(OffsetDateTime availableAt) {
+        this.availableAt = availableAt;
+    }
+
+    public Integer getAttemptCount() {
+        return attemptCount;
+    }
+
+    public void setAttemptCount(Integer attemptCount) {
+        this.attemptCount = attemptCount;
+    }
+
+    public Integer getMaxAttempts() {
+        return maxAttempts;
+    }
+
+    public void setMaxAttempts(Integer maxAttempts) {
+        this.maxAttempts = maxAttempts;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
+    }
+
+    public String getLastErrorCode() {
+        return lastErrorCode;
+    }
+
+    public void setLastErrorCode(String lastErrorCode) {
+        this.lastErrorCode = lastErrorCode;
+    }
+
+    public String getLastErrorMessage() {
+        return lastErrorMessage;
+    }
+
+    public void setLastErrorMessage(String lastErrorMessage) {
+        this.lastErrorMessage = lastErrorMessage;
+    }
+
+    public OffsetDateTime getLockedAt() {
+        return lockedAt;
+    }
+
+    public void setLockedAt(OffsetDateTime lockedAt) {
+        this.lockedAt = lockedAt;
+    }
+
+    public String getLockedBy() {
+        return lockedBy;
+    }
+
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
+    }
+
+    public Set<CallAttempt> getCallAttempts() {
+        return callAttempts;
+    }
 }

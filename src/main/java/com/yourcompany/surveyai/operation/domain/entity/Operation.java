@@ -96,8 +96,16 @@ public class Operation extends CompanyScopedEntity {
         return startedAt;
     }
 
+    public void setStartedAt(OffsetDateTime startedAt) {
+        this.startedAt = startedAt;
+    }
+
     public OffsetDateTime getCompletedAt() {
         return completedAt;
+    }
+
+    public void setCompletedAt(OffsetDateTime completedAt) {
+        this.completedAt = completedAt;
     }
 
     public AppUser getCreatedBy() {
@@ -106,5 +114,21 @@ public class Operation extends CompanyScopedEntity {
 
     public void setCreatedBy(AppUser createdBy) {
         this.createdBy = createdBy;
+    }
+
+    public Set<OperationContact> getContacts() {
+        return contacts;
+    }
+
+    public Set<CallJob> getCallJobs() {
+        return callJobs;
+    }
+
+    public Set<CallAttempt> getCallAttempts() {
+        return callAttempts;
+    }
+
+    public Set<SurveyResponse> getSurveyResponses() {
+        return surveyResponses;
     }
 }

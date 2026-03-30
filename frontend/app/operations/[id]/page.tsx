@@ -3,7 +3,7 @@
 import * as XLSX from "xlsx";
 import Link from "next/link";
 import { notFound, useParams, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
 import { SectionCard } from "@/components/ui/SectionCard";
@@ -25,17 +25,16 @@ import {
   fetchOperationById,
   fetchOperationContactSummary,
   fetchOperationContacts,
+  startOperation,
   type OperationContactSummary,
 } from "@/lib/operations";
 import { Operation } from "@/lib/types";
 
-type NextStepState = {
+type ChecklistItem = {
+  key: string;
   label: string;
-  headline: string;
-  description: string;
-  tone: "ready" | "blocked" | "neutral";
-  actionLabel: string;
-  isActionDisabled: boolean;
+  detail: string;
+  ready: boolean;
 };
 
 export default function OperationDetailPage() {
@@ -47,7 +46,10 @@ export default function OperationDetailPage() {
   const [operation, setOperation] = useState<Operation | null>(null);
   const [contactSummary, setContactSummary] = useState<OperationContactSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isStarting, setIsStarting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [startErrorMessage, setStartErrorMessage] = useState<string | null>(null);
+  const [startSuccessMessage, setStartSuccessMessage] = useState<string | null>(null);
   const [isMissing, setIsMissing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -57,6 +59,23 @@ export default function OperationDetailPage() {
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [importRows, setImportRows] = useState<ImportPreviewRow[]>([]);
   const [importSummary, setImportSummary] = useState<ImportSummary>(createEmptyImportSummary());
+
+  const loadOperationWorkspace = useCallback(async (signal?: AbortSignal) => {
+    if (!operationId) {
+      return;
+    }
+
+    const [nextOperation, nextSummary] = await Promise.all([
+      fetchOperationById(operationId, undefined, signal ? { signal } : undefined),
+      fetchOperationContactSummary(operationId, {
+        latestLimit: 5,
+        init: signal ? { signal } : undefined,
+      }),
+    ]);
+
+    setOperation(nextOperation);
+    setContactSummary(nextSummary);
+  }, [operationId]);
 
   useEffect(() => {
     if (!operationId) {
@@ -70,23 +89,13 @@ export default function OperationDetailPage() {
         setIsLoading(true);
         setErrorMessage(null);
         setIsMissing(false);
-
-        const [nextOperation, nextSummary] = await Promise.all([
-          fetchOperationById(operationId, undefined, { signal: controller.signal }),
-          fetchOperationContactSummary(operationId, {
-            latestLimit: 5,
-            init: { signal: controller.signal },
-          }),
-        ]);
-
-        setOperation(nextOperation);
-        setContactSummary(nextSummary);
+        await loadOperationWorkspace(controller.signal);
       } catch (error) {
         if (controller.signal.aborted) {
           return;
         }
 
-        const message = error instanceof Error ? error.message : "Failed to load operation detail.";
+        const message = error instanceof Error ? error.message : "Operasyon detayi yuklenemedi.";
         if (message.includes("(404)")) {
           setIsMissing(true);
           return;
@@ -102,149 +111,52 @@ export default function OperationDetailPage() {
 
     void load();
     return () => controller.abort();
-  }, [operationId]);
+  }, [loadOperationWorkspace, operationId]);
 
   const contactCount = contactSummary?.totalContacts ?? 0;
   const hasContacts = contactCount > 0;
-  const readiness = useMemo(() => {
+  const checklist = useMemo<ChecklistItem[]>(() => {
     if (!operation) {
-      return {
-        title: "Hazirlik durumu hesaplaniyor",
-        description: "Operasyon ve kisi verileri yuklendiginde bir sonraki adim netlesecek.",
-        startHint: "Operasyon baslatma durumu kontrol ediliyor.",
-      };
+      return [];
     }
 
-    if (contactCount === 0) {
-      return {
-        title: "Kisi listesi eksik",
-        description: "Bu operasyon calistirilamaz. Devam etmek icin once kisileri yukleyin ve operasyonla esleyin.",
-        startHint: "Operasyonu baslatmak icin en az bir kisi gerekli.",
-      };
-    }
-
-    if (operation.status === "Draft") {
-      return {
-        title: "Kisiler hazir",
-        description: "Operasyonun bagli anketi ve kisi listesi mevcut. Baslatma akisi henuz devrede degil ama sonraki mantik bu noktadan calisacak.",
-        startHint: "Baslatma akisi sonraki iterasyonda bu ekrandan acilacak.",
-      };
-    }
-
-    if (operation.status === "Paused") {
-      return {
-        title: "Operasyon duraklatilmis",
-        description: "Kisiler yuklu gorunuyor. Baslatma yerine devam ettirme mantigi daha sonra bu alanda ele alinacak.",
-        startHint: "Duraklatilmis operasyonlar icin baslat dugmesi kullanilmiyor.",
-      };
-    }
-
-    return {
-      title: "Operasyon hareket halinde",
-      description: "Bu kayit taslak asamasini gecmis durumda. Bu sayfa hazirlik ve gorunurluk icin kullaniliyor.",
-      startHint: "Baslat dugmesi yalnizca taslak hazirlik akisi icin dusunuluyor.",
-    };
+    return [
+      {
+        key: "survey-linked",
+        label: "Anket baglandi",
+        detail: operation.readiness.surveyLinked ? operation.survey : "Operasyona bir anket baglanmali.",
+        ready: operation.readiness.surveyLinked,
+      },
+      {
+        key: "survey-published",
+        label: "Anket yayinlandi",
+        detail: operation.readiness.surveyPublished
+          ? "Yayinlanmis anketle calismaya hazir."
+          : "Baslatmadan once bagli anket yayinlanmis olmali.",
+        ready: operation.readiness.surveyPublished,
+      },
+      {
+        key: "contacts-loaded",
+        label: "Kisiler yuklendi",
+        detail: operation.readiness.contactsLoaded
+          ? `${contactCount} kisi operasyona hazirlandi.`
+          : "En az bir kisi yuklenmeden operasyon baslatilamaz.",
+        ready: operation.readiness.contactsLoaded,
+      },
+      {
+        key: "startable-state",
+        label: "Durum baslatmaya uygun",
+        detail: operation.readiness.startableState
+          ? "Operasyon baslatilabilir bir yasam dongusu durumunda."
+          : "Mevcut durum yeni bir baslatma aksiyonuna izin vermiyor.",
+        ready: operation.readiness.startableState,
+      },
+    ];
   }, [contactCount, operation]);
 
-  const nextStep = useMemo<NextStepState>(() => {
-    if (!operation) {
-      return {
-        label: "Durum hazirlaniyor",
-        headline: "Operasyon kontrol ediliyor",
-        description: "Operasyon, bagli anket ve kisi listesi yuklendiginde bir sonraki adim burada net gorunecek.",
-        tone: "neutral",
-        actionLabel: "Bekleniyor",
-        isActionDisabled: true,
-      };
-    }
-
-    if (contactCount === 0) {
-      return {
-        label: "Sonraki adim",
-        headline: "Kisi yukle",
-        description: "Bu operasyonun ilerleyebilmesi icin once en az bir kisi yuklenmeli. Contact Import aksiyonu sizi bu sayfadaki import alanina indirir.",
-        tone: "blocked",
-        actionLabel: "Kisi yukle",
-        isActionDisabled: false,
-      };
-    }
-
-    if (operation.status === "Draft") {
-      return {
-        label: "Hazir",
-        headline: "Akisi baslat",
-        description: "Bagli anket secili ve kisi listesi hazir. Operasyonun bir sonraki urun adimi akisi baslatmaktir; baslatma kontrolu bu sprintte yalnizca hazirlik durumu olarak gosteriliyor.",
-        tone: "ready",
-        actionLabel: "Akisi baslat",
-        isActionDisabled: true,
-      };
-    }
-
-    if (operation.status === "Paused") {
-      return {
-        label: "Mudahale gerekiyor",
-        headline: "Duraklatilmis operasyonu gozden gecir",
-        description: "Kisiler mevcut ancak operasyon duraklatilmis. Devam etmeden once operasyon ayarlarini guncellemeniz gerekir.",
-        tone: "blocked",
-        actionLabel: "Operasyonu guncelle",
-        isActionDisabled: true,
-      };
-    }
-
-    if (operation.status === "Active") {
-      return {
-        label: "Operasyon canli",
-        headline: "Akis zaten calisiyor",
-        description: "Bu operasyon aktif durumda. Bu ekranda su an icin en anlamli hareket kisi ozetini, exportu ve import ihtiyacini yonetmek.",
-        tone: "ready",
-        actionLabel: "Kisi yukle",
-        isActionDisabled: false,
-      };
-    }
-
-    if (operation.status === "Completed") {
-      return {
-        label: "Tamamlandi",
-        headline: "Operasyon tamamlandi",
-        description: "Bu operasyon kapanmis durumda. Yeni kisi eklemek yerine detaylari incelemek veya yeni bir operasyon planlamak daha uygundur.",
-        tone: "neutral",
-        actionLabel: "Detaylari incele",
-        isActionDisabled: true,
-      };
-    }
-
-    return {
-      label: "Iptal edildi",
-      headline: "Operasyon kullanima kapali",
-      description: "Bu operasyon iptal edilmis. Yeniden aksiyon almadan once operasyonu guncelleme veya yeni operasyon acma karari gerekir.",
-      tone: "blocked",
-      actionLabel: "Operasyonu guncelle",
-      isActionDisabled: true,
-    };
-  }, [contactCount, operation]);
-
-  const previewRows = useMemo(
-    () => importRows.slice(0, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT),
-    [importRows],
-  );
-
-  if (isMissing) {
-    notFound();
-  }
-
-  const importedCount = Number(searchParams.get("imported") ?? "0");
-  const invalidCount = Number(searchParams.get("invalid") ?? "0");
-  const ignoredCount = Number(searchParams.get("ignored") ?? "0");
-  const importRequested = searchParams.get("importRequested") === "1";
-  const importError = searchParams.get("importError");
-  const contactsSkipped = searchParams.get("contacts") === "skipped";
-  const showCreationSummary = importRequested || contactsSkipped;
-  const nextStepToneClass = [
-    "operation-readiness-pill",
-    nextStep.tone === "ready" ? "is-ready" : nextStep.tone === "blocked" ? "is-blocked" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const readinessToneClass = operation?.readiness.readyToStart
+    ? "operation-readiness-pill is-ready"
+    : "operation-readiness-pill is-blocked";
 
   const pageHeader = useMemo(
     () => ({
@@ -256,12 +168,12 @@ export default function OperationDetailPage() {
 
   usePageHeaderOverride(pageHeader);
 
-  async function refreshContactSummary(nextOperationId: string, signal?: AbortSignal) {
-    const nextSummary = await fetchOperationContactSummary(nextOperationId, {
-      latestLimit: 5,
-      init: signal ? { signal } : undefined,
-    });
-    setContactSummary(nextSummary);
+  if (isMissing) {
+    notFound();
+  }
+
+  async function refreshAfterMutation() {
+    await loadOperationWorkspace();
   }
 
   function scrollToImportSection() {
@@ -271,6 +183,30 @@ export default function OperationDetailPage() {
 
     importSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     importSectionRef.current.focus({ preventScroll: true });
+  }
+
+  async function handleStartOperation() {
+    if (!operationId || !operation) {
+      return;
+    }
+
+    try {
+      setIsStarting(true);
+      setStartErrorMessage(null);
+      setStartSuccessMessage(null);
+      const nextOperation = await startOperation(operationId);
+      setOperation(nextOperation);
+      await refreshAfterMutation();
+      setStartSuccessMessage(
+        nextOperation.executionSummary.newlyPreparedCallJobs > 0
+          ? `Operasyon baslatildi. ${nextOperation.executionSummary.newlyPreparedCallJobs} yeni cagri isi hazirlandi.`
+          : "Operasyon baslatildi. Mevcut cagri isleri yeniden kullanildi.",
+      );
+    } catch (error) {
+      setStartErrorMessage(error instanceof Error ? error.message : "Operasyon baslatilamadi.");
+    } finally {
+      setIsStarting(false);
+    }
   }
 
   async function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
@@ -329,6 +265,8 @@ export default function OperationDetailPage() {
     const validRows = importRows.filter((row) => row.isValid);
     setImportErrorMessage(null);
     setImportSuccessMessage(null);
+    setStartSuccessMessage(null);
+    setStartErrorMessage(null);
 
     if (validRows.length === 0) {
       setImportErrorMessage("Iceri aktarilacak gecerli kisi bulunamadi.");
@@ -354,7 +292,7 @@ export default function OperationDetailPage() {
         }
       }
 
-      await refreshContactSummary(operationId);
+      await refreshAfterMutation();
 
       if (importedRows.length > 0) {
         const duplicateFeedback = importSummary.duplicateRows > 0
@@ -409,35 +347,41 @@ export default function OperationDetailPage() {
       setExportErrorMessage(null);
       await exportOperationContacts(operationId);
     } catch (error) {
-      setExportErrorMessage(error instanceof Error ? error.message : "Kisiler disa aktarlamadi.");
+      setExportErrorMessage(error instanceof Error ? error.message : "Kisiler disa aktarilamadi.");
     } finally {
       setIsExporting(false);
     }
   }
 
+  const importedCount = Number(searchParams.get("imported") ?? "0");
+  const invalidCount = Number(searchParams.get("invalid") ?? "0");
+  const ignoredCount = Number(searchParams.get("ignored") ?? "0");
+  const importRequested = searchParams.get("importRequested") === "1";
+  const importError = searchParams.get("importError");
+  const contactsSkipped = searchParams.get("contacts") === "skipped";
+  const showCreationSummary = importRequested || contactsSkipped;
+  const previewRows = importRows.slice(0, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT);
+
   return (
     <PageContainer>
       <section className="hero-card is-compact operation-workspace-hero operation-command-deck">
-        <div className="eyebrow">Operation Workspace</div>
+        <div className="eyebrow">Operation Control Surface</div>
         <div className="operation-first-view-grid">
           <div className="operation-overview-card operation-summary-surface">
             <div className="operation-overview-card-head">
               <div>
                 <span className="operation-kicker">Operasyon ozeti</span>
-                <h3>Ilk gorunumde gerekli cekirdek bilgiler</h3>
+                <h3>Hazirliktan yurutmeye tek bakista gecis</h3>
               </div>
+              <span className={readinessToneClass}>
+                {operation?.readiness.readyToStart ? "Baslatmaya hazir" : operation ? "Eksikler var" : "Kontrol ediliyor"}
+              </span>
             </div>
 
             <div className="operation-workspace-summary-list operation-overview-summary-list">
               <div className="operation-summary-row">
-                <span>Operasyon adi</span>
-                <strong>{operation?.name ?? "Yukleniyor"}</strong>
-              </div>
-              <div className="operation-summary-row">
                 <span>Durum</span>
-                <strong>
-                  <StatusBadge status={operation?.status ?? "Pending"} />
-                </strong>
+                <strong><StatusBadge status={operation?.status ?? "Pending"} /></strong>
               </div>
               <div className="operation-summary-row">
                 <span>Bagli anket</span>
@@ -447,114 +391,121 @@ export default function OperationDetailPage() {
                 <span>Kisi sayisi</span>
                 <strong>{isLoading ? "..." : String(contactCount)}</strong>
               </div>
+              <div className="operation-summary-row">
+                <span>Hazirlanan cagri isi</span>
+                <strong>{operation ? String(operation.executionSummary.totalCallJobs) : "..."}</strong>
+              </div>
             </div>
 
             <div className="operation-summary-note">
-              <span>Kisa operasyon ozeti</span>
-              <strong>{operation?.summary?.trim() || "Bu operasyon icin kisa aciklama henuz bulunmuyor."}</strong>
+              <span>Operasyon notu</span>
+              <strong>{operation?.summary?.trim() || "Operasyon yuklenirken hazirlik notu olusturuluyor."}</strong>
             </div>
 
-            <div className="operation-contact-inline-summary">
-              <div className="operation-contact-inline-summary-head">
-                <div>
-                  <span className="operation-kicker">Kisi ozeti</span>
-                  <strong>{isLoading ? "Kisi verisi hazirlaniyor" : "Kisilere tek giris noktasi"}</strong>
+            <div className="operation-readiness-checklist">
+              {checklist.map((item) => (
+                <div key={item.key} className={`operation-readiness-item ${item.ready ? "is-ready" : "is-blocked"}`}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <span>{item.detail}</span>
+                  </div>
+                  <span className={`operation-readiness-dot ${item.ready ? "is-ready" : "is-blocked"}`}>
+                    {item.ready ? "Hazir" : "Eksik"}
+                  </span>
                 </div>
-                <span className={hasContacts ? "operation-readiness-pill is-ready" : "operation-readiness-pill is-blocked"}>
-                  {isLoading ? "Kontrol ediliyor" : hasContacts ? `${contactCount} kisi` : "0 kisi"}
-                </span>
-              </div>
-
-              <div className="operation-contact-inline-summary-row">
-                <div className="operation-contact-inline-stat">
-                  <span>Kisi sayisi</span>
-                  <strong>{isLoading ? "..." : String(contactCount)}</strong>
-                </div>
-
-                <div className="operation-contact-inline-actions">
-                  <Link href={`/operations/${operationId}/contacts/list`} className="button-primary compact-button">
-                    Goruntule
-                  </Link>
-                  <button
-                    type="button"
-                    className="button-secondary compact-button"
-                    onClick={scrollToImportSection}
-                    aria-controls="operation-contact-import-section"
-                  >
-                    Excelden yukle
-                  </button>
-                  <button
-                    type="button"
-                    className="button-secondary compact-button"
-                    disabled={isExporting || !hasContacts}
-                    onClick={() => void handleExportContacts()}
-                  >
-                    {isExporting ? "Disa aktariliyor..." : "Disa aktar"}
-                  </button>
-                </div>
-              </div>
-
-              <p className="operation-contact-inline-copy">
-                Kayit seviyesi inceleme bu sayfada gosterilmez; ayrintili kisi denetimi yalnizca detayli liste ekraninda acilir.
-              </p>
-
-              {exportErrorMessage ? (
-                <div className="operation-inline-message is-danger compact">
-                  <strong>Disa aktarma sorunu</strong>
-                  <span>{exportErrorMessage}</span>
-                </div>
-              ) : null}
+              ))}
             </div>
           </div>
 
           <aside className="operation-overview-card operation-control-surface">
             <div className="operation-overview-card-head">
               <div>
-                <span className="operation-kicker">Aksiyonlar</span>
-                <h3>Kontroller ve sonraki adim</h3>
+                <span className="operation-kicker">Yurutme kontrolu</span>
+                <h3>Operasyonu baslat</h3>
+              </div>
+            </div>
+
+            <div className="operation-start-panel">
+              <p className="operation-next-step-text">
+                {operation?.readiness.readyToStart
+                  ? "Tum temel kosullar saglandi. Baslatma aksiyonu operasyonu RUNNING durumuna alir ve kisi bazli cagri islerini kuyruga hazirlar."
+                  : operation?.readiness.blockingReasons.join(" ") || "Operasyon durumu kontrol ediliyor."}
+              </p>
+
+              <button
+                type="button"
+                className={`compact-button ${operation?.readiness.readyToStart ? "button-primary" : "button-secondary operation-disabled-action"}`}
+                disabled={!operation?.readiness.readyToStart || isStarting}
+                onClick={() => void handleStartOperation()}
+              >
+                {isStarting ? "Operasyon baslatiliyor..." : "Operasyonu baslat"}
+              </button>
+
+              {!operation?.readiness.readyToStart ? (
+                <div className="operation-blocker-list">
+                  {(operation?.readiness.blockingReasons ?? []).map((reason) => (
+                    <div key={reason} className="operation-inline-message compact is-danger">
+                      <strong>Baslatma blokaji</strong>
+                      <span>{reason}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {startErrorMessage ? (
+                <div className="operation-inline-message compact is-danger">
+                  <strong>Baslatma tamamlanamadi</strong>
+                  <span>{startErrorMessage}</span>
+                </div>
+              ) : null}
+
+              {startSuccessMessage ? (
+                <div className="operation-inline-message compact is-accent">
+                  <strong>Yurutme acildi</strong>
+                  <span>{startSuccessMessage}</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="operation-execution-summary-grid">
+              <div className="operation-contact-status-card">
+                <span>Bekleyen is</span>
+                <strong>{operation?.executionSummary.pendingCallJobs ?? 0}</strong>
+              </div>
+              <div className="operation-contact-status-card">
+                <span>Yeni hazirlanan is</span>
+                <strong>{operation?.executionSummary.newlyPreparedCallJobs ?? 0}</strong>
               </div>
             </div>
 
             <div className="operation-top-actions">
-              <button type="button" className="button-secondary compact-button operation-disabled-action" disabled>
-                Operasyonu sil
-              </button>
-              <button type="button" className="button-secondary compact-button operation-disabled-action" disabled>
-                Operasyonu guncelle
-              </button>
+              <Link href={`/operations/${operationId}/contacts/list`} className="button-secondary compact-button">
+                Kisi listesini ac
+              </Link>
               <button
                 type="button"
-                className="button-primary compact-button"
+                className="button-secondary compact-button"
                 onClick={scrollToImportSection}
                 aria-controls="operation-contact-import-section"
               >
-                Contact Import
+                Kisi yukle
               </button>
-            </div>
-
-            <div className="operation-next-step-panel">
-              <div className="operation-overview-card-head">
-                <div>
-                  <span className="operation-kicker">{nextStep.label}</span>
-                  <h3>{nextStep.headline}</h3>
-                </div>
-                <span className={nextStepToneClass}>{nextStep.actionLabel}</span>
-              </div>
-              <p className="operation-next-step-text">{nextStep.description}</p>
               <button
                 type="button"
-                className={`compact-button ${nextStep.isActionDisabled ? "button-secondary operation-disabled-action" : "button-primary"}`}
-                disabled={nextStep.isActionDisabled}
-                onClick={nextStep.isActionDisabled ? undefined : scrollToImportSection}
+                className="button-secondary compact-button"
+                disabled={isExporting || !hasContacts}
+                onClick={() => void handleExportContacts()}
               >
-                {nextStep.actionLabel}
+                {isExporting ? "Disa aktariliyor..." : "Kisileri disa aktar"}
               </button>
             </div>
 
-            <div className="operation-inline-message compact is-accent">
-              <strong>Kisa bilgi</strong>
-              <span>{readiness.startHint}</span>
-            </div>
+            {exportErrorMessage ? (
+              <div className="operation-inline-message is-danger compact">
+                <strong>Disa aktarma sorunu</strong>
+                <span>{exportErrorMessage}</span>
+              </div>
+            ) : null}
           </aside>
         </div>
       </section>
@@ -573,7 +524,7 @@ export default function OperationDetailPage() {
             </strong>
             <span>
               {contactsSkipped
-                ? "Kisi importu bu adimda atlandi. Isterseniz mevcut operasyon-kisi yukleme akisindan daha sonra ekleyebilirsiniz."
+                ? "Kisi importu bu adimda atlandi. Gerekirse bu ekrandan daha sonra yukleyebilirsiniz."
                 : importError
                   ? `${importError}${invalidCount > 0 ? ` Gecersiz satir: ${invalidCount}.` : ""}`
                   : importedCount > 0
@@ -596,7 +547,7 @@ export default function OperationDetailPage() {
       <div className="operation-detail-sections">
         <SectionCard
           title="Toplu kisi import"
-          description="Contact Import aksiyonu bu bolume kaydirir. Dosya secildiginde satirlar onizlenir ve yalnizca gecerli kisiler operasyona baglanir."
+          description="CSV veya Excel dosyasindan bu operasyona toplu kisi ekleyin. Readiness durumu import tamamlandiginda otomatik guncellenir."
         >
           <section
             id="operation-contact-import-section"
@@ -605,8 +556,8 @@ export default function OperationDetailPage() {
             tabIndex={-1}
           >
             <div className="operation-upload-placeholder">
-              <strong>Bulk import alani</strong>
-              <p>CSV veya Excel dosyasindan bu operasyona toplu kisi ekleyin. Beklenen kolonlar: `adSoyad` ve `telefonNumarasi`.</p>
+              <strong>Toplu import alani</strong>
+              <p>Beklenen kolonlar: `adSoyad` ve `telefonNumarasi`.</p>
             </div>
 
             <label className="builder-field">
@@ -630,30 +581,12 @@ export default function OperationDetailPage() {
 
             {(importSummary.totalRows > 0 || importSummary.ignoredRows > 0) && !importErrorMessage ? (
               <div className="operation-import-stats">
-                <div className="operation-import-stat">
-                  <span>Toplam satir</span>
-                  <strong>{importSummary.totalRows}</strong>
-                </div>
-                <div className="operation-import-stat">
-                  <span>Gecerli</span>
-                  <strong>{importSummary.validRows}</strong>
-                </div>
-                <div className="operation-import-stat">
-                  <span>Gecersiz</span>
-                  <strong>{importSummary.invalidRows}</strong>
-                </div>
-                <div className="operation-import-stat">
-                  <span>Dosya tekrari</span>
-                  <strong>{importSummary.duplicateInFileRows}</strong>
-                </div>
-                <div className="operation-import-stat">
-                  <span>Operasyonda var</span>
-                  <strong>{importSummary.duplicateInOperationRows}</strong>
-                </div>
-                <div className="operation-import-stat">
-                  <span>Bos gecilen</span>
-                  <strong>{importSummary.ignoredRows}</strong>
-                </div>
+                <div className="operation-import-stat"><span>Toplam satir</span><strong>{importSummary.totalRows}</strong></div>
+                <div className="operation-import-stat"><span>Gecerli</span><strong>{importSummary.validRows}</strong></div>
+                <div className="operation-import-stat"><span>Gecersiz</span><strong>{importSummary.invalidRows}</strong></div>
+                <div className="operation-import-stat"><span>Dosya tekrari</span><strong>{importSummary.duplicateInFileRows}</strong></div>
+                <div className="operation-import-stat"><span>Operasyonda var</span><strong>{importSummary.duplicateInOperationRows}</strong></div>
+                <div className="operation-import-stat"><span>Bos gecilen</span><strong>{importSummary.ignoredRows}</strong></div>
               </div>
             ) : null}
 
@@ -681,9 +614,7 @@ export default function OperationDetailPage() {
                           className={[
                             row.isValid ? "is-valid" : "is-invalid",
                             row.isDuplicateInFile || row.isDuplicateInOperation ? "is-duplicate" : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
+                          ].filter(Boolean).join(" ")}
                         >
                           <td>{row.rowNumber}</td>
                           <td>{row.name || "-"}</td>
@@ -701,7 +632,7 @@ export default function OperationDetailPage() {
             {importSummary.duplicateRows > 0 && !importErrorMessage ? (
               <div className="operation-inline-message is-danger compact">
                 <strong>Tekrar eden telefonlar import edilmeyecek</strong>
-                <span>Onizlemede dosya icindeki tekrarlar ve bu operasyonda zaten bulunan numaralar acikca isaretlenir. Yalnizca benzersiz satirlar aktarilir.</span>
+                <span>Onizlemede dosya icindeki tekrarlar ve bu operasyonda zaten bulunan numaralar acikca isaretlenir.</span>
               </div>
             ) : null}
 
@@ -731,38 +662,42 @@ export default function OperationDetailPage() {
         </SectionCard>
 
         <SectionCard
-          title="Survey referansi"
-          description="Operasyonun bagli oldugu yayinlanmis anketin kisa ozeti."
+          title="Anket ve yurutme referansi"
+          description="Bu operasyonun bagli anketi ve yurutme hazirligi tek blokta ozetlenir."
         >
           {operation ? (
             <div className="operation-survey-summary operation-workspace-survey-card">
               <div className="operation-survey-summary-head">
                 <div>
                   <strong>{operation.survey}</strong>
-                  <span>{operation.surveyGoal?.trim() || "Bu operasyon icin ek survey aciklamasi backend tarafindan henuz saglanmiyor."}</span>
+                  <span>{operation.surveyGoal?.trim() || "Bu operasyon icin ek anket aciklamasi bulunmuyor."}</span>
                 </div>
                 <StatusBadge status={operation.surveyStatus ?? "Draft"} />
               </div>
-              <div className="operation-summary-metrics">
+              <div className="operation-summary-metrics operation-control-metrics">
                 <div className="mini-metric">
-                  <span>Survey durumu</span>
+                  <span>Anket durumu</span>
                   <strong>{operation.surveyStatus ?? "Bilinmiyor"}</strong>
                 </div>
                 <div className="mini-metric">
-                  <span>Dil / kitle</span>
-                  <strong>{operation.surveyAudience ?? "-"}</strong>
+                  <span>Son anket guncellemesi</span>
+                  <strong>{operation.surveyUpdatedAt ?? "Bilinmiyor"}</strong>
                 </div>
                 <div className="mini-metric">
-                  <span>Son survey guncellemesi</span>
-                  <strong>{operation.surveyUpdatedAt ?? "Bilinmiyor"}</strong>
+                  <span>Baslangic izi</span>
+                  <strong>{operation.startedAt ? new Date(operation.startedAt).toLocaleString("tr-TR") : "Henuz baslatilmadi"}</strong>
+                </div>
+                <div className="mini-metric">
+                  <span>Hazirlanan toplam is</span>
+                  <strong>{operation.executionSummary.totalCallJobs}</strong>
                 </div>
               </div>
             </div>
           ) : (
             <div className="list-item">
               <div>
-                <strong>Survey referansi yukleniyor</strong>
-                <span>Bagli survey metadata bilgisi getiriliyor.</span>
+                <strong>Anket referansi yukleniyor</strong>
+                <span>Bagli anket ve yurutme ozeti getiriliyor.</span>
               </div>
             </div>
           )}
@@ -789,3 +724,8 @@ function createImportSummaryFromRows(rows: ImportPreviewRow[], ignoredRows: numb
     duplicateInOperationRows,
   };
 }
+
+
+
+
+
