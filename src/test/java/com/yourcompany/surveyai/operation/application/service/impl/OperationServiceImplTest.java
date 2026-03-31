@@ -502,6 +502,144 @@ class OperationServiceImplTest {
         assertThat(response.questionSummaries().get(2).emptyStateMessage()).isNotBlank();
     }
 
+    @Test
+    void getOperationAnalytics_readsMultiChoiceSelectionsFromNormalizedAnswerJson() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion multiChoiceQuestion = buildQuestion(
+                operation.getSurvey(),
+                "q-multi",
+                1,
+                QuestionType.MULTI_CHOICE,
+                "Hangi hizmetleri kullandınız?"
+        );
+        SurveyQuestionOption billingOption = buildOption(multiChoiceQuestion, 1, "billing", "Faturalama", "billing");
+        SurveyQuestionOption supportOption = buildOption(multiChoiceQuestion, 2, "support", "Destek", "support");
+        SurveyQuestionOption appOption = buildOption(multiChoiceQuestion, 3, "app", "Mobil Uygulama", "app");
+
+        SurveyResponse completedResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112266",
+                100,
+                OffsetDateTime.now().minusMinutes(10)
+        );
+
+        SurveyAnswer multiChoiceAnswer = new SurveyAnswer();
+        multiChoiceAnswer.setId(UUID.randomUUID());
+        multiChoiceAnswer.setCompany(operation.getCompany());
+        multiChoiceAnswer.setSurveyResponse(completedResponse);
+        multiChoiceAnswer.setSurveyQuestion(multiChoiceQuestion);
+        multiChoiceAnswer.setAnswerType(QuestionType.MULTI_CHOICE);
+        multiChoiceAnswer.setAnswerJson("""
+                {
+                  "normalizedValues": ["billing", "support"],
+                  "normalizedText": "billing, support"
+                }
+                """);
+        multiChoiceAnswer.setValid(true);
+        multiChoiceAnswer.setRetryCount(0);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(1L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(buildCallJob(operation, CallJobStatus.COMPLETED)));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(completedResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(multiChoiceQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(multiChoiceQuestion.getId())
+        )).thenReturn(List.of(billingOption, supportOption, appOption));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(List.of(completedResponse.getId())))
+                .thenReturn(List.of(multiChoiceAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionSummaries()).hasSize(1);
+        assertThat(response.questionSummaries().getFirst().answeredCount()).isEqualTo(1);
+        assertThat(response.questionSummaries().getFirst().breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Faturalama:1", "Destek:1", "Mobil Uygulama:0");
+    }
+
+    @Test
+    void getOperationAnalytics_readsRatingAndOpenEndedFallbacksFromAnswerJson() {
+        Operation operation = buildOperation(OperationStatus.COMPLETED, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion ratingQuestion = buildQuestion(operation.getSurvey(), "q-rating", 1, QuestionType.RATING, "Genel puan");
+        SurveyQuestion openEndedQuestion = buildQuestion(operation.getSurvey(), "q-open", 2, QuestionType.OPEN_ENDED, "Ek yorum");
+        SurveyResponse completedResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112277",
+                100,
+                OffsetDateTime.now().minusMinutes(20)
+        );
+
+        SurveyAnswer ratingAnswer = new SurveyAnswer();
+        ratingAnswer.setId(UUID.randomUUID());
+        ratingAnswer.setCompany(operation.getCompany());
+        ratingAnswer.setSurveyResponse(completedResponse);
+        ratingAnswer.setSurveyQuestion(ratingQuestion);
+        ratingAnswer.setAnswerType(QuestionType.RATING);
+        ratingAnswer.setAnswerJson("""
+                {
+                  "normalizedNumber": 4
+                }
+                """);
+        ratingAnswer.setValid(true);
+        ratingAnswer.setRetryCount(0);
+
+        SurveyAnswer openEndedAnswer = new SurveyAnswer();
+        openEndedAnswer.setId(UUID.randomUUID());
+        openEndedAnswer.setCompany(operation.getCompany());
+        openEndedAnswer.setSurveyResponse(completedResponse);
+        openEndedAnswer.setSurveyQuestion(openEndedQuestion);
+        openEndedAnswer.setAnswerType(QuestionType.OPEN_ENDED);
+        openEndedAnswer.setAnswerJson("""
+                {
+                  "normalizedText": "Süreç hızlı ve anlaşılırdı."
+                }
+                """);
+        openEndedAnswer.setValid(true);
+        openEndedAnswer.setRetryCount(0);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(1L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(buildCallJob(operation, CallJobStatus.COMPLETED)));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(completedResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(ratingQuestion, openEndedQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(ratingQuestion.getId(), openEndedQuestion.getId())
+        )).thenReturn(List.of());
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(List.of(completedResponse.getId())))
+                .thenReturn(List.of(ratingAnswer, openEndedAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionSummaries()).hasSize(2);
+        assertThat(response.questionSummaries().get(0).answeredCount()).isEqualTo(1);
+        assertThat(response.questionSummaries().get(0).averageRating()).isEqualTo(4.0);
+        assertThat(response.questionSummaries().get(0).breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("4:1");
+        assertThat(response.questionSummaries().get(1).answeredCount()).isEqualTo(1);
+        assertThat(response.questionSummaries().get(1).sampleResponses())
+                .containsExactly("Süreç hızlı ve anlaşılırdı.");
+    }
+
     private Operation buildOperation(OperationStatus status, SurveyStatus surveyStatus) {
         Company company = new Company();
         company.setId(UUID.randomUUID());

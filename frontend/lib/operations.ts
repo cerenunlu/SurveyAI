@@ -273,14 +273,14 @@ export async function fetchOperationAnalytics(
     averageCompletionPercent: response.averageCompletionPercent,
     partialData: response.partialData,
     insightSummary: response.insightSummary,
-    insightItems: response.insightItems.map((item) => ({
+    insightItems: (response.insightItems ?? []).map((item) => ({
       key: item.key,
       title: item.title,
       detail: item.detail,
       tone: item.tone,
     })),
-    outcomeBreakdown: response.outcomeBreakdown.map(mapAnalyticsBreakdown),
-    questionSummaries: response.questionSummaries.map((item) => ({
+    outcomeBreakdown: (response.outcomeBreakdown ?? []).map(mapAnalyticsBreakdown),
+    questionSummaries: (response.questionSummaries ?? []).map((item) => ({
       questionId: item.questionId,
       questionCode: item.questionCode,
       questionOrder: item.questionOrder,
@@ -291,10 +291,10 @@ export async function fetchOperationAnalytics(
       responseRate: item.responseRate,
       averageRating: item.averageRating,
       emptyStateMessage: item.emptyStateMessage,
-      breakdown: item.breakdown.map(mapAnalyticsBreakdown),
-      sampleResponses: item.sampleResponses,
+      breakdown: (item.breakdown ?? []).map(mapAnalyticsBreakdown),
+      sampleResponses: item.sampleResponses ?? [],
     })),
-    responseTrend: response.responseTrend.map((item): OperationAnalyticsTrendPoint => ({
+    responseTrend: (response.responseTrend ?? []).map((item): OperationAnalyticsTrendPoint => ({
       label: formatAnalyticsDate(item.label),
       count: item.count,
     })),

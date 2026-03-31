@@ -2,7 +2,10 @@ import { Operation, OperationAnalytics, OperationAnalyticsQuestionSummary } from
 
 type OperationLifecycleStatus = Extract<Operation["status"], "Draft" | "Ready" | "Running" | "Completed" | "Failed">;
 
-export const OPERATION_STATUS_BADGE_CONFIG: Record<OperationLifecycleStatus, { tone: "neutral" | "ready" | "live" | "success" | "danger"; label: string }> = {
+export const OPERATION_STATUS_BADGE_CONFIG: Record<
+  OperationLifecycleStatus,
+  { tone: "neutral" | "ready" | "live" | "success" | "danger"; label: string }
+> = {
   Draft: { tone: "neutral", label: "Taslak" },
   Ready: { tone: "ready", label: "Hazır" },
   Running: { tone: "live", label: "Yürütülüyor" },
@@ -117,34 +120,58 @@ export function getAnalyticsKpis(operation: Operation | null, analytics: Operati
     return [];
   }
 
-  const isFinished = operation.status === "Completed";
   const isRunning = operation.status === "Running";
   const isFailed = operation.status === "Failed";
+  const hasResponses = analytics.totalResponses > 0;
 
   return [
     {
-      label: isRunning ? "Toplam aranmış kişi" : "Hazırlanan kişi havuzu",
-      value: String(analytics.totalCallsAttempted || analytics.totalContacts),
-      detail: `${analytics.totalContacts} toplam kişi`,
+      label: "Toplam kişi",
+      value: String(analytics.totalContacts),
+      detail: "Operasyona yüklenen kişiler",
       tone: "neutral" as const,
     },
     {
-      label: "Tamamlanan görüşme",
-      value: String(analytics.completedResponses),
-      detail: isRunning ? "Canlı olarak artar" : "Tamamlanan cevap kayıtları",
+      label: "Toplam çağrı işi",
+      value: String(analytics.totalCallJobs),
+      detail: `${analytics.totalPreparedJobs} hazır iş kaydı`,
+      tone: "neutral" as const,
+    },
+    {
+      label: "Çağrı denemesi",
+      value: String(analytics.totalCallsAttempted),
+      detail: isRunning ? "Canlı olarak artar" : "Kuyruktan çıkan işler",
+      tone: "neutral" as const,
+    },
+    {
+      label: "Tamamlanan çağrı",
+      value: String(analytics.totalCompletedCalls),
+      detail: "Başarıyla kapanan aramalar",
       tone: "positive" as const,
     },
     {
-      label: isFinished ? "Tamamlanma oranı" : "Katılım oranı",
-      value: `%${Math.round((isFinished ? analytics.completionRate : analytics.participationRate) * 10) / 10}`,
-      detail: isFailed ? "Kısmi veri bazında hesaplandı" : "Operasyon geneli",
-      tone: isFailed ? "warning" as const : "positive" as const,
+      label: "Başarısız çağrı",
+      value: String(analytics.failedCallJobs),
+      detail: "Takip gerektiren çağrı işleri",
+      tone: isFailed ? "danger" as const : "warning" as const,
     },
     {
-      label: "Başarısız / yanıtsız",
-      value: String(analytics.failedCallJobs + analytics.abandonedResponses + analytics.invalidResponses),
-      detail: "İzleme gerektiren sonuçlar",
-      tone: isFailed ? "danger" as const : "warning" as const,
+      label: "Toplam yanıt",
+      value: String(analytics.totalResponses),
+      detail: `${analytics.completedResponses} tamamlandı, ${analytics.partialResponses} kısmi`,
+      tone: hasResponses ? "positive" as const : "neutral" as const,
+    },
+    {
+      label: "Tamamlanma oranı",
+      value: `%${analytics.completionRate}`,
+      detail: hasResponses ? "Yanıtlar içindeki tamamlanan payı" : "Henüz yanıt yok",
+      tone: hasResponses ? "positive" as const : "neutral" as const,
+    },
+    {
+      label: "Cevap oranı",
+      value: `%${analytics.responseRate}`,
+      detail: isFailed ? "Kısmi veri dahil hesaplandı" : "Toplam kişiye göre",
+      tone: isFailed ? "warning" as const : "positive" as const,
     },
   ];
 }
@@ -153,7 +180,7 @@ export function getQuestionChartPresentation(summary: OperationAnalyticsQuestion
   switch (summary.chartKind) {
     case "RATING":
       return {
-        eyebrow: "Rating dağılımı",
+        eyebrow: "Puan dağılımı",
         empty: summary.emptyStateMessage ?? "Puan verisi geldikçe dağılım oluşur.",
       };
     case "BINARY":

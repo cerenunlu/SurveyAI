@@ -323,9 +323,10 @@ public class OperationServiceImpl implements OperationService {
                 .toList();
 
         Map<String, Long> trendMap = responses.stream()
+                .map(response -> response.getCompletedAt() != null ? response.getCompletedAt() : response.getStartedAt())
+                .filter(Objects::nonNull)
                 .collect(Collectors.groupingBy(
-                        response -> (response.getCompletedAt() != null ? response.getCompletedAt() : response.getStartedAt())
-                                .toLocalDate()
+                        timestamp -> timestamp.toLocalDate()
                                 .format(DateTimeFormatter.ISO_LOCAL_DATE),
                         LinkedHashMap::new,
                         Collectors.counting()
@@ -523,18 +524,22 @@ public class OperationServiceImpl implements OperationService {
         if (question.getQuestionType() == QuestionType.RATING) {
             List<SurveyAnswer> ratingAnswers = answers.stream()
                     .filter(answer -> answer.getAnswerType() == QuestionType.RATING)
-                    .filter(SurveyAnswer::isValid)
-                    .filter(answer -> answer.getAnswerNumber() != null)
+                    .filter(this::hasUsableRatingAnswer)
                     .toList();
             long answeredCount = ratingAnswers.size();
             double responseRate = percentage(answeredCount, totalContacts);
             Map<String, Long> ratings = new LinkedHashMap<>();
             for (SurveyAnswer answer : ratingAnswers) {
-                String key = String.valueOf(answer.getAnswerNumber().stripTrailingZeros().toPlainString());
+                BigDecimal ratingValue = resolveRatingValue(answer);
+                if (ratingValue == null) {
+                    continue;
+                }
+                String key = String.valueOf(ratingValue.stripTrailingZeros().toPlainString());
                 ratings.merge(key, 1L, Long::sum);
             }
             double averageRating = round(ratingAnswers.stream()
-                    .map(SurveyAnswer::getAnswerNumber)
+                    .map(this::resolveRatingValue)
+                    .filter(Objects::nonNull)
                     .mapToDouble(BigDecimal::doubleValue)
                     .average()
                     .orElse(0));
@@ -620,9 +625,12 @@ public class OperationServiceImpl implements OperationService {
     ) {
         return answers.stream()
                 .filter(answer -> answer.getAnswerType() == questionType)
-                .map(answer -> resolveChoiceLabels(answer, options))
-                .map(labels -> labels.stream().distinct().toList())
-                .filter(labels -> !labels.isEmpty())
+                .map(answer -> {
+                    List<String> labels = resolveChoiceLabels(answer, options).stream().distinct().toList();
+                    return new ResolvedChoiceAnswer(answer, labels);
+                })
+                .filter(resolved -> isUsableChoiceAnswer(resolved.answer(), resolved.labels()))
+                .map(ResolvedChoiceAnswer::labels)
                 .filter(labels -> questionType == QuestionType.MULTI_CHOICE || labels.size() == 1)
                 .toList();
     }
@@ -671,14 +679,22 @@ public class OperationServiceImpl implements OperationService {
                 for (JsonNode node : root) {
                     resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
                 }
+            } else if (root.has("normalizedValues") && root.get("normalizedValues").isArray()) {
+                for (JsonNode node : root.get("normalizedValues")) {
+                    resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
+                }
             } else if (root.has("selectedOptionIds") && root.get("selectedOptionIds").isArray()) {
                 for (JsonNode node : root.get("selectedOptionIds")) {
                     resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
                 }
+            } else if (root.has("selectedOptionId")) {
+                resolveOptionLabel(root.get("selectedOptionId").asText(null), options).ifPresent(labels::add);
             } else if (root.has("selectedOptions") && root.get("selectedOptions").isArray()) {
                 for (JsonNode node : root.get("selectedOptions")) {
                     resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
                 }
+            } else if (root.has("normalizedText")) {
+                resolveOptionLabel(root.get("normalizedText").asText(null), options).ifPresent(labels::add);
             } else if (root.has("value")) {
                 resolveOptionLabel(root.get("value").asText(null), options).ifPresent(labels::add);
             }
@@ -704,9 +720,7 @@ public class OperationServiceImpl implements OperationService {
     }
 
     private boolean hasUsableOpenEndedAnswer(SurveyAnswer answer) {
-        String text = answer.getAnswerText() != null && !answer.getAnswerText().isBlank()
-                ? answer.getAnswerText().trim()
-                : answer.getRawInputText();
+        String text = resolveOpenEndedText(answer);
         return text != null && !text.isBlank();
     }
 
@@ -717,9 +731,7 @@ public class OperationServiceImpl implements OperationService {
         buckets.put("Detayli yanit", 0L);
 
         for (SurveyAnswer answer : answers) {
-            String text = answer.getAnswerText() != null && !answer.getAnswerText().isBlank()
-                    ? answer.getAnswerText().trim()
-                    : answer.getRawInputText();
+            String text = resolveOpenEndedText(answer);
             if (text == null || text.isBlank()) {
                 continue;
             }
@@ -739,9 +751,7 @@ public class OperationServiceImpl implements OperationService {
 
     private List<String> buildOpenEndedSamples(List<SurveyAnswer> answers) {
         return answers.stream()
-                .map(answer -> answer.getAnswerText() != null && !answer.getAnswerText().isBlank()
-                        ? answer.getAnswerText().trim()
-                        : answer.getRawInputText())
+                .map(this::resolveOpenEndedText)
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(text -> !text.isBlank())
@@ -749,6 +759,111 @@ public class OperationServiceImpl implements OperationService {
                 .distinct()
                 .limit(3)
                 .toList();
+    }
+
+    private boolean hasUsableRatingAnswer(SurveyAnswer answer) {
+        return answer.isValid() && resolveRatingValue(answer) != null;
+    }
+
+    private BigDecimal resolveRatingValue(SurveyAnswer answer) {
+        if (answer.getAnswerNumber() != null) {
+            return answer.getAnswerNumber();
+        }
+
+        if (answer.getAnswerJson() == null || answer.getAnswerJson().isBlank()) {
+            return null;
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(answer.getAnswerJson());
+            JsonNode normalizedNumber = root.get("normalizedNumber");
+            if (normalizedNumber == null || normalizedNumber.isNull()) {
+                return null;
+            }
+            if (normalizedNumber.isNumber()) {
+                return normalizedNumber.decimalValue();
+            }
+            String rawValue = normalizedNumber.asText(null);
+            return rawValue == null || rawValue.isBlank() ? null : new BigDecimal(rawValue.trim());
+        } catch (Exception error) {
+            return null;
+        }
+    }
+
+    private String resolveOpenEndedText(SurveyAnswer answer) {
+        if (answer.getAnswerText() != null && !answer.getAnswerText().isBlank()) {
+            return answer.getAnswerText().trim();
+        }
+        if (answer.getRawInputText() != null && !answer.getRawInputText().isBlank()) {
+            return answer.getRawInputText().trim();
+        }
+        return extractNormalizedText(answer.getAnswerJson());
+    }
+
+    private String extractNormalizedText(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return null;
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(rawJson);
+            JsonNode normalizedText = root.get("normalizedText");
+            if (normalizedText == null || normalizedText.isNull()) {
+                return null;
+            }
+            String value = normalizedText.asText(null);
+            return value == null || value.isBlank() ? null : value.trim();
+        } catch (Exception error) {
+            return null;
+        }
+    }
+
+    private boolean isUsableChoiceAnswer(SurveyAnswer answer, List<String> labels) {
+        if (labels.isEmpty()) {
+            return false;
+        }
+        return answer.isValid()
+                || answer.getSelectedOption() != null
+                || hasReadableChoiceFallback(answer)
+                || hasStructuredChoiceFallback(answer.getAnswerJson());
+    }
+
+    private boolean hasReadableChoiceFallback(SurveyAnswer answer) {
+        return java.util.stream.Stream.of(answer.getAnswerText(), answer.getRawInputText())
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .anyMatch(value -> !value.isBlank());
+    }
+
+    private boolean hasStructuredChoiceFallback(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return false;
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(rawJson);
+            return hasNonBlankJsonText(root, "normalizedText")
+                    || hasNonBlankJsonText(root, "value")
+                    || hasNonBlankJsonText(root, "selectedOptionId")
+                    || hasNonEmptyJsonArray(root, "normalizedValues")
+                    || hasNonEmptyJsonArray(root, "selectedOptionIds")
+                    || hasNonEmptyJsonArray(root, "selectedOptions");
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    private boolean hasNonBlankJsonText(JsonNode root, String fieldName) {
+        JsonNode node = root.get(fieldName);
+        return node != null && !node.isNull() && !node.asText("").isBlank();
+    }
+
+    private boolean hasNonEmptyJsonArray(JsonNode root, String fieldName) {
+        JsonNode node = root.get(fieldName);
+        return node != null && node.isArray() && node.size() > 0;
+    }
+
+    private record ResolvedChoiceAnswer(SurveyAnswer answer, List<String> labels) {
     }
 
     private List<OperationAnalyticsBreakdownItemDto> toBreakdown(Map<String, Long> counts, long total) {

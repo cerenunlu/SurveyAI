@@ -20,16 +20,17 @@ export function OperationAnalyticsSection({
 }: OperationAnalyticsSectionProps) {
   const emptyState = getAnalyticsEmptyState(operation?.status ?? "Draft", contactCount);
   const kpis = getAnalyticsKpis(operation, analytics);
+  const trendMax = analytics ? Math.max(...analytics.responseTrend.map((item) => item.count), 1) : 1;
 
   return (
     <SectionCard
       title="Operasyon Analitiği"
-      description="Çağrı kaynaklı sonuç dağılımları, katılım sinyalleri ve soru bazlı içgörüler aynı operasyon yüzeyinde kalır."
+      description="Çağrı sonuçları, katılım oranları ve soru bazlı dağılımlar bu operasyon yüzeyinde gerçek veriden beslenir."
     >
       {isLoading ? (
         <div className="operation-empty-state">
           <strong>Analitik yükleniyor</strong>
-          <p>Operasyona ait cevap ve yürütme toplamları getiriliyor.</p>
+          <p>Operasyona ait çağrı ve yanıt toplamları getiriliyor.</p>
         </div>
       ) : !analytics || (analytics.totalResponses === 0 && analytics.totalPreparedJobs === 0) ? (
         <div className="operation-empty-state operation-analytics-empty">
@@ -80,7 +81,10 @@ export function OperationAnalyticsSection({
                         <span>{item.count} kayıt</span>
                       </div>
                       <div className="operation-bar-track">
-                        <div className="operation-bar-fill" style={{ width: `${Math.max(item.percentage, item.count > 0 ? 6 : 0)}%` }} />
+                        <div
+                          className="operation-bar-fill"
+                          style={{ width: `${Math.max(item.percentage, item.count > 0 ? 6 : 0)}%` }}
+                        />
                       </div>
                       <span className="operation-bar-value">%{item.percentage}</span>
                     </div>
@@ -99,11 +103,11 @@ export function OperationAnalyticsSection({
                 </div>
               </div>
               <div className="operation-insight-card">
-                <strong>{analytics.insightSummary ?? "AI analiz özeti bu alana bağlanabilir."}</strong>
+                <strong>{analytics.insightSummary ?? "Bu operasyonda henüz özet üretilecek kadar veri yok."}</strong>
                 <p>
                   {analytics.insightSummary
-                    ? "Bu metin mevcut operasyon verisinden üretilen yönlendirici özet görevi görür."
-                    : "İleride AI destekli özet veya kural bazlı yorum bu bölüme beslenebilir."}
+                    ? "Bu metin mevcut operasyon verisinden üretilen kısa bir yönlendirme özeti sunar."
+                    : "İlk çağrı ve yanıt kayıtları geldikçe burada kısa operasyon özeti görünür."}
                 </p>
               </div>
               {analytics.insightItems.length > 0 ? (
@@ -114,8 +118,8 @@ export function OperationAnalyticsSection({
                         <strong>{item.title}</strong>
                         <span>{item.detail}</span>
                       </div>
-                      <span className={`operation-live-pill ${item.tone === "warning" ? "" : ""}`}>
-                        {item.tone === "warning" ? "Izle" : item.tone === "positive" ? "Pozitif" : "Hazir"}
+                      <span className="operation-live-pill">
+                        {item.tone === "warning" ? "İzle" : item.tone === "positive" ? "Pozitif" : "Hazır"}
                       </span>
                     </div>
                   ))}
@@ -127,7 +131,7 @@ export function OperationAnalyticsSection({
                   <strong>%{analytics.responseRate}</strong>
                 </div>
                 <div className="operation-response-health-item">
-                  <span>Kısmi yanıt</span>
+                  <span>Katılım oranı</span>
                   <strong>%{analytics.participationRate}</strong>
                 </div>
                 <div className="operation-response-health-item">
@@ -148,8 +152,7 @@ export function OperationAnalyticsSection({
             {analytics.responseTrend.length > 0 ? (
               <div className="operation-trend-bars">
                 {analytics.responseTrend.map((point) => {
-                  const max = Math.max(...analytics.responseTrend.map((item) => item.count), 1);
-                  const height = Math.max((point.count / max) * 100, point.count > 0 ? 18 : 4);
+                  const height = Math.max((point.count / trendMax) * 100, point.count > 0 ? 18 : 4);
                   return (
                     <div key={point.label} className="operation-trend-bar">
                       <div className="operation-trend-column">
@@ -170,56 +173,63 @@ export function OperationAnalyticsSection({
             <div className="section-header">
               <div className="section-copy">
                 <h2>Soru Bazlı İçgörüler</h2>
-                <p>En önemli cevaplanan sorular, uygun grafik tipiyle kompakt kartlarda gösterilir.</p>
+                <p>Gerçek yanıtlar yalnızca ilgili veri bulunduğunda grafiğe dönüşür, aksi halde net boş durum mesajı gösterilir.</p>
               </div>
             </div>
-            <div className="operation-question-grid">
-              {analytics.questionSummaries.map((summary) => {
-                const presentation = getQuestionChartPresentation(summary);
-                const hasData = summary.breakdown.some((item) => item.count > 0);
+            {analytics.questionSummaries.length > 0 ? (
+              <div className="operation-question-grid">
+                {analytics.questionSummaries.map((summary) => {
+                  const presentation = getQuestionChartPresentation(summary);
+                  const hasData = summary.breakdown.some((item) => item.count > 0);
 
-                return (
-                  <article key={summary.questionId} className="operation-question-card">
-                    <div className="operation-chart-head">
-                      <div>
-                        <span className="operation-kicker">{presentation.eyebrow}</span>
-                        <h3>{summary.questionTitle}</h3>
+                  return (
+                    <article key={summary.questionId} className="operation-question-card">
+                      <div className="operation-chart-head">
+                        <div>
+                          <span className="operation-kicker">{presentation.eyebrow}</span>
+                          <h3>{summary.questionTitle}</h3>
+                        </div>
+                        <span className="operation-question-meta">%{summary.responseRate}</span>
                       </div>
-                      <span className="operation-question-meta">%{summary.responseRate}</span>
-                    </div>
-                    <div className="operation-question-submeta">
-                      <span>Soru {summary.questionOrder}</span>
-                      <span>{summary.answeredCount} yanıt</span>
-                      {summary.averageRating !== null ? <span>Ort. {summary.averageRating}</span> : null}
-                    </div>
-                    {hasData ? (
-                      <div className="operation-bar-list compact">
-                        {summary.breakdown.map((item) => (
-                          <div key={`${summary.questionId}-${item.key}`} className="operation-bar-row">
-                            <div className="operation-bar-copy">
-                              <strong>{item.label}</strong>
-                              <span>{item.count}</span>
-                            </div>
-                            <div className="operation-bar-track">
-                              <div className="operation-bar-fill" style={{ width: `${Math.max(item.percentage, item.count > 0 ? 8 : 0)}%` }} />
-                            </div>
-                            <span className="operation-bar-value">%{item.percentage}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="operation-mini-empty">{presentation.empty}</div>
-                    )}
-                    {summary.sampleResponses.length > 0 ? (
                       <div className="operation-question-submeta">
-                        <span>Ornek yanitlar</span>
-                        <span>{summary.sampleResponses.join(" | ")}</span>
+                        <span>Soru {summary.questionOrder}</span>
+                        <span>{summary.answeredCount} yanıt</span>
+                        {summary.averageRating !== null ? <span>Ort. {summary.averageRating}</span> : null}
                       </div>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
+                      {hasData ? (
+                        <div className="operation-bar-list compact">
+                          {summary.breakdown.map((item) => (
+                            <div key={`${summary.questionId}-${item.key}`} className="operation-bar-row">
+                              <div className="operation-bar-copy">
+                                <strong>{item.label}</strong>
+                                <span>{item.count}</span>
+                              </div>
+                              <div className="operation-bar-track">
+                                <div
+                                  className="operation-bar-fill"
+                                  style={{ width: `${Math.max(item.percentage, item.count > 0 ? 8 : 0)}%` }}
+                                />
+                              </div>
+                              <span className="operation-bar-value">%{item.percentage}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="operation-mini-empty">{presentation.empty}</div>
+                      )}
+                      {summary.sampleResponses.length > 0 ? (
+                        <div className="operation-question-submeta">
+                          <span>Örnek yanıtlar</span>
+                          <span>{summary.sampleResponses.join(" | ")}</span>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="operation-mini-empty">Bu ankette henüz soru bazlı gösterilecek cevap verisi yok.</div>
+            )}
           </div>
         </div>
       )}
