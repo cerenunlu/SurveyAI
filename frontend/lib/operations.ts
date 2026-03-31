@@ -1,7 +1,7 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import { CallJob, Operation, OperationAnalytics, OperationAnalyticsBreakdownItem, OperationAnalyticsInsightItem, OperationAnalyticsQuestionSummary, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
+import { CallJob, CallJobAttempt, CallJobDetail, CallJobSurveyResponse, Operation, OperationAnalytics, OperationAnalyticsBreakdownItem, OperationAnalyticsInsightItem, OperationAnalyticsQuestionSummary, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
 
 type ApiErrorResponse = {
   code?: string;
@@ -104,6 +104,70 @@ type CallJobPageApiResponse = {
   totalPages: number;
   page: number;
   size: number;
+};
+
+type CallJobSurveyResponseApiResponse = {
+  id: string;
+  status: "PARTIAL" | "COMPLETED" | "INVALID" | "ABANDONED";
+  completionPercent: number;
+  answerCount: number;
+  validAnswerCount: number;
+  usableResponse: boolean;
+  startedAt: string;
+  completedAt: string | null;
+  aiSummaryText: string | null;
+  transcriptText: string | null;
+};
+
+type CallJobAttemptApiResponse = {
+  id: string;
+  attemptNumber: number;
+  latest: boolean;
+  provider: string;
+  providerCallId: string | null;
+  status: string;
+  dialedAt: string | null;
+  connectedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  hangupReason: string | null;
+  failureReason: string | null;
+  transcriptStorageKey: string | null;
+  surveyResponse: CallJobSurveyResponseApiResponse | null;
+};
+
+type CallJobDetailApiResponse = {
+  id: string;
+  companyId: string;
+  operationId: string;
+  operationName: string;
+  surveyId: string;
+  surveyName: string;
+  operationContactId: string;
+  personName: string;
+  phoneNumber: string;
+  status: CallJobApiStatus;
+  rawStatus: string;
+  scheduledFor: string;
+  availableAt: string;
+  attemptCount: number;
+  maxAttempts: number;
+  firstAttempt: boolean;
+  retried: boolean;
+  latestProviderCallId: string | null;
+  latestTranscriptStorageKey: string | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  failed: boolean;
+  failureReason: string | null;
+  retryable: boolean;
+  partialResponseDataExists: boolean;
+  transcriptSummary: string | null;
+  transcriptText: string | null;
+  surveyResponse: CallJobSurveyResponseApiResponse | null;
+  createdAt: string;
+  updatedAt: string;
+  attempts: CallJobAttemptApiResponse[];
 };
 type OperationAnalyticsBreakdownItemApiResponse = {
   key: string;
@@ -209,6 +273,39 @@ export type CallJobPage = {
   page: number;
   size: number;
 };
+
+export async function fetchOperationCallJobDetail(
+  operationId: string,
+  callJobId: string,
+  companyId?: string,
+  init?: RequestInit,
+): Promise<CallJobDetail> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const response = await fetchJson<CallJobDetailApiResponse>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/jobs/${callJobId}?companyId=${resolvedCompanyId}`,
+    init,
+    "call job detail",
+  );
+
+  return mapCallJobDetailDto(response);
+}
+
+export async function retryOperationCallJob(
+  operationId: string,
+  callJobId: string,
+  companyId?: string,
+): Promise<CallJobDetail> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const response = await fetchJson<CallJobDetailApiResponse>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/jobs/${callJobId}/retry?companyId=${resolvedCompanyId}`,
+    {
+      method: "POST",
+    },
+    "call job retry",
+  );
+
+  return mapCallJobDetailDto(response);
+}
 
 export async function fetchCompanyOperations(
   companyId?: string,
@@ -597,6 +694,7 @@ function mapOperationContactDtoToContact(dto: OperationContactApiResponse): Oper
 function mapCallJobDtoToCallJob(dto: CallJobApiResponse): CallJob {
   return {
     id: dto.id,
+    operationId: dto.operationId,
     operationContactId: dto.operationContactId,
     personName: dto.personName,
     phoneNumber: dto.phoneNumber,
@@ -609,6 +707,79 @@ function mapCallJobDtoToCallJob(dto: CallJobApiResponse): CallJob {
     lastResultSummary: dto.lastResultSummary,
     createdAt: formatDateTime(dto.createdAt),
     updatedAt: formatDateTime(dto.updatedAt),
+  };
+}
+
+function mapCallJobDetailDto(dto: CallJobDetailApiResponse): CallJobDetail {
+  return {
+    id: dto.id,
+    operationId: dto.operationId,
+    operationName: dto.operationName,
+    surveyId: dto.surveyId,
+    surveyName: dto.surveyName,
+    operationContactId: dto.operationContactId,
+    personName: dto.personName,
+    phoneNumber: dto.phoneNumber,
+    status: mapCallJobStatus(dto.status),
+    rawStatus: dto.rawStatus,
+    scheduledFor: formatDateTime(dto.scheduledFor),
+    availableAt: formatDateTime(dto.availableAt),
+    attemptCount: dto.attemptCount,
+    maxAttempts: dto.maxAttempts,
+    firstAttempt: dto.firstAttempt,
+    retried: dto.retried,
+    latestProviderCallId: dto.latestProviderCallId,
+    latestTranscriptStorageKey: dto.latestTranscriptStorageKey,
+    lastErrorCode: dto.lastErrorCode,
+    lastErrorMessage: dto.lastErrorMessage,
+    failed: dto.failed,
+    failureReason: dto.failureReason,
+    retryable: dto.retryable,
+    partialResponseDataExists: dto.partialResponseDataExists,
+    transcriptSummary: dto.transcriptSummary,
+    transcriptText: dto.transcriptText,
+    surveyResponse: mapCallJobSurveyResponse(dto.surveyResponse),
+    createdAt: formatDateTime(dto.createdAt),
+    updatedAt: formatDateTime(dto.updatedAt),
+    attempts: (dto.attempts ?? []).map(mapCallJobAttempt),
+  };
+}
+
+function mapCallJobAttempt(dto: CallJobAttemptApiResponse): CallJobAttempt {
+  return {
+    id: dto.id,
+    attemptNumber: dto.attemptNumber,
+    latest: dto.latest,
+    provider: dto.provider,
+    providerCallId: dto.providerCallId,
+    status: dto.status,
+    dialedAt: formatDateTime(dto.dialedAt),
+    connectedAt: formatDateTime(dto.connectedAt),
+    endedAt: formatDateTime(dto.endedAt),
+    durationSeconds: dto.durationSeconds,
+    hangupReason: dto.hangupReason,
+    failureReason: dto.failureReason,
+    transcriptStorageKey: dto.transcriptStorageKey,
+    surveyResponse: mapCallJobSurveyResponse(dto.surveyResponse),
+  };
+}
+
+function mapCallJobSurveyResponse(dto: CallJobSurveyResponseApiResponse | null): CallJobSurveyResponse | null {
+  if (!dto) {
+    return null;
+  }
+
+  return {
+    id: dto.id,
+    status: dto.status,
+    completionPercent: dto.completionPercent,
+    answerCount: dto.answerCount,
+    validAnswerCount: dto.validAnswerCount,
+    usableResponse: dto.usableResponse,
+    startedAt: formatDateTime(dto.startedAt),
+    completedAt: formatDateTime(dto.completedAt),
+    aiSummaryText: dto.aiSummaryText,
+    transcriptText: dto.transcriptText,
   };
 }
 

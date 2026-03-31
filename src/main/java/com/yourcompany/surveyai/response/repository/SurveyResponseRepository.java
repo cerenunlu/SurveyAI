@@ -2,6 +2,7 @@ package com.yourcompany.surveyai.response.repository;
 
 import com.yourcompany.surveyai.response.domain.entity.SurveyResponse;
 import com.yourcompany.surveyai.response.domain.enums.SurveyResponseStatus;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +21,8 @@ public interface SurveyResponseRepository extends JpaRepository<SurveyResponse, 
     List<SurveyResponse> findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID operationId);
 
     Optional<SurveyResponse> findByCallAttempt_IdAndDeletedAtIsNull(UUID callAttemptId);
+
+    List<SurveyResponse> findAllByCallAttempt_IdInAndDeletedAtIsNull(Collection<UUID> callAttemptIds);
 
     boolean existsBySurvey_IdAndDeletedAtIsNull(UUID surveyId);
 }

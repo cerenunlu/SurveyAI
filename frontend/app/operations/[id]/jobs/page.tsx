@@ -26,10 +26,10 @@ const jobColumns: TableColumn<CallJob>[] = [
     key: "person",
     label: "Kisi",
     render: (job) => (
-      <div>
+      <Link href={`/operations/${job.operationId ?? ""}/jobs/${job.id}`} className="table-link-block">
         <div className="table-title">{job.personName}</div>
         <div className="table-subtitle">{job.phoneNumber}</div>
-      </div>
+      </Link>
     ),
   },
   {
@@ -65,6 +65,15 @@ const jobColumns: TableColumn<CallJob>[] = [
         <div className="table-title">{job.lastErrorMessage ?? job.lastResultSummary ?? "Sonuc henuz yok"}</div>
         <div className="table-subtitle">{job.lastErrorCode ? `Hata kodu: ${job.lastErrorCode}` : "Durum ozeti"}</div>
       </div>
+    ),
+  },
+  {
+    key: "detail",
+    label: "Detay",
+    render: (job) => (
+      <Link href={`/operations/${job.operationId ?? ""}/jobs/${job.id}`} className="button-secondary compact-button table-action-link">
+        Incele
+      </Link>
     ),
   },
 ];

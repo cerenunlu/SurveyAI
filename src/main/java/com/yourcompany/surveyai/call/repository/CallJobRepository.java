@@ -21,5 +21,7 @@ public interface CallJobRepository extends JpaRepository<CallJob, UUID>, JpaSpec
 
     List<CallJob> findAllByOperationContact_IdAndDeletedAtIsNull(UUID operationContactId);
 
+    Optional<CallJob> findByIdAndOperation_IdAndCompany_IdAndDeletedAtIsNull(UUID id, UUID operationId, UUID companyId);
+
     Optional<CallJob> findByIdempotencyKeyAndDeletedAtIsNull(String idempotencyKey);
 }

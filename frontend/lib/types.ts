@@ -131,6 +131,7 @@ export type OperationContact = {
 
 export type CallJob = {
   id: string;
+  operationId: string;
   operationContactId: string;
   personName: string;
   phoneNumber: string;
@@ -143,6 +144,69 @@ export type CallJob = {
   lastResultSummary: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type CallJobSurveyResponse = {
+  id: string;
+  status: "PARTIAL" | "COMPLETED" | "INVALID" | "ABANDONED";
+  completionPercent: number;
+  answerCount: number;
+  validAnswerCount: number;
+  usableResponse: boolean;
+  startedAt: string;
+  completedAt: string;
+  aiSummaryText: string | null;
+  transcriptText: string | null;
+};
+
+export type CallJobAttempt = {
+  id: string;
+  attemptNumber: number;
+  latest: boolean;
+  provider: string;
+  providerCallId: string | null;
+  status: string;
+  dialedAt: string;
+  connectedAt: string;
+  endedAt: string;
+  durationSeconds: number | null;
+  hangupReason: string | null;
+  failureReason: string | null;
+  transcriptStorageKey: string | null;
+  surveyResponse: CallJobSurveyResponse | null;
+};
+
+export type CallJobDetail = {
+  id: string;
+  operationId: string;
+  operationName: string;
+  surveyId: string;
+  surveyName: string;
+  operationContactId: string;
+  personName: string;
+  phoneNumber: string;
+  status: CallJob["status"];
+  rawStatus: string;
+  scheduledFor: string;
+  availableAt: string;
+  attemptCount: number;
+  maxAttempts: number;
+  firstAttempt: boolean;
+  retried: boolean;
+  latestProviderCallId: string | null;
+  latestTranscriptStorageKey: string | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  failed: boolean;
+  failureReason: string | null;
+  retryable: boolean;
+  partialResponseDataExists: boolean;
+  transcriptSummary: string | null;
+  transcriptText: string | null;
+  surveyResponse: CallJobSurveyResponse | null;
+  createdAt: string;
+  updatedAt: string;
+  attempts: CallJobAttempt[];
 };
 
 export type Contact = {

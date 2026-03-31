@@ -1,6 +1,7 @@
 package com.yourcompany.surveyai.call.api;
 
 import com.yourcompany.surveyai.call.application.dto.response.CallJobListStatusDto;
+import com.yourcompany.surveyai.call.application.dto.response.CallJobDetailResponseDto;
 import com.yourcompany.surveyai.call.application.dto.response.CallJobPageResponseDto;
 import com.yourcompany.surveyai.call.application.service.CallJobService;
 import java.util.UUID;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PostMapping;
 
 @RestController
 @RequestMapping("/api/v1/operations/{operationId}/jobs")
@@ -42,5 +44,23 @@ public class CallJobController {
                 sortBy,
                 direction
         ));
+    }
+
+    @GetMapping("/{callJobId}")
+    public ResponseEntity<CallJobDetailResponseDto> getOperationCallJobDetail(
+            @PathVariable UUID operationId,
+            @PathVariable UUID callJobId,
+            @RequestParam UUID companyId
+    ) {
+        return ResponseEntity.ok(callJobService.getOperationCallJobDetail(companyId, operationId, callJobId));
+    }
+
+    @PostMapping("/{callJobId}/retry")
+    public ResponseEntity<CallJobDetailResponseDto> retryOperationCallJob(
+            @PathVariable UUID operationId,
+            @PathVariable UUID callJobId,
+            @RequestParam UUID companyId
+    ) {
+        return ResponseEntity.ok(callJobService.retryOperationCallJob(companyId, operationId, callJobId));
     }
 }

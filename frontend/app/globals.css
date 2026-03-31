@@ -4550,6 +4550,69 @@ body::after {
   gap: 14px;
 }
 
+.table-link-block {
+  display: grid;
+  gap: 4px;
+}
+
+.table-action-link {
+  white-space: nowrap;
+}
+
+.call-job-detail-grid {
+  align-items: start;
+}
+
+.call-job-transcript {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid rgba(138, 164, 196, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.call-job-transcript pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-muted);
+  font-family: var(--font-body), sans-serif;
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.call-job-attempt-list {
+  display: grid;
+  gap: 14px;
+}
+
+.call-job-attempt-card {
+  display: grid;
+  gap: 14px;
+}
+
+.call-job-attempt-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.call-job-attempt-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.call-job-attempt-body {
+  display: grid;
+  gap: 10px;
+}
+
 @media (max-width: 1080px) {
   .operation-kpi-grid,
   .operation-question-grid,
@@ -4557,6 +4620,11 @@ body::after {
   .operation-execution-summary-grid-expanded,
   .operation-analytics-grid {
     grid-template-columns: 1fr;
+  }
+
+  .call-job-attempt-head {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
