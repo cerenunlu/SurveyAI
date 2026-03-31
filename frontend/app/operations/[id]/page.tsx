@@ -37,6 +37,21 @@ type ChecklistItem = {
   ready: boolean;
 };
 
+type ExecutionEventItem = {
+  key: string;
+  label: string;
+  detail: string;
+};
+
+const operationContactStatusLabelKeyMap: Record<string, string> = {
+  Active: "active",
+  Completed: "completed",
+  Failed: "failed",
+  Retry: "retry",
+  Invalid: "invalid",
+  Pending: "pending",
+};
+
 export default function OperationDetailPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
@@ -115,6 +130,8 @@ export default function OperationDetailPage() {
 
   const contactCount = contactSummary?.totalContacts ?? 0;
   const hasContacts = contactCount > 0;
+  const latestContacts = contactSummary?.latestContacts ?? [];
+  const contactStatusCards = contactSummary?.statusCounts ?? [];
   const checklist = useMemo<ChecklistItem[]>(() => {
     if (!operation) {
       return [];
@@ -157,6 +174,50 @@ export default function OperationDetailPage() {
   const readinessToneClass = operation?.readiness.readyToStart
     ? "operation-readiness-pill is-ready"
     : "operation-readiness-pill is-blocked";
+  const readinessLabel = operation?.readiness.readyToStart
+    ? "Baslatmaya hazir"
+    : operation
+      ? "Hazirlik eksikleri var"
+      : "Kontrol ediliyor";
+  const startButtonLabel = operation?.status === "Running"
+    ? "Operasyon yurutuluyor"
+    : isStarting
+      ? "Operasyon baslatiliyor..."
+      : operation?.readiness.readyToStart
+        ? "Operasyonu baslat"
+        : "Hazirlik eksiklerini tamamla";
+  const executionEventStatus = operation?.startedAt
+    ? "Running"
+    : operation?.readiness.readyToStart
+      ? "Ready"
+      : "Pending";
+  const executionEvents = useMemo<ExecutionEventItem[]>(() => {
+    if (!operation) {
+      return [];
+    }
+
+    return [
+      {
+        key: "state-transition",
+        label: "Durum gecisi",
+        detail: operation.startedAt
+          ? "Operasyon RUNNING durumuna alindi ve aktif yurutme kaydi acildi."
+          : "Baslatma aninda operasyon RUNNING durumuna gecirilir.",
+      },
+      {
+        key: "job-preparation",
+        label: "Is hazirligi",
+        detail: operation.executionSummary.totalCallJobs > 0
+          ? `${operation.executionSummary.totalCallJobs} call-job kaydi hazirlandi; ${operation.executionSummary.pendingCallJobs} is halen acik durumda.`
+          : "Her kisi icin tekil call-job kaydi PENDING olarak hazirlanir.",
+      },
+      {
+        key: "provider-scope",
+        label: "MVP siniri",
+        detail: "Bu adim sadece orkestrasyon ve durum yonetimini baslatir; henuz gercek sesli arama tetiklenmez.",
+      },
+    ];
+  }, [operation]);
 
   const pageHeader = useMemo(
     () => ({
@@ -365,7 +426,7 @@ export default function OperationDetailPage() {
   return (
     <PageContainer>
       <section className="hero-card is-compact operation-workspace-hero operation-command-deck">
-        <div className="eyebrow">Operation Control Surface</div>
+        <div className="eyebrow">Operasyon Kontrol Yuzeyi</div>
         <div className="operation-first-view-grid">
           <div className="operation-overview-card operation-summary-surface">
             <div className="operation-overview-card-head">
@@ -373,15 +434,13 @@ export default function OperationDetailPage() {
                 <span className="operation-kicker">Operasyon ozeti</span>
                 <h3>Hazirliktan yurutmeye tek bakista gecis</h3>
               </div>
-              <span className={readinessToneClass}>
-                {operation?.readiness.readyToStart ? "Baslatmaya hazir" : operation ? "Eksikler var" : "Kontrol ediliyor"}
-              </span>
+              <span className={readinessToneClass}>{readinessLabel}</span>
             </div>
 
             <div className="operation-workspace-summary-list operation-overview-summary-list">
               <div className="operation-summary-row">
                 <span>Durum</span>
-                <strong><StatusBadge status={operation?.status ?? "Pending"} /></strong>
+                <strong><StatusBadge status={operation?.status ?? "Draft"} /></strong>
               </div>
               <div className="operation-summary-row">
                 <span>Bagli anket</span>
@@ -396,10 +455,13 @@ export default function OperationDetailPage() {
                 <strong>{operation ? String(operation.executionSummary.totalCallJobs) : "..."}</strong>
               </div>
             </div>
-
             <div className="operation-summary-note">
-              <span>Operasyon notu</span>
-              <strong>{operation?.summary?.trim() || "Operasyon yuklenirken hazirlik notu olusturuluyor."}</strong>
+              <span>Hazirlik karari</span>
+              <strong>
+                {operation?.readiness.readyToStart
+                  ? "Anket, kisi havuzu ve operasyon durumu baslatma icin uygun. Tek aksiyonla yurutmeye gecilebilir."
+                  : operation?.summary?.trim() || "Operasyon yuklenirken hazirlik notu olusturuluyor."}
+              </strong>
             </div>
 
             <div className="operation-readiness-checklist">
@@ -424,11 +486,10 @@ export default function OperationDetailPage() {
                 <h3>Operasyonu baslat</h3>
               </div>
             </div>
-
             <div className="operation-start-panel">
               <p className="operation-next-step-text">
                 {operation?.readiness.readyToStart
-                  ? "Tum temel kosullar saglandi. Baslatma aksiyonu operasyonu RUNNING durumuna alir ve kisi bazli cagri islerini kuyruga hazirlar."
+                  ? "Tum temel kosullar saglandi. Baslatma aksiyonu operasyonu RUNNING durumuna alir, kisi bazli call-job kayitlarini hazirlar ve orkestrasyon akisini acik duruma getirir."
                   : operation?.readiness.blockingReasons.join(" ") || "Operasyon durumu kontrol ediliyor."}
               </p>
 
@@ -438,8 +499,20 @@ export default function OperationDetailPage() {
                 disabled={!operation?.readiness.readyToStart || isStarting}
                 onClick={() => void handleStartOperation()}
               >
-                {isStarting ? "Operasyon baslatiliyor..." : "Operasyonu baslat"}
+                {startButtonLabel}
               </button>
+
+              <div className="operation-contact-glimpse-list">
+                {executionEvents.map((item) => (
+                  <div key={item.key} className="operation-contact-glimpse-item">
+                    <div>
+                      <strong>{item.label}</strong>
+                      <span>{item.detail}</span>
+                    </div>
+                    <StatusBadge status={executionEventStatus} />
+                  </div>
+                ))}
+              </div>
 
               {!operation?.readiness.readyToStart ? (
                 <div className="operation-blocker-list">
@@ -469,12 +542,12 @@ export default function OperationDetailPage() {
 
             <div className="operation-execution-summary-grid">
               <div className="operation-contact-status-card">
-                <span>Bekleyen is</span>
+                <span>Acik call-job</span>
                 <strong>{operation?.executionSummary.pendingCallJobs ?? 0}</strong>
               </div>
               <div className="operation-contact-status-card">
-                <span>Yeni hazirlanan is</span>
-                <strong>{operation?.executionSummary.newlyPreparedCallJobs ?? 0}</strong>
+                <span>Toplam hazirlanan is</span>
+                <strong>{operation?.executionSummary.totalCallJobs ?? 0}</strong>
               </div>
             </div>
 
@@ -663,33 +736,91 @@ export default function OperationDetailPage() {
 
         <SectionCard
           title="Anket ve yurutme referansi"
-          description="Bu operasyonun bagli anketi ve yurutme hazirligi tek blokta ozetlenir."
+          description="Bu operasyonun bagli anketi, kisi havuzu ve baslatma sonrasi teknik iskele ayni blokta ozetlenir."
         >
           {operation ? (
-            <div className="operation-survey-summary operation-workspace-survey-card">
-              <div className="operation-survey-summary-head">
-                <div>
-                  <strong>{operation.survey}</strong>
-                  <span>{operation.surveyGoal?.trim() || "Bu operasyon icin ek anket aciklamasi bulunmuyor."}</span>
+            <div className="operation-contact-summary-block">
+              <div className="operation-survey-summary operation-workspace-survey-card">
+                <div className="operation-survey-summary-head">
+                  <div>
+                    <strong>{operation.survey}</strong>
+                    <span>{operation.surveyGoal?.trim() || "Bu operasyon icin ek anket aciklamasi bulunmuyor."}</span>
+                  </div>
+                  <StatusBadge status={operation.surveyStatus ?? "Draft"} />
                 </div>
-                <StatusBadge status={operation.surveyStatus ?? "Draft"} />
+                <div className="operation-summary-metrics operation-control-metrics">
+                  <div className="mini-metric">
+                    <span>Anket durumu</span>
+                    <strong>{operation.surveyStatus ?? "Bilinmiyor"}</strong>
+                  </div>
+                  <div className="mini-metric">
+                    <span>Son anket guncellemesi</span>
+                    <strong>{operation.surveyUpdatedAt ?? "Bilinmiyor"}</strong>
+                  </div>
+                  <div className="mini-metric">
+                    <span>Baslangic izi</span>
+                    <strong>{operation.startedAt ? new Date(operation.startedAt).toLocaleString("tr-TR") : "Henuz baslatilmadi"}</strong>
+                  </div>
+                  <div className="mini-metric">
+                    <span>Hazirlanan toplam is</span>
+                    <strong>{operation.executionSummary.totalCallJobs}</strong>
+                  </div>
+                </div>
               </div>
-              <div className="operation-summary-metrics operation-control-metrics">
-                <div className="mini-metric">
-                  <span>Anket durumu</span>
-                  <strong>{operation.surveyStatus ?? "Bilinmiyor"}</strong>
+
+              <div className="operation-contact-summary-grid">
+                <div className="operation-contact-status-card">
+                  <span>Toplam kisi</span>
+                  <strong>{contactCount}</strong>
                 </div>
-                <div className="mini-metric">
-                  <span>Son anket guncellemesi</span>
-                  <strong>{operation.surveyUpdatedAt ?? "Bilinmiyor"}</strong>
+                <div className="operation-contact-status-card">
+                  <span>Hazirlik durumu</span>
+                  <strong>{operation.readiness.readyToStart ? "Hazir" : "Beklemede"}</strong>
                 </div>
-                <div className="mini-metric">
-                  <span>Baslangic izi</span>
-                  <strong>{operation.startedAt ? new Date(operation.startedAt).toLocaleString("tr-TR") : "Henuz baslatilmadi"}</strong>
+                {contactStatusCards.map((item) => (
+                  <div key={item.status} className="operation-contact-status-card">
+                    <span>{t(`shell.status.${operationContactStatusLabelKeyMap[item.status] ?? "pending"}`)}</span>
+                    <strong>{item.count}</strong>
+                  </div>
+                ))}
+              </div>
+
+              <div className="operation-contact-glimpse-list">
+                {executionEvents.map((item) => (
+                  <div key={`event-${item.key}`} className="operation-contact-glimpse-item">
+                    <div>
+                      <strong>{item.label}</strong>
+                      <span>{item.detail}</span>
+                    </div>
+                    <StatusBadge status={operation.startedAt ? "Running" : "Ready"} />
+                  </div>
+                ))}
+              </div>
+
+              <div className="operation-contact-glimpse">
+                <div className="operation-contact-glimpse-head">
+                  <strong>Son kisi kayitlari</strong>
+                  <span>{latestContacts.length > 0 ? "Hazirlanan son havuz" : "Henuz kisi eklenmedi"}</span>
                 </div>
-                <div className="mini-metric">
-                  <span>Hazirlanan toplam is</span>
-                  <strong>{operation.executionSummary.totalCallJobs}</strong>
+
+                <div className="operation-contact-glimpse-list">
+                  {latestContacts.length > 0 ? latestContacts.map((contact) => (
+                    <div key={contact.id} className="operation-contact-glimpse-item">
+                      <div>
+                        <strong>{contact.name}</strong>
+                        <span>{contact.phoneNumber}</span>
+                      </div>
+                      <StatusBadge status={contact.status} />
+                    </div>
+                  )) : (
+                    <div className="operation-contact-glimpse-item">
+                      <div>
+                        <strong>Kisi havuzu bos</strong>
+                        <span>Readiness durumunu acmak icin bu operasyona en az bir kisi ekleyin.</span>
+                      </div>
+                      <StatusBadge status="Pending" />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -724,7 +855,6 @@ function createImportSummaryFromRows(rows: ImportPreviewRow[], ignoredRows: numb
     duplicateInOperationRows,
   };
 }
-
 
 
 

@@ -28,6 +28,7 @@ import jakarta.validation.Validator;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -37,6 +38,19 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class OperationServiceImpl implements OperationService {
+
+    private static final Set<OperationStatus> STARTABLE_STATUSES = EnumSet.of(
+            OperationStatus.DRAFT,
+            OperationStatus.READY,
+            OperationStatus.SCHEDULED
+    );
+
+    private static final Set<CallJobStatus> OPEN_CALL_JOB_STATUSES = EnumSet.of(
+            CallJobStatus.PENDING,
+            CallJobStatus.QUEUED,
+            CallJobStatus.IN_PROGRESS,
+            CallJobStatus.RETRY
+    );
 
     private final OperationRepository operationRepository;
     private final OperationContactRepository operationContactRepository;
@@ -151,7 +165,7 @@ public class OperationServiceImpl implements OperationService {
             job.setOperationContact(contact);
             job.setStatus(CallJobStatus.PENDING);
             job.setPriority((short) 5);
-            job.setScheduledFor(operation.getScheduledAt() != null ? operation.getScheduledAt() : startedAt);
+            job.setScheduledFor(startedAt);
             job.setAvailableAt(startedAt);
             job.setAttemptCount(0);
             job.setMaxAttempts(3);
@@ -213,7 +227,8 @@ public class OperationServiceImpl implements OperationService {
                 || operation.getStatus() == OperationStatus.COMPLETED
                 || operation.getStatus() == OperationStatus.FAILED
                 || operation.getStatus() == OperationStatus.CANCELLED
-                || operation.getStatus() == OperationStatus.PAUSED) {
+                || operation.getStatus() == OperationStatus.PAUSED
+                || operation.getStatus() == OperationStatus.SCHEDULED) {
             return;
         }
 
@@ -231,8 +246,7 @@ public class OperationServiceImpl implements OperationService {
         boolean surveyLinked = operation.getSurvey() != null;
         boolean surveyPublished = surveyLinked && operation.getSurvey().getStatus() == SurveyStatus.PUBLISHED;
         boolean contactsLoaded = contactCount > 0;
-        boolean startableState = operation.getStatus() == OperationStatus.DRAFT
-                || operation.getStatus() == OperationStatus.READY;
+        boolean startableState = STARTABLE_STATUSES.contains(operation.getStatus());
 
         List<String> blockingReasons = new ArrayList<>();
         if (!surveyLinked) {
@@ -245,7 +259,7 @@ public class OperationServiceImpl implements OperationService {
             blockingReasons.add("Operasyonu baslatmak icin en az bir kisi gerekli.");
         }
         if (!startableState) {
-            blockingReasons.add("Operasyonun mevcut durumu baslatmaya uygun degil.");
+            blockingReasons.add(buildStateBlockingReason(operation.getStatus()));
         }
 
         return new OperationReadinessDto(
@@ -261,7 +275,7 @@ public class OperationServiceImpl implements OperationService {
     private OperationExecutionSummaryDto buildExecutionSummary(Operation operation, List<CallJob> newJobs) {
         List<CallJob> callJobs = callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operation.getId());
         long pendingCount = callJobs.stream()
-                .filter(job -> job.getStatus() == CallJobStatus.PENDING || job.getStatus() == CallJobStatus.QUEUED)
+                .filter(job -> OPEN_CALL_JOB_STATUSES.contains(job.getStatus()))
                 .count();
 
         return new OperationExecutionSummaryDto(
@@ -287,6 +301,17 @@ public class OperationServiceImpl implements OperationService {
                 buildReadiness(operation, contactCount),
                 buildExecutionSummary(operation, newJobs)
         );
+    }
+
+    private String buildStateBlockingReason(OperationStatus status) {
+        return switch (status) {
+            case RUNNING -> "Operasyon zaten yurutmede.";
+            case COMPLETED -> "Tamamlanmis operasyon yeniden baslatilamaz.";
+            case FAILED -> "Basarisiz operasyon once incelenmeli.";
+            case PAUSED -> "Duraklatilmis operasyon devam ettirilmeden yeniden baslatilamaz.";
+            case CANCELLED -> "Iptal edilmis operasyon yeniden baslatilamaz.";
+            default -> "Operasyonun mevcut durumu baslatmaya uygun degil.";
+        };
     }
 }
 
