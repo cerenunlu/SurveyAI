@@ -141,7 +141,7 @@ export default function OperationJobsPage() {
           return;
         }
 
-        const message = error instanceof Error ? error.message : "Call job listesi yuklenemedi.";
+        const message = error instanceof Error ? error.message : "Çağrı işi listesi yüklenemedi.";
         if (message.includes("(404)")) {
           setIsMissing(true);
           return;
@@ -170,18 +170,18 @@ export default function OperationJobsPage() {
       {errorMessage ? (
         <section className="panel-card">
           <div className="operation-inline-message is-danger">
-            <strong>Call job listesi yuklenemedi</strong>
+            <strong>Çağrı işi listesi yüklenemedi</strong>
             <span>{errorMessage}</span>
           </div>
         </section>
       ) : null}
 
       <SectionCard
-        title="Operasyon call job listesi"
-        description="Arama, durum filtresi, zaman siralama ve sayfalama ayni ekranda sunulur."
+        title="Operasyon çağrı işi listesi"
+        description="Arama, durum filtresi, zaman sıralama ve sayfalama aynı ekranda sunulur."
         action={(
           <Link href={`/operations/${operationId}`} className="button-secondary compact-button">
-            Operasyona don
+            Operasyona dön
           </Link>
         )}
       >
@@ -205,7 +205,7 @@ export default function OperationJobsPage() {
             <input
               value={queryInput}
               onChange={(event) => setQueryInput(event.target.value)}
-              placeholder="Kisi adi veya telefon ara"
+              placeholder="Kişi adı veya telefon ara"
             />
           </label>
 
@@ -226,7 +226,7 @@ export default function OperationJobsPage() {
           </div>
 
           <label className="builder-field" style={{ minWidth: 220 }}>
-            <strong>Siralama</strong>
+            <strong>Sıralama</strong>
             <select
               value={`${sortBy}:${direction}`}
               onChange={(event) => {
@@ -236,10 +236,10 @@ export default function OperationJobsPage() {
                 setDirection(nextDirection);
               }}
             >
-              <option value="updatedAt:desc">Son guncellenen once</option>
-              <option value="updatedAt:asc">Ilk guncellenen once</option>
-              <option value="createdAt:desc">Son olusturulan once</option>
-              <option value="createdAt:asc">Ilk olusturulan once</option>
+              <option value="updatedAt:desc">Son güncellenen önce</option>
+              <option value="updatedAt:asc">İlk güncellenen önce</option>
+              <option value="createdAt:desc">Son oluşturulan önce</option>
+              <option value="createdAt:asc">İlk oluşturulan önce</option>
             </select>
           </label>
         </div>
@@ -247,8 +247,8 @@ export default function OperationJobsPage() {
         {isLoading ? (
           <div className="list-item">
             <div>
-              <strong>Call job listesi yukleniyor</strong>
-              <span>Secili operasyonun isleri backend uzerinden sayfali olarak cekiliyor.</span>
+              <strong>Çağrı işi listesi yükleniyor</strong>
+              <span>Seçili operasyonun işleri backend üzerinden sayfalı olarak çekiliyor.</span>
             </div>
           </div>
         ) : !jobsPage || jobsPage.totalItems === 0 ? (
@@ -270,7 +270,7 @@ export default function OperationJobsPage() {
                 disabled={jobsPage.page === 0}
                 onClick={() => setPage((current) => Math.max(current - 1, 0))}
               >
-                Onceki
+                Önceki
               </button>
               <span className="operation-pagination-meta">
                 {jobsPage.page * jobsPage.size + 1}
@@ -302,35 +302,35 @@ function getEmptyState(
 ): { title: string; description: string } {
   if (query || statusFilter !== "All") {
     return {
-      title: "Eslesen call job bulunamadi",
-      description: "Arama veya durum filtrelerini temizleyerek tum kayitlari tekrar goruntuleyebilirsiniz.",
+      title: "Eşleşen çağrı işi bulunamadı",
+      description: "Arama veya durum filtrelerini temizleyerek tüm kayıtları tekrar görüntüleyebilirsiniz.",
     };
   }
 
   if (!operation) {
     return {
-      title: "Call job listesi henuz hazir degil",
-      description: "Operasyon bilgisi yuklendikten sonra liste durumu gosterilecektir.",
+      title: "Çağrı işi listesi henüz hazır değil",
+      description: "Operasyon bilgisi yüklendikten sonra liste durumu gösterilecektir.",
     };
   }
 
   if (operation.status !== "Running" && operation.executionSummary.totalCallJobs === 0) {
     return {
-      title: "Call job henuz olusturulmadi",
-      description: "Bu operasyon henuz baslatilmadi. Operasyonu baslattiginizda kisi bazli call job kayitlari burada olusur.",
+      title: "Çağrı işi henüz oluşturulmadı",
+      description: "Bu operasyon henüz başlatılmadı. Operasyonu başlattığınızda kişi bazlı çağrı işi kayıtları burada oluşur.",
     };
   }
 
   if (operation.executionSummary.totalCallJobs === 0) {
     return {
-      title: "Hazirlanan aktif is yok",
-      description: "Operasyon baslatilmis olsa da su anda izlenebilir bir call job kaydi bulunmuyor.",
+      title: "Hazırlanan aktif iş yok",
+      description: "Operasyon başlatılmış olsa da şu anda izlenebilir bir çağrı işi kaydı bulunmuyor.",
     };
   }
 
   return {
-    title: "Listelenecek call job yok",
-    description: "Bu operasyon icin henuz goruntulenecek bir kayit bulunmuyor.",
+    title: "Listelenecek çağrı işi yok",
+    description: "Bu operasyon için henüz görüntülenecek bir kayıt bulunmuyor.",
   };
 }
 

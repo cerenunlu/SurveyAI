@@ -459,7 +459,7 @@ export default function OperationDetailPage() {
   return (
     <PageContainer>
       <section className="hero-card is-compact operation-workspace-hero operation-command-deck">
-        <div className="eyebrow">Operation Detail</div>
+        <div className="eyebrow">Operasyon Detayı</div>
         <div className="operation-first-view-grid operation-first-view-grid-enhanced">
           <div className="operation-overview-card operation-summary-surface">
             <div className="operation-overview-card-head">

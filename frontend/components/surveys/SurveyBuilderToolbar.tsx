@@ -37,7 +37,7 @@ export function SurveyBuilderToolbar({
       <div className="builder-toolbar-context">
         <div className="builder-toolbar-copy">
           <strong>
-            {isPublished ? "Yayinlanmis anket goruntuleniyor" : survey.status === "Draft" ? "Taslak duzenleniyor" : "Anket duzenleniyor"}
+            {isPublished ? "Yayınlanmış anket görüntüleniyor" : survey.status === "Draft" ? "Taslak düzenleniyor" : "Anket düzenleniyor"}
           </strong>
         </div>
         <div className="builder-toolbar-meta">
@@ -58,7 +58,7 @@ export function SurveyBuilderToolbar({
           onClick={() => onPersist("draft")}
           disabled={disableMutations}
         >
-          {activeAction === "draft" ? "Kaydediliyor..." : "Taslak olarak birak"}
+          {activeAction === "draft" ? "Kaydediliyor..." : "Taslak olarak bırak"}
         </button>
         <button
           type="button"
@@ -74,13 +74,13 @@ export function SurveyBuilderToolbar({
           onClick={() => onPersist("publish")}
           disabled={isBusy || isPublished}
         >
-          {isPublished ? "Yayinlandi" : activeAction === "publish" ? "Yayinlaniyor..." : "Yayinla"}
+          {isPublished ? "Yayınlandı" : activeAction === "publish" ? "Yayınlanıyor..." : "Yayınla"}
         </button>
         <button
           type="button"
           className="button-secondary compact-button"
           disabled
-          title="Kopyalayarak yeni taslak olusturma akisi yakinda eklenecek."
+          title="Kopyalayarak yeni taslak oluşturma akışı yakında eklenecek."
         >
           Bu anketi kopyala
         </button>

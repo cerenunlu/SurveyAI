@@ -42,7 +42,7 @@ function mapSurveyDtoToSurvey(dto: SurveyApiResponse): Survey {
   return {
     id: dto.id,
     name: dto.name,
-    goal: dto.description?.trim() || "No description provided yet.",
+    goal: dto.description?.trim() || "Henüz açıklama eklenmedi.",
     status: mapSurveyStatus(dto.status),
     audience: dto.languageCode.toUpperCase(),
     completions: 0,
@@ -50,7 +50,7 @@ function mapSurveyDtoToSurvey(dto: SurveyApiResponse): Survey {
     updatedAt: formatUpdatedAt(dto.updatedAt),
     channels: [],
     questions: 0,
-    owner: "Unassigned",
+    owner: "Atanmadı",
   };
 }
 
@@ -69,10 +69,10 @@ function mapSurveyStatus(status: SurveyApiResponse["status"]): Survey["status"] 
 function formatUpdatedAt(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return "Recently updated";
+    return "Az önce güncellendi";
   }
 
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat("tr-TR", {
     month: "short",
     day: "numeric",
     year: "numeric",

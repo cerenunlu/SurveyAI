@@ -554,12 +554,12 @@ function hasActiveOptions(options: SurveyQuestionOptionApiResponse[]): boolean {
 
 function buildSuccessMessage(action: BuilderSaveAction, status: SurveyBuilderSurvey["status"]): string {
   if (action === "publish" || status === "Live") {
-    return "Anket yayinlandi.";
+    return "Anket yayınlandı.";
   }
   if (action === "draft") {
     return "Taslak kaydedildi.";
   }
-  return "Degisiklikler kaydedildi.";
+  return "Değişiklikler kaydedildi.";
 }
 
 function isUuid(value: string): boolean {
@@ -569,10 +569,10 @@ function isUuid(value: string): boolean {
 function formatDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return "Recently updated";
+    return "Az önce güncellendi";
   }
 
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat("tr-TR", {
     month: "short",
     day: "numeric",
     year: "numeric",

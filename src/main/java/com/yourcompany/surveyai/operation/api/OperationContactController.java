@@ -76,7 +76,7 @@ public class OperationContactController {
             @RequestParam UUID companyId
     ) {
         List<OperationContactResponseDto> contacts = operationContactService.listContacts(companyId, operationId);
-        StringBuilder csv = new StringBuilder("name,phoneNumber,status,createdAt,updatedAt\n");
+        StringBuilder csv = new StringBuilder("\uFEFFadSoyad,telefonNumarası,durum,oluşturulmaTarihi,güncellenmeTarihi\n");
 
         for (OperationContactResponseDto contact : contacts) {
             csv.append(escapeCsv(contact.name())).append(',')
@@ -88,10 +88,13 @@ public class OperationContactController {
 
         String filename = "operation-" + operationId + "-contacts.csv";
 
+        byte[] csvBytes = csv.toString().getBytes(StandardCharsets.UTF_8);
+
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-                .body(csv.toString().getBytes(StandardCharsets.UTF_8));
+                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(csvBytes.length))
+                .body(csvBytes);
     }
 
     private String escapeCsv(String value) {

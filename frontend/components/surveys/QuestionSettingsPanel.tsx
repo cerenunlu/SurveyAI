@@ -17,8 +17,8 @@ export function QuestionSettingsPanel({ question, onUpdate, readOnly = false }: 
       <aside className="builder-side-panel">
         <div className="builder-side-panel-header">
           <span className="builder-panel-kicker">Ayarlar</span>
-          <h3>Soru secin</h3>
-          <p>Canvas uzerinden bir soru secildiginde alan ayarlari burada gorunecek.</p>
+          <h3>Soru seçin</h3>
+          <p>Canvas üzerinden bir soru seçildiğinde alan ayarları burada görünecek.</p>
         </div>
       </aside>
     );
@@ -28,8 +28,8 @@ export function QuestionSettingsPanel({ question, onUpdate, readOnly = false }: 
     <aside className="builder-side-panel">
       <div className="builder-side-panel-header">
         <span className="builder-panel-kicker">Ayarlar</span>
-        <h3>{question.title || "Soru tipi secin"}</h3>
-        <p>Soru tipi, gereklilik ve alan davranisi gibi ayarlari bu panelden yonetin.</p>
+        <h3>{question.title || "Soru tipi seçin"}</h3>
+        <p>Soru tipi, gereklilik ve alan davranışı gibi ayarları bu panelden yönetin.</p>
       </div>
 
       <div className="builder-settings-stack">
@@ -38,7 +38,7 @@ export function QuestionSettingsPanel({ question, onUpdate, readOnly = false }: 
         <label className="builder-toggle-row">
           <div>
             <strong>Zorunlu soru</strong>
-            <p>Yanitsiz gecilemesin.</p>
+            <p>Yanıtsız geçilemesin.</p>
           </div>
           <button
             type="button"
@@ -65,8 +65,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "date") {
     return (
       <div className="builder-field-group">
-        <strong>Tarih davranisi</strong>
-        <p className="muted">Bu soru tarih secici olarak render edilecek ve takvim girdisine uygun gorunecek.</p>
+        <strong>Tarih davranışı</strong>
+        <p className="muted">Bu soru tarih seçici olarak render edilecek ve takvim girdisine uygun görünecek.</p>
       </div>
     );
   }
@@ -74,8 +74,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "full_name") {
     return (
       <div className="builder-field-group">
-        <strong>Yapisal alan</strong>
-        <p className="muted">Onizlemede ad ve soyad alanlari ayri olarak gosterilir; tek soru olarak kayit edilir.</p>
+        <strong>Yapısal alan</strong>
+        <p className="muted">Önizlemede ad ve soyad alanları ayrı olarak gösterilir; tek soru olarak kayıt edilir.</p>
       </div>
     );
   }
@@ -83,8 +83,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "phone") {
     return (
       <div className="builder-field-group">
-        <strong>Telefon formati</strong>
-        <p className="muted">Arayuz, ulke kodu icin uygun maskeleme hazirligi ile kurgulanmistir.</p>
+        <strong>Telefon formatı</strong>
+        <p className="muted">Arayüz, ülke kodu için uygun maskeleme hazırlığı ile kurgulanmıştır.</p>
       </div>
     );
   }
@@ -92,8 +92,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "number") {
     return (
       <div className="builder-field-group">
-        <strong>Sayisal giris</strong>
-        <p className="muted">Gelecekte min/max ve validasyon kurallari icin alan ayrildi.</p>
+        <strong>Sayısal giriş</strong>
+        <p className="muted">Gelecekte min/max ve validasyon kuralları için alan ayrıldı.</p>
       </div>
     );
   }
@@ -101,8 +101,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "yes_no") {
     return (
       <div className="builder-field-group">
-        <strong>Secim davranisi</strong>
-        <p className="muted">Bu soru ikili yanit akisi icin sabit Evet / Hayir secenekleri ile gelir.</p>
+        <strong>Seçim davranışı</strong>
+        <p className="muted">Bu soru ikili yanıt akışı için sabit Evet / Hayır seçenekleri ile gelir.</p>
       </div>
     );
   }
@@ -110,15 +110,15 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "dropdown") {
     return (
       <div className="builder-field-group">
-        <strong>Acilir menu davranisi</strong>
-        <p className="muted">Tek secim alir; secenekler kart icinde inline olarak duzenlenir.</p>
+        <strong>Açılır menü davranışı</strong>
+        <p className="muted">Tek seçim alır; seçenekler kart içinde inline olarak düzenlenir.</p>
       </div>
     );
   }
 
   return (
     <div className="builder-field-group">
-      <strong>Alan davranisi</strong>
+      <strong>Alan davranışı</strong>
       <p className="muted">{getInputHelp(question.type)}</p>
     </div>
   );
@@ -127,10 +127,10 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
 function getInputHelp(type: SurveyQuestionType) {
   switch (type) {
     case "long_text":
-      return "Daha uzun yorumlar icin buyuk bir metin alani kullanilir.";
+      return "Daha uzun yorumlar için büyük bir metin alanı kullanılır.";
     case "short_text":
-      return "Tek satirlik hizli yazi girisi olarak gosterilir.";
+      return "Tek satırlık hızlı yazı girişi olarak gösterilir.";
     default:
-      return "Bu alan tipi icin ek ayarlar sonraki entegrasyon adimlarinda genisletilebilir.";
+      return "Bu alan tipi için ek ayarlar sonraki entegrasyon adımlarında genişletilebilir.";
   }
 }

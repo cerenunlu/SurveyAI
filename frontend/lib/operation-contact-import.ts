@@ -74,13 +74,18 @@ export function buildPreviewRows(
   }
 
   const [headerRow, ...dataRows] = rows;
-  const nameColumnIndex = resolveColumnIndex(headerRow, ["adSoyad", "ad_soyad"]);
-  const phoneColumnIndex = resolveColumnIndex(headerRow, ["telefonNumarasi", "telefon", "phoneNumber"]);
+  const nameColumnIndex = resolveColumnIndex(headerRow, ["adSoyad", "ad_soyad", "ad soyad"]);
+  const phoneColumnIndex = resolveColumnIndex(headerRow, [
+    "telefonNumarasi",
+    "telefonNumarası",
+    "telefon",
+    "phoneNumber",
+  ]);
 
   if (nameColumnIndex === -1 || phoneColumnIndex === -1) {
     const reasonParts = [
-      nameColumnIndex === -1 ? "`adSoyad` kolonu bulunamadi." : null,
-      phoneColumnIndex === -1 ? "`telefonNumarasi` kolonu bulunamadi." : null,
+      nameColumnIndex === -1 ? "`adSoyad` kolonu bulunamadı." : null,
+      phoneColumnIndex === -1 ? "`telefonNumarası` kolonu bulunamadı." : null,
     ].filter(Boolean);
 
     return {
@@ -128,9 +133,9 @@ export function buildPreviewRows(
     }
 
     if (!phoneNumber) {
-      reasons.push("Telefon numarasi gerekli.");
+      reasons.push("Telefon numarası gerekli.");
     } else if (!isPhoneNumberValid(normalizedPhoneNumber)) {
-      reasons.push("Telefon formati gecersiz.");
+      reasons.push("Telefon formatı geçersiz.");
     }
 
     accumulator.push({
@@ -166,11 +171,11 @@ export function buildPreviewRows(
     const reasons = row.reason ? [row.reason] : [];
 
     if (isDuplicateInFile) {
-      reasons.push("Dosyada yinelenen telefon numarasi.");
+      reasons.push("Dosyada yinelenen telefon numarası.");
     }
 
     if (isDuplicateInOperation) {
-      reasons.push("Bu operasyonda ayni telefon numarasi zaten var.");
+      reasons.push("Bu operasyonda aynı telefon numarası zaten var.");
     }
 
     return {
@@ -203,7 +208,7 @@ export function buildPreviewRows(
 }
 
 export function downloadOperationContactsTemplate() {
-  const templateContent = "adSoyad,telefonNumarasi\nAyse Yilmaz,+905551234567\nMehmet Demir,+905321112233\n";
+  const templateContent = "\uFEFFadSoyad,telefonNumarası\nAyşe Yılmaz,+905551234567\nMehmet Demir,+905321112233\n";
   const blob = new Blob([templateContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -214,16 +219,37 @@ export function downloadOperationContactsTemplate() {
 }
 
 function normalizeHeader(value: unknown): string {
-  return String(value ?? "")
+  const repaired = repairMojibake(String(value ?? ""))
     .trim()
+    .replace(/^\uFEFF/, "")
     .toLocaleLowerCase("tr-TR")
-    .replace(/�/g, "g")
-    .replace(/�/g, "u")
-    .replace(/�/g, "s")
-    .replace(/�/g, "i")
-    .replace(/�/g, "o")
-    .replace(/�/g, "c")
-    .replace(/[^a-z0-9]/g, "");
+    .replace(/ı/g, "i")
+    .replace(/İ/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  return repaired.replace(/[^a-z0-9]/g, "");
+}
+
+function repairMojibake(value: string): string {
+  return value
+    .replace(/Ã‡/g, "Ç")
+    .replace(/Ã§/g, "ç")
+    .replace(/Äž/g, "Ğ")
+    .replace(/ÄŸ/g, "ğ")
+    .replace(/Ä°/g, "İ")
+    .replace(/Ä±/g, "ı")
+    .replace(/Ã–/g, "Ö")
+    .replace(/Ã¶/g, "ö")
+    .replace(/Åž/g, "Ş")
+    .replace(/ÅŸ/g, "ş")
+    .replace(/Ãœ/g, "Ü")
+    .replace(/Ã¼/g, "ü");
 }
 
 function isPhoneNumberValid(phoneNumber: string): boolean {

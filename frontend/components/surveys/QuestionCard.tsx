@@ -57,22 +57,22 @@ export function QuestionCard({
       <div className="question-editor-grid">
         <div className="question-main-column">
           <div className="builder-field">
-            <span>Soru basligi</span>
+            <span>Soru başlığı</span>
             <input
               value={question.title}
               onChange={(event) => onUpdate({ ...question, title: event.target.value })}
-              placeholder="Sorunuzu yazin"
+              placeholder="Sorunuzu yazın"
               disabled={readOnly}
             />
           </div>
 
           <div className="builder-field">
-            <span>Yardimci metin</span>
+            <span>Yardımcı metin</span>
             <textarea
               rows={3}
               value={question.description}
               onChange={(event) => onUpdate({ ...question, description: event.target.value })}
-              placeholder="Istege bagli aciklama veya yonlendirme"
+              placeholder="İsteğe bağlı açıklama veya yönlendirme"
               disabled={readOnly}
             />
           </div>
@@ -86,7 +86,7 @@ export function QuestionCard({
           <label className="builder-toggle-row">
             <div>
               <strong>Zorunlu soru</strong>
-              <p>Yanitsiz gecilemesin.</p>
+              <p>Yanıtsız geçilemesin.</p>
             </div>
             <button
               type="button"
@@ -106,10 +106,10 @@ export function QuestionCard({
       <div className="question-card-footer">
         <div className="question-order-actions">
           <button type="button" className="builder-ghost-button" onClick={onMoveUp} disabled={readOnly || isFirst}>
-            Yukari al
+            Yukarı al
           </button>
           <button type="button" className="builder-ghost-button" onClick={onMoveDown} disabled={readOnly || isLast}>
-            Asagi al
+            Aşağı al
           </button>
           <button type="button" className="builder-ghost-button danger-button" onClick={onRemove} disabled={readOnly || !canRemove}>
             Sil
@@ -139,8 +139,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "date") {
     return (
       <div className="builder-field-group">
-        <strong>Tarih davranisi</strong>
-        <p className="muted">Bu soru tarih secici olarak render edilir.</p>
+        <strong>Tarih davranışı</strong>
+        <p className="muted">Bu soru tarih seçici olarak render edilir.</p>
       </div>
     );
   }
@@ -148,8 +148,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "full_name") {
     return (
       <div className="builder-field-group">
-        <strong>Yapisal alan</strong>
-        <p className="muted">Ad ve soyad onizlemede ayri alanlar olarak gorunur.</p>
+        <strong>Yapısal alan</strong>
+        <p className="muted">Ad ve soyad önizlemede ayrı alanlar olarak görünür.</p>
       </div>
     );
   }
@@ -157,8 +157,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "phone") {
     return (
       <div className="builder-field-group">
-        <strong>Telefon formati</strong>
-        <p className="muted">Arayuz telefon girisine uygun bir alan olarak gosterilir.</p>
+        <strong>Telefon formatı</strong>
+        <p className="muted">Arayüz telefon girişine uygun bir alan olarak gösterilir.</p>
       </div>
     );
   }
@@ -166,8 +166,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "number") {
     return (
       <div className="builder-field-group">
-        <strong>Sayisal giris</strong>
-        <p className="muted">Bu alan yalnizca sayisal deger girmek icin kullanilir.</p>
+        <strong>Sayısal giriş</strong>
+        <p className="muted">Bu alan yalnızca sayısal değer girmek için kullanılır.</p>
       </div>
     );
   }
@@ -175,8 +175,8 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "yes_no") {
     return (
       <div className="builder-field-group">
-        <strong>Secim davranisi</strong>
-        <p className="muted">Bu soru sabit Evet ve Hayir secenekleriyle gelir.</p>
+        <strong>Seçim davranışı</strong>
+        <p className="muted">Bu soru sabit Evet ve Hayır seçenekleriyle gelir.</p>
       </div>
     );
   }
@@ -184,15 +184,15 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
   if (question.type === "dropdown") {
     return (
       <div className="builder-field-group">
-        <strong>Acilir menu davranisi</strong>
-        <p className="muted">Tek secim alir ve onizlemede acilir liste olarak gorunur.</p>
+        <strong>Açılır menü davranışı</strong>
+        <p className="muted">Tek seçim alır ve önizlemede açılır liste olarak görünür.</p>
       </div>
     );
   }
 
   return (
     <div className="builder-field-group">
-      <strong>Alan davranisi</strong>
+      <strong>Alan davranışı</strong>
       <p className="muted">{getInputHelp(question.type)}</p>
     </div>
   );
@@ -201,11 +201,11 @@ function TypeSpecificSettings({ question }: { question: SurveyBuilderQuestion })
 function getInputHelp(type: SurveyQuestionType) {
   switch (type) {
     case "long_text":
-      return "Daha uzun yorumlar icin buyuk bir metin alani kullanilir.";
+      return "Daha uzun yorumlar için büyük bir metin alanı kullanılır.";
     case "short_text":
-      return "Tek satirlik hizli bir yazi girisi olarak gosterilir.";
+      return "Tek satırlık hızlı bir yazı girişi olarak gösterilir.";
     default:
-      return "Bu alan tipi icin ek ayarlar sonraki adimlarda genisletilebilir.";
+      return "Bu alan tipi için ek ayarlar sonraki adımlarda genişletilebilir.";
   }
 }
 
@@ -219,7 +219,7 @@ function renderQuestionPreview(
       return (
         <div className="choice-preview-stack">
           <div className="builder-select-mock">
-            <span>Bir secenek secin</span>
+            <span>Bir seçenek seçin</span>
             <span aria-hidden="true">v</span>
           </div>
           <ChoiceOptionsEditor
@@ -275,5 +275,5 @@ function renderQuestionPreview(
     return <div className="builder-input-mock">0</div>;
   }
 
-  return <div className="builder-input-mock">{question.type === "long_text" ? "Uzun yanit alani" : "Yaniti buraya yazin"}</div>;
+  return <div className="builder-input-mock">{question.type === "long_text" ? "Uzun yanıt alanı" : "Yanıtı buraya yazın"}</div>;
 }

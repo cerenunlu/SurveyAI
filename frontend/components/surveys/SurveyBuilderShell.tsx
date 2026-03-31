@@ -144,7 +144,7 @@ export function SurveyBuilderShell({
       setFeedbackMessage(result.message);
       setFeedbackTone("success");
     } catch (error) {
-      setFeedbackMessage(error instanceof Error ? error.message : "Kaydetme sirasinda bir hata olustu.");
+      setFeedbackMessage(error instanceof Error ? error.message : "Kaydetme sırasında bir hata oluştu.");
       setFeedbackTone("error");
     } finally {
       setActiveAction(null);
@@ -167,22 +167,22 @@ export function SurveyBuilderShell({
       {isPublished ? (
         <section className="builder-readonly-banner panel-card" aria-live="polite">
           <div className="builder-readonly-banner-copy">
-            <span className="builder-panel-kicker">Yayin durumu</span>
-            <strong>Bu anket yayinlanmis durumda.</strong>
-            <p>Yayinlanmis anketlerde soru ve secenek degisikligi yapilamaz.</p>
-            <p>Yayinlama, bu anketin operasyonlar icin son haline geldigi anlamina gelir; AI arama surecinin basladigi anlamina gelmez.</p>
-            <p>Degisiklik yapmak icin bu anketten yeni bir taslak olusturun.</p>
+            <span className="builder-panel-kicker">Yayın durumu</span>
+            <strong>Bu anket yayınlanmış durumda.</strong>
+            <p>Yayınlanmış anketlerde soru ve seçenek değişikliği yapılamaz.</p>
+            <p>Yayınlama, bu anketin operasyonlar için son haline geldiği anlamına gelir; AI arama sürecinin başladığı anlamına gelmez.</p>
+            <p>Değişiklik yapmak için bu anketten yeni bir taslak oluşturun.</p>
           </div>
           <div className="builder-readonly-banner-actions">
             <button
               type="button"
               className="button-secondary compact-button"
               disabled
-              title="Yeni taslak olusturma akisi yakinda eklenecek."
+              title="Yeni taslak oluşturma akışı yakında eklenecek."
             >
-              Yeni taslak olustur
+              Yeni taslak oluştur
             </button>
-            <span className="builder-readonly-banner-note">Kopyalayarak yeni taslak olusturma akisi yakinda sunulacak.</span>
+            <span className="builder-readonly-banner-note">Kopyalayarak yeni taslak oluşturma akışı yakında sunulacak.</span>
           </div>
         </section>
       ) : null}
@@ -190,7 +190,7 @@ export function SurveyBuilderShell({
       <section className="survey-form-card panel-card">
         <div className="survey-form-card-head">
           <div>
-            <span className="builder-panel-kicker">{mode === "create" ? "Anket formu" : "Duzenleme formu"}</span>
+            <span className="builder-panel-kicker">{mode === "create" ? "Anket formu" : "Düzenleme formu"}</span>
           </div>
           <div className="survey-form-meta">
             <span className="builder-meta-pill">{survey.status}</span>
@@ -200,22 +200,22 @@ export function SurveyBuilderShell({
 
         <div className="survey-form-fields">
           <label className="builder-field survey-title-field">
-            <span>Anket basligi</span>
+            <span>Anket başlığı</span>
             <input
               value={survey.name}
               onChange={(event) => setSurvey((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Anket basligini yazin"
+              placeholder="Anket başlığını yazın"
               disabled={isPublished}
             />
           </label>
 
           <label className="builder-field">
-            <span>Anket aciklamasi</span>
+            <span>Anket açıklaması</span>
             <textarea
               rows={4}
               value={survey.summary}
               onChange={(event) => setSurvey((current) => ({ ...current, summary: event.target.value }))}
-              placeholder="Katilimcilarin gorecegi aciklamayi yazin"
+              placeholder="Katılımcıların göreceği açıklamayı yazın"
               disabled={isPublished}
             />
           </label>

@@ -23,13 +23,13 @@ export function OperationAnalyticsSection({
 
   return (
     <SectionCard
-      title="Operasyon Analitigi"
-      description="Cagri kaynakli sonuc dagilimlari, katilim sinyalleri ve soru bazli icgoruler ayni operasyon yuzeyinde kalir."
+      title="Operasyon Analitiği"
+      description="Çağrı kaynaklı sonuç dağılımları, katılım sinyalleri ve soru bazlı içgörüler aynı operasyon yüzeyinde kalır."
     >
       {isLoading ? (
         <div className="operation-empty-state">
-          <strong>Analitik yukleniyor</strong>
-          <p>Operasyona ait cevap ve yurutme toplamlari getiriliyor.</p>
+          <strong>Analitik yükleniyor</strong>
+          <p>Operasyona ait cevap ve yürütme toplamları getiriliyor.</p>
         </div>
       ) : !analytics || (analytics.totalResponses === 0 && analytics.totalPreparedJobs === 0) ? (
         <div className="operation-empty-state operation-analytics-empty">
@@ -38,11 +38,11 @@ export function OperationAnalyticsSection({
           {operation?.status === "Ready" && analytics ? (
             <div className="operation-analytics-preflight">
               <div className="operation-contact-status-card">
-                <span>Toplam kisi</span>
+                <span>Toplam kişi</span>
                 <strong>{analytics.totalContacts}</strong>
               </div>
               <div className="operation-contact-status-card">
-                <span>Hazir is</span>
+                <span>Hazır iş</span>
                 <strong>{analytics.totalPreparedJobs}</strong>
               </div>
             </div>
@@ -66,10 +66,10 @@ export function OperationAnalyticsSection({
             <article className="operation-chart-card">
               <div className="operation-chart-head">
                 <div>
-                  <span className="operation-kicker">Durum dagilimi</span>
-                  <h3>Yurutme sonucu kirilimi</h3>
+                  <span className="operation-kicker">Durum dağılımı</span>
+                  <h3>Yürütme sonucu kırılımı</h3>
                 </div>
-                {analytics.partialData ? <span className="operation-live-pill">Canli / Kismi</span> : null}
+                {analytics.partialData ? <span className="operation-live-pill">Canlı / Kısmi</span> : null}
               </div>
               {analytics.outcomeBreakdown.some((item) => item.count > 0) ? (
                 <div className="operation-bar-list">
@@ -77,7 +77,7 @@ export function OperationAnalyticsSection({
                     <div key={item.key} className="operation-bar-row">
                       <div className="operation-bar-copy">
                         <strong>{item.label}</strong>
-                        <span>{item.count} kayit</span>
+                        <span>{item.count} kayıt</span>
                       </div>
                       <div className="operation-bar-track">
                         <div className="operation-bar-fill" style={{ width: `${Math.max(item.percentage, item.count > 0 ? 6 : 0)}%` }} />
@@ -87,32 +87,32 @@ export function OperationAnalyticsSection({
                   ))}
                 </div>
               ) : (
-                <div className="operation-mini-empty">Dagilim olusmasi icin yurutme sonuclari bekleniyor.</div>
+                <div className="operation-mini-empty">Dağılım oluşması için yürütme sonuçları bekleniyor.</div>
               )}
             </article>
 
             <article className="operation-chart-card">
               <div className="operation-chart-head">
                 <div>
-                  <span className="operation-kicker">One cikan icgoruler</span>
-                  <h3>Ozet yorum</h3>
+                  <span className="operation-kicker">Öne çıkan içgörüler</span>
+                  <h3>Özet yorum</h3>
                 </div>
               </div>
               <div className="operation-insight-card">
-                <strong>{analytics.insightSummary ?? "AI analiz ozeti bu alana baglanabilir."}</strong>
+                <strong>{analytics.insightSummary ?? "AI analiz özeti bu alana bağlanabilir."}</strong>
                 <p>
                   {analytics.insightSummary
-                    ? "Bu metin mevcut operasyon verisinden uretilen yonlendirici ozet gorevi gorur."
-                    : "Ileride AI destekli ozet veya kural bazli yorum bu bolume beslenebilir."}
+                    ? "Bu metin mevcut operasyon verisinden üretilen yönlendirici özet görevi görür."
+                    : "İleride AI destekli özet veya kural bazlı yorum bu bölüme beslenebilir."}
                 </p>
               </div>
               <div className="operation-response-health">
                 <div className="operation-response-health-item">
-                  <span>Cevap orani</span>
+                  <span>Cevap oranı</span>
                   <strong>%{analytics.responseRate}</strong>
                 </div>
                 <div className="operation-response-health-item">
-                  <span>Kismi yanit</span>
+                  <span>Kısmi yanıt</span>
                   <strong>%{analytics.participationRate}</strong>
                 </div>
                 <div className="operation-response-health-item">
@@ -126,8 +126,8 @@ export function OperationAnalyticsSection({
           <article className="operation-chart-card">
             <div className="operation-chart-head">
               <div>
-                <span className="operation-kicker">Zaman gorunumu</span>
-                <h3>Yanit akisi trendi</h3>
+                <span className="operation-kicker">Zaman görünümü</span>
+                <h3>Yanıt akışı trendi</h3>
               </div>
             </div>
             {analytics.responseTrend.length > 0 ? (
@@ -147,15 +147,15 @@ export function OperationAnalyticsSection({
                 })}
               </div>
             ) : (
-              <div className="operation-mini-empty">Zaman bazli trend icin yeterli cevap verisi bulunmuyor.</div>
+              <div className="operation-mini-empty">Zaman bazlı trend için yeterli cevap verisi bulunmuyor.</div>
             )}
           </article>
 
           <div className="operation-question-stack">
             <div className="section-header">
               <div className="section-copy">
-                <h2>Soru Bazli Icgoruler</h2>
-                <p>En onemli cevaplanan sorular, uygun grafik tipiyle kompakt kartlarda gosterilir.</p>
+                <h2>Soru Bazlı İçgörüler</h2>
+                <p>En önemli cevaplanan sorular, uygun grafik tipiyle kompakt kartlarda gösterilir.</p>
               </div>
             </div>
             <div className="operation-question-grid">
@@ -174,7 +174,7 @@ export function OperationAnalyticsSection({
                     </div>
                     <div className="operation-question-submeta">
                       <span>Soru {summary.questionOrder}</span>
-                      <span>{summary.answeredCount} yanit</span>
+                      <span>{summary.answeredCount} yanıt</span>
                       {summary.averageRating !== null ? <span>Ort. {summary.averageRating}</span> : null}
                     </div>
                     {hasData ? (

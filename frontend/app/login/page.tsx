@@ -30,7 +30,7 @@ export default function LoginPage() {
       });
       router.replace("/");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to sign in right now.");
+      setErrorMessage(error instanceof Error ? error.message : "Şu anda giriş yapılamıyor.");
       setIsSubmitting(false);
     }
   }
@@ -39,28 +39,28 @@ export default function LoginPage() {
     <main className="auth-screen">
       <section className="auth-layout">
         <div className="auth-hero panel-card">
-          <span className="eyebrow">SurveyAI Access</span>
-          <h1 className="hero-title auth-title">Sign in and let the app resolve the active company for you.</h1>
+          <span className="eyebrow">SurveyAI Erişimi</span>
+          <h1 className="hero-title auth-title">Giriş yapın ve uygulama aktif şirket bağlamını sizin için çözümlesin.</h1>
           <p className="hero-text">
-            This MVP login flow keeps auth deliberately simple while giving the product a real current-user and
-            current-company foundation for all existing survey and operation workflows.
+            Bu MVP giriş akışı, kimlik doğrulamayı bilinçli olarak sade tutarken ürüne mevcut anket ve operasyon
+            iş akışlarının tamamı için gerçek bir güncel kullanıcı ve güncel şirket temeli kazandırır.
           </p>
           <div className="chip-row">
-            <span className="chip">Current company context</span>
-            <span className="chip">Cookie-backed session</span>
-            <span className="chip">MVP email and password</span>
+            <span className="chip">Güncel şirket bağlamı</span>
+            <span className="chip">Çerez destekli oturum</span>
+            <span className="chip">MVP e-posta ve parola</span>
           </div>
         </div>
 
         <section className="auth-card panel-card">
           <div className="section-copy">
-            <h2>Login</h2>
-            <p>Use your work email and password to continue into the control center.</p>
+            <h2>Giriş</h2>
+            <p>Kontrol merkezine devam etmek için iş e-posta adresinizi ve parolanızı kullanın.</p>
           </div>
 
           <form className="auth-form" onSubmit={handleSubmit}>
             <label className="builder-field">
-              <span>Email</span>
+              <span>E-posta</span>
               <input
                 type="email"
                 autoComplete="email"
@@ -85,19 +85,19 @@ export default function LoginPage() {
 
             {errorMessage ? (
               <div className="operation-inline-message is-danger compact">
-                <strong>Login failed</strong>
+                <strong>Giriş başarısız</strong>
                 <span>{errorMessage}</span>
               </div>
             ) : null}
 
             <button type="submit" className="button-primary auth-submit" disabled={isSubmitting || status === "loading"}>
-              {isSubmitting ? "Signing In..." : "Sign In"}
+              {isSubmitting ? "Giriş yapılıyor..." : "Giriş yap"}
             </button>
           </form>
 
           <div className="auth-helper">
-            <strong>Local seed account</strong>
-            <p>Default local credentials: owner@acme-research.test / change-me-123</p>
+            <strong>Yerel başlangıç hesabı</strong>
+            <p>Varsayılan yerel bilgiler: owner@acme-research.test / change-me-123</p>
           </div>
         </section>
       </section>

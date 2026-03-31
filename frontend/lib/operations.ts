@@ -541,9 +541,9 @@ function mapOperationDtoToOperation(dto: OperationApiResponse, surveys: SurveyRe
     surveyGoal: survey?.goal ?? null,
     surveyAudience: survey?.audience ?? null,
     surveyUpdatedAt: survey?.updatedAt ?? null,
-    budget: "Hazirlaniyor",
+    budget: "Hazırlanıyor",
     reach: formatReach(dto.status, dto.startedAt, dto.completedAt),
-    conversion: dto.executionSummary.totalCallJobs > 0 ? `${dto.executionSummary.pendingCallJobs} bekleyen is` : "Henuz yok",
+    conversion: dto.executionSummary.totalCallJobs > 0 ? `${dto.executionSummary.pendingCallJobs} bekleyen iş` : "Henüz yok",
     updatedAt: formatDateTime(updatedAtSource),
     owner: formatOwner(dto.createdByUserId),
     channels: buildChannels(dto.status),
@@ -692,12 +692,12 @@ function mapCallJobStatusToApi(
 
 function formatDateTime(value: string | null): string {
   if (!value) {
-    return "Planlanmadi";
+    return "Planlanmadı";
   }
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return "Guncel";
+    return "Güncel";
   }
 
   return new Intl.DateTimeFormat("tr-TR", {
@@ -727,51 +727,51 @@ function formatSurveyFallback(surveyId: string): string {
 
 function formatOwner(createdByUserId: string | null): string {
   if (!createdByUserId) {
-    return "Atanmadi";
+    return "Atanmadı";
   }
 
-  return `Kullanici ${createdByUserId.slice(0, 8)}`;
+  return `Kullanıcı ${createdByUserId.slice(0, 8)}`;
 }
 
 function formatReach(status: OperationApiStatus, startedAt: string | null, completedAt: string | null): string {
   if (status === "COMPLETED" && completedAt) {
-    return "Tamamlandi";
+    return "Tamamlandı";
   }
 
   if (status === "RUNNING" || startedAt) {
-    return "Yurutuluyor";
+    return "Yürütülüyor";
   }
 
   if (status === "READY" || status === "SCHEDULED") {
-    return "Hazir";
+    return "Hazır";
   }
 
   if (status === "FAILED") {
-    return "Mudahale gerekli";
+    return "Müdahale gerekli";
   }
 
-  return "Hazirlaniyor";
+  return "Hazırlanıyor";
 }
 
 function buildChannels(status: OperationApiStatus): string[] {
   switch (status) {
     case "RUNNING":
-      return ["Ses operasyoni", "Kuyruk hazir"];
+      return ["Ses operasyonu", "Kuyruk hazır"];
     case "READY":
-      return ["Baslatmaya hazir", "Anket bagli"];
+      return ["Başlatmaya hazır", "Anket bağlı"];
     case "COMPLETED":
-      return ["Yurutme tamamlandi"];
+      return ["Yürütme tamamlandı"];
     case "FAILED":
       return ["Hata incelemesi"];
     case "PAUSED":
-      return ["Duraklatildi"];
+      return ["Duraklatıldı"];
     case "CANCELLED":
-      return ["Kapatildi"];
+      return ["Kapatıldı"];
     case "SCHEDULED":
-      return ["Planlandi"];
+      return ["Planlandı"];
     case "DRAFT":
     default:
-      return ["Hazirlik asamasi"];
+      return ["Hazırlık aşaması"];
   }
 }
 
@@ -779,18 +779,18 @@ function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
   const surveyLabel = surveyName ?? formatSurveyFallback(dto.surveyId);
 
   if (dto.status === "RUNNING") {
-    return `${surveyLabel} icin yurutme acildi. ${dto.executionSummary.pendingCallJobs} is kuyrukta bekliyor.`;
+    return `${surveyLabel} için yürütme açıldı. ${dto.executionSummary.pendingCallJobs} iş kuyrukta bekliyor.`;
   }
 
   if (dto.readiness.readyToStart) {
-    return `${surveyLabel} bagli, kisiler yuklu. Operasyon baslatmaya hazir.`;
+    return `${surveyLabel} bağlı, kişiler yüklü. Operasyon başlatmaya hazır.`;
   }
 
   if (dto.readiness.blockingReasons.length > 0) {
     return dto.readiness.blockingReasons[0];
   }
 
-  return `${surveyLabel} icin operasyon hazirlikta.`;
+  return `${surveyLabel} için operasyon hazırlıkta.`;
 }
 
 

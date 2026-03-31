@@ -5,9 +5,9 @@ export function SurveyPreviewPanel({ survey }: { survey: SurveyBuilderSurvey }) 
   return (
     <section className="builder-preview-panel">
       <div className="builder-side-panel-header">
-        <span className="builder-panel-kicker">Onizleme</span>
-        <h3>Yayin akisi gorunumu</h3>
-        <p>Anketin katilimciya gidecek premium karanlik yuzeyi burada hizlica kontrol edin.</p>
+        <span className="builder-panel-kicker">Önizleme</span>
+        <h3>Yayın akışı görünümü</h3>
+        <p>Anketin katılımcıya gidecek premium karanlık yüzeyi burada hızlıca kontrol edin.</p>
       </div>
 
       <div className="preview-surface">
@@ -38,10 +38,10 @@ export function SurveyPreviewPanel({ survey }: { survey: SurveyBuilderSurvey }) 
 function renderPreviewInput(question: SurveyBuilderSurvey["questions"][number]) {
   if (question.type === "yes_no") {
     return (
-      <div className="choice-pill-row">
-        <span className="choice-pill">Evet</span>
-        <span className="choice-pill">Hayir</span>
-      </div>
+        <div className="choice-pill-row">
+          <span className="choice-pill">Evet</span>
+          <span className="choice-pill">Hayır</span>
+        </div>
     );
   }
 
@@ -50,7 +50,7 @@ function renderPreviewInput(question: SurveyBuilderSurvey["questions"][number]) 
       return (
         <div className="choice-preview-stack">
           <div className="builder-select-mock">
-            <span>{question.options?.[0]?.label ?? "Bir secenek secin"}</span>
+            <span>{question.options?.[0]?.label ?? "Bir seçenek seçin"}</span>
             <span aria-hidden="true">v</span>
           </div>
           <div className="choice-list-preview">
@@ -99,7 +99,7 @@ function renderPreviewInput(question: SurveyBuilderSurvey["questions"][number]) 
   }
 
   if (question.type === "date") {
-    return <div className="builder-input-mock">Tarih secin</div>;
+    return <div className="builder-input-mock">Tarih seçin</div>;
   }
 
   if (question.type === "phone") {
@@ -110,5 +110,5 @@ function renderPreviewInput(question: SurveyBuilderSurvey["questions"][number]) 
     return <div className="builder-input-mock">0</div>;
   }
 
-  return <div className="builder-input-mock">{question.type === "long_text" ? "Yanit alani" : "Yanitiniz"}</div>;
+  return <div className="builder-input-mock">{question.type === "long_text" ? "Yanıt alanı" : "Yanıtınız"}</div>;
 }
