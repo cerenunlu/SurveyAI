@@ -17,6 +17,7 @@ import com.yourcompany.surveyai.common.exception.ValidationException;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
 import com.yourcompany.surveyai.operation.repository.OperationContactRepository;
+import com.yourcompany.surveyai.response.application.service.SurveyResponseIngestionService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.OffsetDateTime;
 import java.util.Collections;
@@ -40,19 +41,22 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
     private final CallAttemptRepository callAttemptRepository;
     private final CallJobRepository callJobRepository;
     private final OperationContactRepository operationContactRepository;
+    private final SurveyResponseIngestionService surveyResponseIngestionService;
 
     public ProviderWebhookIngestionServiceImpl(
             CallProviderRegistry callProviderRegistry,
             VoiceProviderConfigurationResolver configurationResolver,
             CallAttemptRepository callAttemptRepository,
             CallJobRepository callJobRepository,
-            OperationContactRepository operationContactRepository
+            OperationContactRepository operationContactRepository,
+            SurveyResponseIngestionService surveyResponseIngestionService
     ) {
         this.callProviderRegistry = callProviderRegistry;
         this.configurationResolver = configurationResolver;
         this.callAttemptRepository = callAttemptRepository;
         this.callJobRepository = callJobRepository;
         this.operationContactRepository = operationContactRepository;
+        this.surveyResponseIngestionService = surveyResponseIngestionService;
     }
 
     @Override
@@ -121,6 +125,10 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         }
         operationContactRepository.save(contact);
 
+        if (shouldIngestSurveyResult(event)) {
+            surveyResponseIngestionService.ingest(attempt, event);
+        }
+
         log.info(
                 "Provider webhook applied. provider={} callJobId={} providerCallId={} jobStatus={} attemptStatus={}",
                 event.provider(),
@@ -167,6 +175,12 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
                 || status == CallJobStatus.FAILED
                 || status == CallJobStatus.DEAD_LETTER
                 || status == CallJobStatus.CANCELLED;
+    }
+
+    private boolean shouldIngestSurveyResult(ProviderWebhookEvent event) {
+        return isTerminal(event.jobStatus())
+                || (event.transcriptText() != null && !event.transcriptText().isBlank())
+                || (event.rawPayload() != null && !event.rawPayload().isBlank());
     }
 
     private OperationContactStatus mapContactStatus(CallJobStatus jobStatus) {

@@ -18,6 +18,7 @@ import com.yourcompany.surveyai.call.infrastructure.provider.mock.MockVoiceExecu
 import com.yourcompany.surveyai.call.repository.CallAttemptRepository;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.common.domain.entity.Company;
+import com.yourcompany.surveyai.response.application.service.SurveyResponseIngestionService;
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
@@ -37,6 +38,7 @@ class ProviderWebhookIngestionServiceImplTest {
     private final CallAttemptRepository callAttemptRepository = mock(CallAttemptRepository.class);
     private final CallJobRepository callJobRepository = mock(CallJobRepository.class);
     private final OperationContactRepository operationContactRepository = mock(OperationContactRepository.class);
+    private final SurveyResponseIngestionService surveyResponseIngestionService = mock(SurveyResponseIngestionService.class);
     private ProviderWebhookIngestionServiceImpl ingestionService;
 
     @BeforeEach
@@ -49,7 +51,8 @@ class ProviderWebhookIngestionServiceImplTest {
                 new VoiceProviderConfigurationResolver(properties),
                 callAttemptRepository,
                 callJobRepository,
-                operationContactRepository
+                operationContactRepository,
+                surveyResponseIngestionService
         );
 
         when(callAttemptRepository.save(any(CallAttempt.class))).thenAnswer(invocation -> invocation.getArgument(0));

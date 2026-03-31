@@ -1,0 +1,303 @@
+package com.yourcompany.surveyai.response.application.service.impl;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
+import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
+import com.yourcompany.surveyai.call.domain.entity.CallJob;
+import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
+import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
+import com.yourcompany.surveyai.call.domain.enums.CallProvider;
+import com.yourcompany.surveyai.common.domain.entity.Company;
+import com.yourcompany.surveyai.operation.domain.entity.Operation;
+import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
+import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
+import com.yourcompany.surveyai.response.domain.entity.SurveyAnswer;
+import com.yourcompany.surveyai.response.domain.entity.SurveyResponse;
+import com.yourcompany.surveyai.response.domain.enums.SurveyResponseStatus;
+import com.yourcompany.surveyai.response.infrastructure.provider.elevenlabs.ElevenLabsSurveyResultMapper;
+import com.yourcompany.surveyai.response.infrastructure.provider.mock.MockSurveyResultMapper;
+import com.yourcompany.surveyai.response.repository.SurveyAnswerRepository;
+import com.yourcompany.surveyai.response.repository.SurveyResponseRepository;
+import com.yourcompany.surveyai.survey.domain.entity.Survey;
+import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
+import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestionOption;
+import com.yourcompany.surveyai.survey.domain.enums.QuestionType;
+import com.yourcompany.surveyai.survey.repository.SurveyQuestionOptionRepository;
+import com.yourcompany.surveyai.survey.repository.SurveyQuestionRepository;
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+class SurveyResponseIngestionServiceImplTest {
+
+    private final SurveyResponseRepository surveyResponseRepository = mock(SurveyResponseRepository.class);
+    private final SurveyAnswerRepository surveyAnswerRepository = mock(SurveyAnswerRepository.class);
+    private final SurveyQuestionRepository surveyQuestionRepository = mock(SurveyQuestionRepository.class);
+    private final SurveyQuestionOptionRepository surveyQuestionOptionRepository = mock(SurveyQuestionOptionRepository.class);
+
+    private final List<SurveyResponse> savedResponses = new ArrayList<>();
+    private final List<SurveyAnswer> savedAnswers = new ArrayList<>();
+
+    private SurveyResponseIngestionServiceImpl service;
+
+    @BeforeEach
+    void setUp() {
+        savedResponses.clear();
+        savedAnswers.clear();
+        service = new SurveyResponseIngestionServiceImpl(
+                new com.yourcompany.surveyai.response.application.provider.ProviderSurveyResultMapperRegistry(List.of(
+                        new ElevenLabsSurveyResultMapper(new ObjectMapper()),
+                        new MockSurveyResultMapper(new ObjectMapper())
+                )),
+                surveyResponseRepository,
+                surveyAnswerRepository,
+                surveyQuestionRepository,
+                surveyQuestionOptionRepository,
+                new ObjectMapper()
+        );
+
+        when(surveyResponseRepository.save(any(SurveyResponse.class))).thenAnswer(invocation -> {
+            SurveyResponse response = invocation.getArgument(0);
+            if (response.getId() == null) {
+                response.setId(UUID.randomUUID());
+            }
+            savedResponses.add(response);
+            return response;
+        });
+        when(surveyAnswerRepository.save(any(SurveyAnswer.class))).thenAnswer(invocation -> {
+            SurveyAnswer answer = invocation.getArgument(0);
+            if (answer.getId() == null) {
+                answer.setId(UUID.randomUUID());
+            }
+            savedAnswers.add(answer);
+            return answer;
+        });
+    }
+
+    @Test
+    void ingest_createsSurveyResponseAndAnswersFromElevenLabsStructuredResults() {
+        TestFixture fixture = buildFixture();
+        when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(fixture.callAttempt().getId())).thenReturn(Optional.empty());
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey().getId()))
+                .thenReturn(List.of(fixture.choiceQuestion(), fixture.ratingQuestion()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.choiceQuestion().getId()))
+                .thenReturn(List.of(fixture.yesOption(), fixture.noOption()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.ratingQuestion().getId()))
+                .thenReturn(List.of());
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(any(), any()))
+                .thenReturn(Optional.empty());
+
+        service.ingest(fixture.callAttempt(), fixture.completedWebhook());
+
+        assertThat(savedResponses).isNotEmpty();
+        SurveyResponse response = savedResponses.getLast();
+        assertThat(response.getStatus()).isEqualTo(SurveyResponseStatus.COMPLETED);
+        assertThat(response.getTranscriptText()).contains("agent: Hello");
+        assertThat(savedAnswers).hasSize(2);
+        assertThat(savedAnswers)
+                .anySatisfy(answer -> {
+                    assertThat(answer.getSurveyQuestion().getCode()).isEqualTo("consent");
+                    assertThat(answer.getSelectedOption()).isEqualTo(fixture.yesOption());
+                })
+                .anySatisfy(answer -> {
+                    assertThat(answer.getSurveyQuestion().getCode()).isEqualTo("nps");
+                    assertThat(answer.getAnswerNumber()).isEqualByComparingTo(BigDecimal.valueOf(8));
+                });
+    }
+
+    @Test
+    void ingest_updatesExistingResponseInsteadOfCreatingDuplicateRecords() {
+        TestFixture fixture = buildFixture();
+        SurveyResponse existingResponse = new SurveyResponse();
+        existingResponse.setId(UUID.randomUUID());
+        existingResponse.setCompany(fixture.company());
+        existingResponse.setSurvey(fixture.survey());
+        existingResponse.setOperation(fixture.operation());
+        existingResponse.setOperationContact(fixture.contact());
+        existingResponse.setCallAttempt(fixture.callAttempt());
+        existingResponse.setStatus(SurveyResponseStatus.PARTIAL);
+        existingResponse.setCompletionPercent(BigDecimal.ZERO);
+        existingResponse.setRespondentPhone(fixture.contact().getPhoneNumber());
+        existingResponse.setStartedAt(OffsetDateTime.now());
+        existingResponse.setTranscriptJson("{}");
+
+        SurveyAnswer existingAnswer = new SurveyAnswer();
+        existingAnswer.setId(UUID.randomUUID());
+        existingAnswer.setCompany(fixture.company());
+        existingAnswer.setSurveyResponse(existingResponse);
+        existingAnswer.setSurveyQuestion(fixture.choiceQuestion());
+        existingAnswer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        existingAnswer.setAnswerJson("{}");
+        existingAnswer.setRetryCount(0);
+        existingAnswer.setValid(true);
+
+        when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(fixture.callAttempt().getId())).thenReturn(Optional.of(existingResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey().getId()))
+                .thenReturn(List.of(fixture.choiceQuestion(), fixture.ratingQuestion()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.choiceQuestion().getId()))
+                .thenReturn(List.of(fixture.yesOption(), fixture.noOption()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.ratingQuestion().getId()))
+                .thenReturn(List.of());
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(existingResponse.getId(), fixture.choiceQuestion().getId()))
+                .thenReturn(Optional.of(existingAnswer));
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(existingResponse.getId(), fixture.ratingQuestion().getId()))
+                .thenReturn(Optional.empty());
+
+        service.ingest(fixture.callAttempt(), fixture.completedWebhook());
+
+        assertThat(savedResponses).isNotEmpty();
+        assertThat(savedResponses.getLast().getId()).isEqualTo(existingResponse.getId());
+        assertThat(savedAnswers).hasSize(2);
+    }
+
+    private TestFixture buildFixture() {
+        Company company = new Company();
+        company.setId(UUID.randomUUID());
+
+        Survey survey = new Survey();
+        survey.setId(UUID.randomUUID());
+        survey.setCompany(company);
+        survey.setName("CX");
+
+        Operation operation = new Operation();
+        operation.setId(UUID.randomUUID());
+        operation.setCompany(company);
+        operation.setSurvey(survey);
+        operation.setName("April");
+
+        OperationContact contact = new OperationContact();
+        contact.setId(UUID.randomUUID());
+        contact.setCompany(company);
+        contact.setOperation(operation);
+        contact.setPhoneNumber("905551112233");
+        contact.setStatus(OperationContactStatus.CALLING);
+        contact.setRetryCount(0);
+        contact.setMetadataJson("{}");
+
+        CallJob callJob = new CallJob();
+        callJob.setId(UUID.randomUUID());
+        callJob.setCompany(company);
+        callJob.setOperation(operation);
+        callJob.setOperationContact(contact);
+        callJob.setStatus(CallJobStatus.IN_PROGRESS);
+        callJob.setPriority((short) 5);
+        callJob.setScheduledFor(OffsetDateTime.now());
+        callJob.setAvailableAt(OffsetDateTime.now());
+        callJob.setAttemptCount(1);
+        callJob.setMaxAttempts(3);
+        callJob.setIdempotencyKey("op:contact");
+
+        CallAttempt callAttempt = new CallAttempt();
+        callAttempt.setId(UUID.randomUUID());
+        callAttempt.setCompany(company);
+        callAttempt.setCallJob(callJob);
+        callAttempt.setOperation(operation);
+        callAttempt.setOperationContact(contact);
+        callAttempt.setAttemptNumber(1);
+        callAttempt.setProvider(CallProvider.ELEVENLABS);
+        callAttempt.setProviderCallId("conv_123");
+        callAttempt.setStatus(CallAttemptStatus.COMPLETED);
+        callAttempt.setDialedAt(OffsetDateTime.now().minusMinutes(2));
+        callAttempt.setConnectedAt(OffsetDateTime.now().minusMinutes(1));
+        callAttempt.setRawProviderPayload("{}");
+
+        SurveyQuestion choiceQuestion = new SurveyQuestion();
+        choiceQuestion.setId(UUID.randomUUID());
+        choiceQuestion.setCompany(company);
+        choiceQuestion.setSurvey(survey);
+        choiceQuestion.setCode("consent");
+        choiceQuestion.setQuestionOrder(1);
+        choiceQuestion.setQuestionType(QuestionType.SINGLE_CHOICE);
+        choiceQuestion.setTitle("Do you agree?");
+
+        SurveyQuestion ratingQuestion = new SurveyQuestion();
+        ratingQuestion.setId(UUID.randomUUID());
+        ratingQuestion.setCompany(company);
+        ratingQuestion.setSurvey(survey);
+        ratingQuestion.setCode("nps");
+        ratingQuestion.setQuestionOrder(2);
+        ratingQuestion.setQuestionType(QuestionType.RATING);
+        ratingQuestion.setTitle("Rate us");
+
+        SurveyQuestionOption yesOption = new SurveyQuestionOption();
+        yesOption.setId(UUID.randomUUID());
+        yesOption.setCompany(company);
+        yesOption.setSurveyQuestion(choiceQuestion);
+        yesOption.setOptionCode("YES");
+        yesOption.setLabel("Yes");
+        yesOption.setValue("YES");
+        yesOption.setOptionOrder(1);
+        yesOption.setActive(true);
+
+        SurveyQuestionOption noOption = new SurveyQuestionOption();
+        noOption.setId(UUID.randomUUID());
+        noOption.setCompany(company);
+        noOption.setSurveyQuestion(choiceQuestion);
+        noOption.setOptionCode("NO");
+        noOption.setLabel("No");
+        noOption.setValue("NO");
+        noOption.setOptionOrder(2);
+        noOption.setActive(true);
+
+        ProviderWebhookEvent completedWebhook = new ProviderWebhookEvent(
+                CallProvider.ELEVENLABS,
+                "conv_123",
+                "op:contact",
+                CallJobStatus.COMPLETED,
+                CallAttemptStatus.COMPLETED,
+                OffsetDateTime.now(),
+                45,
+                null,
+                null,
+                "inline://elevenlabs/conversations/conv_123",
+                "agent: Hello\nuser: Hi",
+                """
+                {
+                  "type": "post_call_transcription",
+                  "data": {
+                    "conversation_id": "conv_123",
+                    "status": "done",
+                    "transcript": [
+                      {"role": "agent", "message": "Hello"},
+                      {"role": "user", "message": "Hi"}
+                    ],
+                    "analysis": {
+                      "transcript_summary": "Summary",
+                      "data_collection_results": {
+                        "consent": {"value": "yes"},
+                        "nps": {"value": "8", "number": 8}
+                      }
+                    }
+                  }
+                }
+                """
+        );
+
+        return new TestFixture(company, survey, operation, contact, callJob, callAttempt, choiceQuestion, ratingQuestion, yesOption, noOption, completedWebhook);
+    }
+
+    private record TestFixture(
+            Company company,
+            Survey survey,
+            Operation operation,
+            OperationContact contact,
+            CallJob callJob,
+            CallAttempt callAttempt,
+            SurveyQuestion choiceQuestion,
+            SurveyQuestion ratingQuestion,
+            SurveyQuestionOption yesOption,
+            SurveyQuestionOption noOption,
+            ProviderWebhookEvent completedWebhook
+    ) {
+    }
+}
