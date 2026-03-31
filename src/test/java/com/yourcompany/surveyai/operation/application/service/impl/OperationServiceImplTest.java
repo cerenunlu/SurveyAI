@@ -222,8 +222,22 @@ class OperationServiceImplTest {
         assertThat(response.totalContacts()).isEqualTo(3);
         assertThat(response.totalCallJobs()).isEqualTo(3);
         assertThat(response.totalCompletedCalls()).isEqualTo(1);
+        assertThat(response.failedCallJobs()).isEqualTo(1);
         assertThat(response.totalResponses()).isEqualTo(2);
+        assertThat(response.completedResponses()).isEqualTo(1);
+        assertThat(response.partialResponses()).isEqualTo(1);
+        assertThat(response.completionRate()).isEqualTo(50.0);
+        assertThat(response.responseRate()).isEqualTo(66.7);
         assertThat(response.contactReachRate()).isEqualTo(66.7);
+        assertThat(response.outcomeBreakdown())
+                .extracting(item -> item.key() + ":" + item.count())
+                .containsExactly(
+                        "queued:1",
+                        "inProgress:0",
+                        "completed:1",
+                        "failed:1",
+                        "skipped:0"
+                );
         assertThat(response.insightItems()).isNotEmpty();
         assertThat(response.questionSummaries())
                 .extracting(item -> item.questionTitle())
@@ -364,6 +378,128 @@ class OperationServiceImplTest {
         assertThat(response.questionSummaries().getFirst().breakdown())
                 .extracting(item -> item.label() + ":" + item.count())
                 .containsExactly("Evet:1", "Hayir:0");
+    }
+
+    @Test
+    void getOperationAnalytics_handlesEmptyStateAndLowDataScenarios() {
+        Operation operation = buildOperation(OperationStatus.READY, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion question = buildQuestion(operation.getSurvey(), "q-choice", 1, QuestionType.SINGLE_CHOICE, "Katilir misiniz?");
+        SurveyQuestionOption yesOption = buildOption(question, 1, "yes", "Evet", "yes");
+        SurveyQuestionOption noOption = buildOption(question, 2, "no", "Hayir", "no");
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(1L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(buildCallJob(operation, CallJobStatus.FAILED)));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of());
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(question));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(question.getId())
+        )).thenReturn(List.of(yesOption, noOption));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.totalContacts()).isEqualTo(1);
+        assertThat(response.totalResponses()).isZero();
+        assertThat(response.completedResponses()).isZero();
+        assertThat(response.failedCallJobs()).isEqualTo(1);
+        assertThat(response.completionRate()).isZero();
+        assertThat(response.responseRate()).isZero();
+        assertThat(response.averageCompletionPercent()).isZero();
+        assertThat(response.partialData()).isTrue();
+        assertThat(response.questionSummaries()).hasSize(1);
+        assertThat(response.questionSummaries().getFirst().answeredCount()).isZero();
+        assertThat(response.questionSummaries().getFirst().emptyStateMessage()).isNotBlank();
+        assertThat(response.questionSummaries().getFirst().breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Evet:0", "Hayir:0");
+    }
+
+    @Test
+    void getOperationAnalytics_usesOnlyUsableAnswersFromPartialResponses() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion choiceQuestion = buildQuestion(operation.getSurvey(), "q-binary", 1, QuestionType.SINGLE_CHOICE, "Devam edelim mi?");
+        SurveyQuestion ratingQuestion = buildQuestion(operation.getSurvey(), "q-rating", 2, QuestionType.RATING, "Memnuniyet puani");
+        SurveyQuestion openEndedQuestion = buildQuestion(operation.getSurvey(), "q-open", 3, QuestionType.OPEN_ENDED, "Ek yorum");
+        SurveyQuestionOption yesOption = buildOption(choiceQuestion, 1, "yes", "Evet", "yes");
+        SurveyQuestionOption noOption = buildOption(choiceQuestion, 2, "no", "Hayir", "no");
+
+        SurveyResponse partialResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.PARTIAL,
+                "905551112255",
+                34,
+                OffsetDateTime.now().minusMinutes(30)
+        );
+
+        SurveyAnswer validChoiceAnswer = buildChoiceAnswer(partialResponse, choiceQuestion, yesOption);
+
+        SurveyAnswer invalidRatingAnswer = new SurveyAnswer();
+        invalidRatingAnswer.setId(UUID.randomUUID());
+        invalidRatingAnswer.setCompany(partialResponse.getCompany());
+        invalidRatingAnswer.setSurveyResponse(partialResponse);
+        invalidRatingAnswer.setSurveyQuestion(ratingQuestion);
+        invalidRatingAnswer.setAnswerType(QuestionType.RATING);
+        invalidRatingAnswer.setAnswerJson("{}");
+        invalidRatingAnswer.setValid(false);
+        invalidRatingAnswer.setInvalidReason("Rating answer could not be normalized");
+        invalidRatingAnswer.setRetryCount(0);
+
+        SurveyAnswer invalidOpenEndedAnswer = new SurveyAnswer();
+        invalidOpenEndedAnswer.setId(UUID.randomUUID());
+        invalidOpenEndedAnswer.setCompany(partialResponse.getCompany());
+        invalidOpenEndedAnswer.setSurveyResponse(partialResponse);
+        invalidOpenEndedAnswer.setSurveyQuestion(openEndedQuestion);
+        invalidOpenEndedAnswer.setAnswerType(QuestionType.OPEN_ENDED);
+        invalidOpenEndedAnswer.setAnswerText("  ");
+        invalidOpenEndedAnswer.setRawInputText("  ");
+        invalidOpenEndedAnswer.setAnswerJson("{}");
+        invalidOpenEndedAnswer.setValid(false);
+        invalidOpenEndedAnswer.setInvalidReason("Empty transcript");
+        invalidOpenEndedAnswer.setRetryCount(0);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(1L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(buildCallJob(operation, CallJobStatus.COMPLETED)));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(partialResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(choiceQuestion, ratingQuestion, openEndedQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(choiceQuestion.getId(), ratingQuestion.getId(), openEndedQuestion.getId())
+        )).thenReturn(List.of(yesOption, noOption));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(List.of(partialResponse.getId())))
+                .thenReturn(List.of(validChoiceAnswer, invalidRatingAnswer, invalidOpenEndedAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.totalResponses()).isEqualTo(1);
+        assertThat(response.completionRate()).isZero();
+        assertThat(response.responseRate()).isEqualTo(100.0);
+        assertThat(response.questionSummaries()).hasSize(3);
+        assertThat(response.questionSummaries().get(0).answeredCount()).isEqualTo(1);
+        assertThat(response.questionSummaries().get(0).breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Evet:1", "Hayir:0");
+        assertThat(response.questionSummaries().get(1).answeredCount()).isZero();
+        assertThat(response.questionSummaries().get(1).averageRating()).isEqualTo(0.0);
+        assertThat(response.questionSummaries().get(1).emptyStateMessage()).isNotBlank();
+        assertThat(response.questionSummaries().get(2).answeredCount()).isZero();
+        assertThat(response.questionSummaries().get(2).sampleResponses()).isEmpty();
+        assertThat(response.questionSummaries().get(2).emptyStateMessage()).isNotBlank();
     }
 
     private Operation buildOperation(OperationStatus status, SurveyStatus surveyStatus) {

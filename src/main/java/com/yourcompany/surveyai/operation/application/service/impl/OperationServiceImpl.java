@@ -292,7 +292,7 @@ public class OperationServiceImpl implements OperationService {
         long abandonedResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.ABANDONED).count();
         long invalidResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.INVALID).count();
 
-        double completionRate = percentage(completedResponses, totalContacts);
+        double completionRate = percentage(completedResponses, responses.size());
         double responseRate = percentage(responses.size(), totalContacts);
         double contactReachRate = percentage(totalCallsAttempted, totalContacts);
         double participationRate = percentage(completedResponses + partialResponses, totalContacts);
@@ -522,6 +522,7 @@ public class OperationServiceImpl implements OperationService {
     ) {
         if (question.getQuestionType() == QuestionType.RATING) {
             List<SurveyAnswer> ratingAnswers = answers.stream()
+                    .filter(answer -> answer.getAnswerType() == QuestionType.RATING)
                     .filter(SurveyAnswer::isValid)
                     .filter(answer -> answer.getAnswerNumber() != null)
                     .toList();
@@ -555,6 +556,8 @@ public class OperationServiceImpl implements OperationService {
 
         if (question.getQuestionType() == QuestionType.OPEN_ENDED) {
             List<SurveyAnswer> openEndedAnswers = answers.stream()
+                    .filter(answer -> answer.getAnswerType() == QuestionType.OPEN_ENDED)
+                    .filter(SurveyAnswer::isValid)
                     .filter(this::hasUsableOpenEndedAnswer)
                     .toList();
             long answeredCount = openEndedAnswers.size();
@@ -575,8 +578,9 @@ public class OperationServiceImpl implements OperationService {
             );
         }
 
-        Map<String, Long> distributions = buildChoiceDistribution(options, answers);
-        long answeredCount = distributions.values().stream().mapToLong(Long::longValue).sum();
+        List<List<String>> choiceSelections = resolveChoiceSelections(question.getQuestionType(), options, answers);
+        Map<String, Long> distributions = buildChoiceDistribution(options, choiceSelections);
+        long answeredCount = choiceSelections.size();
         double responseRate = percentage(answeredCount, totalContacts);
         String chartKind = isBinaryQuestion(options) ? "BINARY" : question.getQuestionType() == QuestionType.MULTI_CHOICE
                 ? "MULTI_CHOICE"
@@ -598,20 +602,40 @@ public class OperationServiceImpl implements OperationService {
         );
     }
 
-    private Map<String, Long> buildChoiceDistribution(List<SurveyQuestionOption> options, List<SurveyAnswer> answers) {
+    private Map<String, Long> buildChoiceDistribution(List<SurveyQuestionOption> options, List<List<String>> selections) {
         Map<String, Long> counts = new LinkedHashMap<>();
         options.forEach(option -> counts.put(option.getLabel(), 0L));
 
-        for (SurveyAnswer answer : answers) {
-            resolveChoiceLabels(answer, options).forEach(label -> counts.computeIfPresent(label, (key, value) -> value + 1L));
+        for (List<String> selection : selections) {
+            selection.forEach(label -> counts.computeIfPresent(label, (key, value) -> value + 1L));
         }
 
         return counts;
     }
 
+    private List<List<String>> resolveChoiceSelections(
+            QuestionType questionType,
+            List<SurveyQuestionOption> options,
+            List<SurveyAnswer> answers
+    ) {
+        return answers.stream()
+                .filter(answer -> answer.getAnswerType() == questionType)
+                .map(answer -> resolveChoiceLabels(answer, options))
+                .map(labels -> labels.stream().distinct().toList())
+                .filter(labels -> !labels.isEmpty())
+                .filter(labels -> questionType == QuestionType.MULTI_CHOICE || labels.size() == 1)
+                .toList();
+    }
+
     private List<String> resolveChoiceLabels(SurveyAnswer answer, List<SurveyQuestionOption> options) {
         if (answer.getSelectedOption() != null) {
-            return List.of(answer.getSelectedOption().getLabel());
+            String selectedLabel = answer.getSelectedOption().getLabel();
+            return options.stream()
+                    .map(SurveyQuestionOption::getLabel)
+                    .filter(label -> normalize(label).equals(normalize(selectedLabel)))
+                    .findFirst()
+                    .map(List::of)
+                    .orElse(List.of());
         }
 
         List<String> extracted = extractLabels(answer.getAnswerJson(), options).stream()
