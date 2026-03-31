@@ -63,7 +63,9 @@ public class AuthService {
     }
 
     public AuthenticatedUserResponse getCurrentUser(AppUser user) {
-        return toAuthenticatedUserResponse(user);
+        AppUser hydratedUser = appUserRepository.findByIdAndDeletedAtIsNull(user.getId())
+                .orElseThrow(() -> new UnauthorizedException("Authentication is required"));
+        return toAuthenticatedUserResponse(hydratedUser);
     }
 
     @Transactional
@@ -76,7 +78,10 @@ public class AuthService {
                 .filter(session -> session.getExpiresAt().isAfter(OffsetDateTime.now()))
                 .map(session -> {
                     session.setLastSeenAt(OffsetDateTime.now());
-                    return authSessionRepository.save(session).getAppUser();
+                    AppUser user = authSessionRepository.save(session).getAppUser();
+                    // Initialize the company relation before storing the user in request scope.
+                    user.getCompany().getId();
+                    return user;
                 })
                 .filter(user -> user.getStatus() == AppUserStatus.ACTIVE && user.getDeletedAt() == null);
     }

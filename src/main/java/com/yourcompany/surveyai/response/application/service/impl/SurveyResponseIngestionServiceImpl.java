@@ -21,6 +21,7 @@ import com.yourcompany.surveyai.survey.repository.SurveyQuestionOptionRepository
 import com.yourcompany.surveyai.survey.repository.SurveyQuestionRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -332,7 +333,27 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
     }
 
     private String normalize(String value) {
-        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        if (value == null) {
+            return "";
+        }
+
+        String normalized = value.trim()
+                .toLowerCase(Locale.ROOT)
+                .replace('ı', 'i')
+                .replace('İ', 'i')
+                .replace('ş', 's')
+                .replace('Ş', 's')
+                .replace('ğ', 'g')
+                .replace('Ğ', 'g')
+                .replace('ü', 'u')
+                .replace('Ü', 'u')
+                .replace('ö', 'o')
+                .replace('Ö', 'o')
+                .replace('ç', 'c')
+                .replace('Ç', 'c');
+
+        String decomposed = Normalizer.normalize(normalized, Normalizer.Form.NFD);
+        return decomposed.replaceAll("\\p{M}+", "");
     }
 
     private String firstNonBlank(String... values) {

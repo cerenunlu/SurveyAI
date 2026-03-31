@@ -19,6 +19,9 @@ import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
 import com.yourcompany.surveyai.response.domain.entity.SurveyAnswer;
 import com.yourcompany.surveyai.response.domain.entity.SurveyResponse;
 import com.yourcompany.surveyai.response.domain.enums.SurveyResponseStatus;
+import com.yourcompany.surveyai.response.application.model.IngestedSurveyAnswer;
+import com.yourcompany.surveyai.response.application.model.IngestedSurveyResult;
+import com.yourcompany.surveyai.response.application.provider.ProviderSurveyResultMapper;
 import com.yourcompany.surveyai.response.infrastructure.provider.elevenlabs.ElevenLabsSurveyResultMapper;
 import com.yourcompany.surveyai.response.infrastructure.provider.mock.MockSurveyResultMapper;
 import com.yourcompany.surveyai.response.repository.SurveyAnswerRepository;
@@ -160,6 +163,56 @@ class SurveyResponseIngestionServiceImplTest {
         assertThat(savedAnswers).hasSize(2);
     }
 
+    @Test
+    void ingest_matchesSingleChoiceAnswersDespiteTurkishCharacterDifferences() {
+        TurkishChoiceFixture fixture = buildTurkishChoiceFixture();
+        CallAttempt mockAttempt = fixture.mockCallAttempt();
+
+        service = new SurveyResponseIngestionServiceImpl(
+                new com.yourcompany.surveyai.response.application.provider.ProviderSurveyResultMapperRegistry(List.of(
+                        new ElevenLabsSurveyResultMapper(new ObjectMapper()),
+                        new MockSurveyResultMapper(new ObjectMapper()),
+                        new TurkishMockMapper()
+                )),
+                surveyResponseRepository,
+                surveyAnswerRepository,
+                surveyQuestionRepository,
+                surveyQuestionOptionRepository,
+                new ObjectMapper()
+        );
+
+        when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(mockAttempt.getId())).thenReturn(Optional.empty());
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey().getId()))
+                .thenReturn(List.of(fixture.choiceQuestion()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.choiceQuestion().getId()))
+                .thenReturn(List.of(fixture.yesOption(), fixture.noOption()));
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(any(), any()))
+                .thenReturn(Optional.empty());
+
+        service.ingest(mockAttempt, new ProviderWebhookEvent(
+                CallProvider.MOCK,
+                mockAttempt.getProviderCallId(),
+                mockAttempt.getCallJob().getIdempotencyKey(),
+                CallJobStatus.COMPLETED,
+                CallAttemptStatus.COMPLETED,
+                OffsetDateTime.now(),
+                30,
+                null,
+                null,
+                null,
+                "test transcript",
+                "{}"
+        ));
+
+        assertThat(savedAnswers)
+                .anySatisfy(answer -> {
+                    assertThat(answer.getSurveyQuestion().getCode()).isEqualTo("question_2");
+                    assertThat(answer.getSelectedOption()).isEqualTo(fixture.noOption());
+                    assertThat(answer.getAnswerText()).isEqualTo("Hayir");
+                    assertThat(answer.isValid()).isTrue();
+                });
+    }
+
     private TestFixture buildFixture() {
         Company company = new Company();
         company.setId(UUID.randomUUID());
@@ -210,6 +263,20 @@ class SurveyResponseIngestionServiceImplTest {
         callAttempt.setDialedAt(OffsetDateTime.now().minusMinutes(2));
         callAttempt.setConnectedAt(OffsetDateTime.now().minusMinutes(1));
         callAttempt.setRawProviderPayload("{}");
+
+        CallAttempt mockCallAttempt = new CallAttempt();
+        mockCallAttempt.setId(UUID.randomUUID());
+        mockCallAttempt.setCompany(company);
+        mockCallAttempt.setCallJob(callJob);
+        mockCallAttempt.setOperation(operation);
+        mockCallAttempt.setOperationContact(contact);
+        mockCallAttempt.setAttemptNumber(2);
+        mockCallAttempt.setProvider(CallProvider.MOCK);
+        mockCallAttempt.setProviderCallId("mock_123");
+        mockCallAttempt.setStatus(CallAttemptStatus.COMPLETED);
+        mockCallAttempt.setDialedAt(OffsetDateTime.now().minusMinutes(2));
+        mockCallAttempt.setConnectedAt(OffsetDateTime.now().minusMinutes(1));
+        mockCallAttempt.setRawProviderPayload("{}");
 
         SurveyQuestion choiceQuestion = new SurveyQuestion();
         choiceQuestion.setId(UUID.randomUUID());
@@ -283,7 +350,7 @@ class SurveyResponseIngestionServiceImplTest {
                 """
         );
 
-        return new TestFixture(company, survey, operation, contact, callJob, callAttempt, choiceQuestion, ratingQuestion, yesOption, noOption, completedWebhook);
+        return new TestFixture(company, survey, operation, contact, callJob, callAttempt, mockCallAttempt, choiceQuestion, ratingQuestion, yesOption, noOption, completedWebhook);
     }
 
     private record TestFixture(
@@ -293,11 +360,141 @@ class SurveyResponseIngestionServiceImplTest {
             OperationContact contact,
             CallJob callJob,
             CallAttempt callAttempt,
+            CallAttempt mockCallAttempt,
             SurveyQuestion choiceQuestion,
             SurveyQuestion ratingQuestion,
             SurveyQuestionOption yesOption,
             SurveyQuestionOption noOption,
             ProviderWebhookEvent completedWebhook
     ) {
+    }
+
+    private TurkishChoiceFixture buildTurkishChoiceFixture() {
+        Company company = new Company();
+        company.setId(UUID.randomUUID());
+
+        Survey survey = new Survey();
+        survey.setId(UUID.randomUUID());
+        survey.setCompany(company);
+
+        Operation operation = new Operation();
+        operation.setId(UUID.randomUUID());
+        operation.setCompany(company);
+        operation.setSurvey(survey);
+
+        OperationContact contact = new OperationContact();
+        contact.setId(UUID.randomUUID());
+        contact.setCompany(company);
+        contact.setOperation(operation);
+        contact.setPhoneNumber("905551112233");
+        contact.setStatus(OperationContactStatus.CALLING);
+        contact.setRetryCount(0);
+        contact.setMetadataJson("{}");
+
+        CallJob callJob = new CallJob();
+        callJob.setId(UUID.randomUUID());
+        callJob.setCompany(company);
+        callJob.setOperation(operation);
+        callJob.setOperationContact(contact);
+        callJob.setStatus(CallJobStatus.IN_PROGRESS);
+        callJob.setPriority((short) 1);
+        callJob.setScheduledFor(OffsetDateTime.now());
+        callJob.setAvailableAt(OffsetDateTime.now());
+        callJob.setAttemptCount(1);
+        callJob.setMaxAttempts(3);
+        callJob.setIdempotencyKey("turkish-option-test");
+
+        CallAttempt mockCallAttempt = new CallAttempt();
+        mockCallAttempt.setId(UUID.randomUUID());
+        mockCallAttempt.setCompany(company);
+        mockCallAttempt.setCallJob(callJob);
+        mockCallAttempt.setOperation(operation);
+        mockCallAttempt.setOperationContact(contact);
+        mockCallAttempt.setAttemptNumber(1);
+        mockCallAttempt.setProvider(CallProvider.MOCK);
+        mockCallAttempt.setProviderCallId("mock_turkish_123");
+        mockCallAttempt.setStatus(CallAttemptStatus.COMPLETED);
+        mockCallAttempt.setDialedAt(OffsetDateTime.now().minusMinutes(2));
+        mockCallAttempt.setConnectedAt(OffsetDateTime.now().minusMinutes(1));
+        mockCallAttempt.setRawProviderPayload("{}");
+
+        SurveyQuestion choiceQuestion = new SurveyQuestion();
+        choiceQuestion.setId(UUID.randomUUID());
+        choiceQuestion.setCompany(company);
+        choiceQuestion.setSurvey(survey);
+        choiceQuestion.setCode("question_2");
+        choiceQuestion.setQuestionOrder(2);
+        choiceQuestion.setQuestionType(QuestionType.SINGLE_CHOICE);
+        choiceQuestion.setTitle("Mevcut belediyeye hiç oy verdiniz mi");
+
+        SurveyQuestionOption yesOption = new SurveyQuestionOption();
+        yesOption.setId(UUID.randomUUID());
+        yesOption.setCompany(company);
+        yesOption.setSurveyQuestion(choiceQuestion);
+        yesOption.setOptionCode("option_1");
+        yesOption.setLabel("Evet");
+        yesOption.setValue("option_1");
+        yesOption.setOptionOrder(1);
+        yesOption.setActive(true);
+
+        SurveyQuestionOption noOption = new SurveyQuestionOption();
+        noOption.setId(UUID.randomUUID());
+        noOption.setCompany(company);
+        noOption.setSurveyQuestion(choiceQuestion);
+        noOption.setOptionCode("option_2");
+        noOption.setLabel("Hayir");
+        noOption.setValue("option_2");
+        noOption.setOptionOrder(2);
+        noOption.setActive(true);
+
+        return new TurkishChoiceFixture(survey, mockCallAttempt, choiceQuestion, yesOption, noOption);
+    }
+
+    private record TurkishChoiceFixture(
+            Survey survey,
+            CallAttempt mockCallAttempt,
+            SurveyQuestion choiceQuestion,
+            SurveyQuestionOption yesOption,
+            SurveyQuestionOption noOption
+    ) {
+    }
+
+    private static class TurkishMockMapper implements ProviderSurveyResultMapper {
+
+        @Override
+        public CallProvider getProvider() {
+            return CallProvider.MOCK;
+        }
+
+        @Override
+        public IngestedSurveyResult map(CallAttempt callAttempt, ProviderWebhookEvent event) {
+            return new IngestedSurveyResult(
+                    SurveyResponseStatus.COMPLETED,
+                    BigDecimal.valueOf(100),
+                    OffsetDateTime.now().minusMinutes(1),
+                    OffsetDateTime.now(),
+                    "test transcript",
+                    "{}",
+                    null,
+                    "{}",
+                    List.of(
+                            new IngestedSurveyAnswer(
+                                    null,
+                                    2,
+                                    "Mevcut belediyeye hiç oy verdiniz mi",
+                                    "Hayır",
+                                    "Hayır",
+                                    "Hayır",
+                                    null,
+                                    List.of("Hayır"),
+                                    null,
+                                    true,
+                                    null,
+                                    "{}"
+                            )
+                    ),
+                    List.of()
+            );
+        }
     }
 }

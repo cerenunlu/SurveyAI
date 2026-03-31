@@ -5,13 +5,19 @@ import com.yourcompany.surveyai.common.domain.enums.AppUserStatus;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
 
     Optional<AppUser> findByCompany_IdAndEmailAndDeletedAtIsNull(UUID companyId, String email);
 
+    @EntityGraph(attributePaths = "company")
     List<AppUser> findAllByEmailIgnoreCaseAndDeletedAtIsNull(String email);
 
+    @EntityGraph(attributePaths = "company")
     List<AppUser> findAllByCompany_IdAndStatusAndDeletedAtIsNull(UUID companyId, AppUserStatus status);
+
+    @EntityGraph(attributePaths = "company")
+    Optional<AppUser> findByIdAndDeletedAtIsNull(UUID id);
 }

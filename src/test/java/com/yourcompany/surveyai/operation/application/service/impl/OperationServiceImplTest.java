@@ -232,6 +232,140 @@ class OperationServiceImplTest {
                 .containsExactly("Temsilci oldukca yardimciydi ve surec kolay ilerledi.");
     }
 
+    @Test
+    void getOperationAnalytics_recoversChoiceDistributionFromLegacyInvalidAnswers() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion choiceQuestion = buildQuestion(operation.getSurvey(), "q-choice", 1, QuestionType.SINGLE_CHOICE, "Mevcut belediyeye hiç oy verdiniz mi");
+        SurveyQuestionOption yesOption = buildOption(choiceQuestion, 1, "option_1", "Evet", "option_1");
+        SurveyQuestionOption noOption = buildOption(choiceQuestion, 2, "option_2", "Hayir", "option_2");
+
+        SurveyResponse firstResponse = buildSurveyResponse(operation, SurveyResponseStatus.COMPLETED, "905551112233", 100, OffsetDateTime.now().minusHours(2));
+        SurveyResponse secondResponse = buildSurveyResponse(operation, SurveyResponseStatus.COMPLETED, "905551112244", 100, OffsetDateTime.now().minusHours(1));
+
+        SurveyAnswer yesAnswer = buildChoiceAnswer(firstResponse, choiceQuestion, yesOption);
+        SurveyAnswer legacyNoAnswer = new SurveyAnswer();
+        legacyNoAnswer.setId(UUID.randomUUID());
+        legacyNoAnswer.setCompany(secondResponse.getCompany());
+        legacyNoAnswer.setSurveyResponse(secondResponse);
+        legacyNoAnswer.setSurveyQuestion(choiceQuestion);
+        legacyNoAnswer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        legacyNoAnswer.setAnswerText("Hayır");
+        legacyNoAnswer.setRawInputText("Hayır");
+        legacyNoAnswer.setAnswerJson("{}");
+        legacyNoAnswer.setValid(false);
+        legacyNoAnswer.setInvalidReason("Choice answer did not match an option");
+        legacyNoAnswer.setRetryCount(0);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(2L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(
+                        buildCallJob(operation, CallJobStatus.COMPLETED),
+                        buildCallJob(operation, CallJobStatus.COMPLETED)
+                ));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(secondResponse, firstResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(choiceQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(choiceQuestion.getId())
+        )).thenReturn(List.of(yesOption, noOption));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(
+                List.of(secondResponse.getId(), firstResponse.getId())
+        )).thenReturn(List.of(yesAnswer, legacyNoAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionSummaries()).hasSize(1);
+        assertThat(response.questionSummaries().getFirst().answeredCount()).isEqualTo(2);
+        assertThat(response.questionSummaries().getFirst().breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Evet:1", "Hayir:1");
+        assertThat(response.insightItems())
+                .extracting(item -> item.detail())
+                .filteredOn(detail -> ((String) detail).contains("en cok secilen cevap"))
+                .containsExactly("\"Mevcut belediyeye hiç oy verdiniz mi\" sorusunda en cok secilen cevap Evet oldu (%50.0).");
+    }
+
+    @Test
+    void getOperationAnalytics_ignoresChoiceAnswersWithNullFallbackText() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion choiceQuestion = buildQuestion(
+                operation.getSurvey(),
+                "q-choice",
+                1,
+                QuestionType.SINGLE_CHOICE,
+                "Mevcut belediyeye oy verdiniz mi"
+        );
+        SurveyQuestionOption yesOption = buildOption(choiceQuestion, 1, "option_1", "Evet", "option_1");
+        SurveyQuestionOption noOption = buildOption(choiceQuestion, 2, "option_2", "Hayir", "option_2");
+
+        SurveyResponse firstResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112233",
+                100,
+                OffsetDateTime.now().minusHours(2)
+        );
+        SurveyResponse secondResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.PARTIAL,
+                "905551112244",
+                25,
+                OffsetDateTime.now().minusHours(1)
+        );
+
+        SurveyAnswer yesAnswer = buildChoiceAnswer(firstResponse, choiceQuestion, yesOption);
+        SurveyAnswer blankChoiceAnswer = new SurveyAnswer();
+        blankChoiceAnswer.setId(UUID.randomUUID());
+        blankChoiceAnswer.setCompany(secondResponse.getCompany());
+        blankChoiceAnswer.setSurveyResponse(secondResponse);
+        blankChoiceAnswer.setSurveyQuestion(choiceQuestion);
+        blankChoiceAnswer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        blankChoiceAnswer.setAnswerText(null);
+        blankChoiceAnswer.setRawInputText(null);
+        blankChoiceAnswer.setAnswerJson("{}");
+        blankChoiceAnswer.setValid(false);
+        blankChoiceAnswer.setInvalidReason("Choice answer did not match an option");
+        blankChoiceAnswer.setRetryCount(0);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(2L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(
+                        buildCallJob(operation, CallJobStatus.COMPLETED),
+                        buildCallJob(operation, CallJobStatus.FAILED)
+                ));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(secondResponse, firstResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(choiceQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(choiceQuestion.getId())
+        )).thenReturn(List.of(yesOption, noOption));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(
+                List.of(secondResponse.getId(), firstResponse.getId())
+        )).thenReturn(List.of(yesAnswer, blankChoiceAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionSummaries()).hasSize(1);
+        assertThat(response.questionSummaries().getFirst().answeredCount()).isEqualTo(1);
+        assertThat(response.questionSummaries().getFirst().breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Evet:1", "Hayir:0");
+    }
+
     private Operation buildOperation(OperationStatus status, SurveyStatus surveyStatus) {
         Company company = new Company();
         company.setId(UUID.randomUUID());

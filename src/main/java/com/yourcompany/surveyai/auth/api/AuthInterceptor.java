@@ -6,6 +6,7 @@ import com.yourcompany.surveyai.auth.application.RequestAuthContext;
 import com.yourcompany.surveyai.common.domain.entity.AppUser;
 import com.yourcompany.surveyai.common.exception.CompanyIsolationException;
 import com.yourcompany.surveyai.common.exception.UnauthorizedException;
+import com.yourcompany.surveyai.common.exception.ValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.UUID;
@@ -51,16 +52,24 @@ public class AuthInterceptor implements HandlerInterceptor {
         UUID authenticatedCompanyId = user.getCompany().getId();
         String companyIdParam = request.getParameter("companyId");
 
-        if (companyIdParam != null && !authenticatedCompanyId.equals(UUID.fromString(companyIdParam))) {
+        if (companyIdParam != null && !authenticatedCompanyId.equals(parseCompanyId(companyIdParam))) {
             throw new CompanyIsolationException("Requested company does not match authenticated company");
         }
 
         Matcher matcher = COMPANY_PATH_PATTERN.matcher(request.getRequestURI());
         if (matcher.matches()) {
-            UUID pathCompanyId = UUID.fromString(matcher.group(1));
+            UUID pathCompanyId = parseCompanyId(matcher.group(1));
             if (!authenticatedCompanyId.equals(pathCompanyId)) {
                 throw new CompanyIsolationException("Requested company does not match authenticated company");
             }
+        }
+    }
+
+    private UUID parseCompanyId(String rawCompanyId) {
+        try {
+            return UUID.fromString(rawCompanyId);
+        } catch (IllegalArgumentException ex) {
+            throw new ValidationException("Invalid company ID");
         }
     }
 }

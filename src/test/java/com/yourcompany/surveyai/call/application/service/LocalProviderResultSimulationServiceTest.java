@@ -156,6 +156,46 @@ class LocalProviderResultSimulationServiceTest {
                 .hasMessageContaining("MOCK provider");
     }
 
+    @Test
+    void simulate_normalizesLowercaseStatusBeforeBuildingPayload() throws Exception {
+        CallAttempt callAttempt = buildAttempt(CallProvider.MOCK);
+        CallJob callJob = callAttempt.getCallJob();
+        HttpServletRequest httpServletRequest = mock(HttpServletRequest.class);
+
+        when(callJobRepository.findById(callJob.getId())).thenReturn(Optional.of(callJob));
+        when(callAttemptRepository.findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(callJob.getId()))
+                .thenReturn(Optional.of(callAttempt));
+        when(providerWebhookIngestionService.ingest(eq(CallProvider.MOCK), org.mockito.ArgumentMatchers.anyString(), eq(httpServletRequest)))
+                .thenReturn(1);
+
+        service.simulate(
+                new LocalProviderResultSimulationRequest(callJob.getId(), "completed", null, null, null, null, null, List.of()),
+                httpServletRequest
+        );
+
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(providerWebhookIngestionService).ingest(eq(CallProvider.MOCK), payloadCaptor.capture(), eq(httpServletRequest));
+
+        JsonNode payload = objectMapper.readTree(payloadCaptor.getValue());
+        assertThat(payload.path("status").asText()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void simulate_rejectsUnknownStatusValues() {
+        CallAttempt callAttempt = buildAttempt(CallProvider.MOCK);
+        CallJob callJob = callAttempt.getCallJob();
+
+        when(callJobRepository.findById(callJob.getId())).thenReturn(Optional.of(callJob));
+        when(callAttemptRepository.findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(callJob.getId()))
+                .thenReturn(Optional.of(callAttempt));
+
+        assertThatThrownBy(() -> service.simulate(
+                new LocalProviderResultSimulationRequest(callJob.getId(), "done-ish", null, null, null, null, null, List.of()),
+                mock(HttpServletRequest.class)
+        )).isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Invalid simulation status");
+    }
+
     private CallAttempt buildAttempt(CallProvider provider) {
         Company company = new Company();
         company.setId(UUID.randomUUID());

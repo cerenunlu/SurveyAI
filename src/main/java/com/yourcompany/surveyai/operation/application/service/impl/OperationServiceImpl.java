@@ -45,6 +45,7 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -265,7 +266,6 @@ public class OperationServiceImpl implements OperationService {
                 : surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(responseIds);
 
         Map<UUID, List<SurveyAnswer>> answersByQuestionId = answers.stream()
-                .filter(SurveyAnswer::isValid)
                 .filter(answer -> responsesById.containsKey(answer.getSurveyResponse().getId()))
                 .collect(Collectors.groupingBy(
                         answer -> answer.getSurveyQuestion().getId(),
@@ -520,21 +520,20 @@ public class OperationServiceImpl implements OperationService {
             List<SurveyAnswer> answers,
             long totalContacts
     ) {
-        long answeredCount = answers.size();
-        double responseRate = percentage(answeredCount, totalContacts);
-
         if (question.getQuestionType() == QuestionType.RATING) {
+            List<SurveyAnswer> ratingAnswers = answers.stream()
+                    .filter(SurveyAnswer::isValid)
+                    .filter(answer -> answer.getAnswerNumber() != null)
+                    .toList();
+            long answeredCount = ratingAnswers.size();
+            double responseRate = percentage(answeredCount, totalContacts);
             Map<String, Long> ratings = new LinkedHashMap<>();
-            for (SurveyAnswer answer : answers) {
-                if (answer.getAnswerNumber() == null) {
-                    continue;
-                }
+            for (SurveyAnswer answer : ratingAnswers) {
                 String key = String.valueOf(answer.getAnswerNumber().stripTrailingZeros().toPlainString());
                 ratings.merge(key, 1L, Long::sum);
             }
-            double averageRating = round(answers.stream()
+            double averageRating = round(ratingAnswers.stream()
                     .map(SurveyAnswer::getAnswerNumber)
-                    .filter(java.util.Objects::nonNull)
                     .mapToDouble(BigDecimal::doubleValue)
                     .average()
                     .orElse(0));
@@ -555,6 +554,11 @@ public class OperationServiceImpl implements OperationService {
         }
 
         if (question.getQuestionType() == QuestionType.OPEN_ENDED) {
+            List<SurveyAnswer> openEndedAnswers = answers.stream()
+                    .filter(this::hasUsableOpenEndedAnswer)
+                    .toList();
+            long answeredCount = openEndedAnswers.size();
+            double responseRate = percentage(answeredCount, totalContacts);
             return new OperationAnalyticsQuestionSummaryDto(
                     question.getId(),
                     question.getCode(),
@@ -566,12 +570,14 @@ public class OperationServiceImpl implements OperationService {
                     responseRate,
                     null,
                     answeredCount == 0 ? "Acik uclu icgoruler, gecerli metin yanitlari geldikce olusur." : null,
-                    buildOpenEndedBreakdown(answers, answeredCount),
-                    buildOpenEndedSamples(answers)
+                    buildOpenEndedBreakdown(openEndedAnswers, answeredCount),
+                    buildOpenEndedSamples(openEndedAnswers)
             );
         }
 
         Map<String, Long> distributions = buildChoiceDistribution(options, answers);
+        long answeredCount = distributions.values().stream().mapToLong(Long::longValue).sum();
+        double responseRate = percentage(answeredCount, totalContacts);
         String chartKind = isBinaryQuestion(options) ? "BINARY" : question.getQuestionType() == QuestionType.MULTI_CHOICE
                 ? "MULTI_CHOICE"
                 : "CHOICE";
@@ -597,15 +603,36 @@ public class OperationServiceImpl implements OperationService {
         options.forEach(option -> counts.put(option.getLabel(), 0L));
 
         for (SurveyAnswer answer : answers) {
-            if (answer.getSelectedOption() != null) {
-                counts.merge(answer.getSelectedOption().getLabel(), 1L, Long::sum);
-                continue;
-            }
-
-            extractLabels(answer.getAnswerJson(), options).forEach(label -> counts.merge(label, 1L, Long::sum));
+            resolveChoiceLabels(answer, options).forEach(label -> counts.computeIfPresent(label, (key, value) -> value + 1L));
         }
 
         return counts;
+    }
+
+    private List<String> resolveChoiceLabels(SurveyAnswer answer, List<SurveyQuestionOption> options) {
+        if (answer.getSelectedOption() != null) {
+            return List.of(answer.getSelectedOption().getLabel());
+        }
+
+        List<String> extracted = extractLabels(answer.getAnswerJson(), options).stream()
+                .filter(label -> options.stream().anyMatch(option -> normalize(label).equals(normalize(option.getLabel()))))
+                .toList();
+        if (!extracted.isEmpty()) {
+            return extracted;
+        }
+
+        return java.util.stream.Stream.of(
+                        answer.getAnswerText(),
+                        answer.getRawInputText()
+                )
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .map(value -> resolveOptionLabel(value, options).orElse(null))
+                .filter(Objects::nonNull)
+                .filter(label -> options.stream().anyMatch(option -> normalize(label).equals(normalize(option.getLabel()))))
+                .distinct()
+                .toList();
     }
 
     private List<String> extractLabels(String rawJson, List<SurveyQuestionOption> options) {
@@ -641,15 +668,22 @@ public class OperationServiceImpl implements OperationService {
         if (rawValue == null || rawValue.isBlank()) {
             return java.util.Optional.empty();
         }
-        String normalized = rawValue.trim();
+        String normalized = normalize(rawValue);
         return options.stream()
-                .filter(option -> normalized.equals(option.getId().toString())
-                        || normalized.equalsIgnoreCase(option.getOptionCode())
-                        || normalized.equalsIgnoreCase(option.getValue())
-                        || normalized.equalsIgnoreCase(option.getLabel()))
+                .filter(option -> normalized.equals(normalize(option.getId().toString()))
+                        || normalized.equals(normalize(option.getOptionCode()))
+                        || normalized.equals(normalize(option.getValue()))
+                        || normalized.equals(normalize(option.getLabel())))
                 .map(SurveyQuestionOption::getLabel)
                 .findFirst()
-                .or(() -> java.util.Optional.of(normalized));
+                .or(() -> java.util.Optional.of(rawValue.trim()));
+    }
+
+    private boolean hasUsableOpenEndedAnswer(SurveyAnswer answer) {
+        String text = answer.getAnswerText() != null && !answer.getAnswerText().isBlank()
+                ? answer.getAnswerText().trim()
+                : answer.getRawInputText();
+        return text != null && !text.isBlank();
     }
 
     private List<OperationAnalyticsBreakdownItemDto> buildOpenEndedBreakdown(List<SurveyAnswer> answers, long answeredCount) {
@@ -858,6 +892,30 @@ public class OperationServiceImpl implements OperationService {
             return value;
         }
         return value.substring(0, 137).trim() + "...";
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        String normalized = value.trim()
+                .toLowerCase(Locale.ROOT)
+                .replace('ı', 'i')
+                .replace('İ', 'i')
+                .replace('ş', 's')
+                .replace('Ş', 's')
+                .replace('ğ', 'g')
+                .replace('Ğ', 'g')
+                .replace('ü', 'u')
+                .replace('Ü', 'u')
+                .replace('ö', 'o')
+                .replace('Ö', 'o')
+                .replace('ç', 'c')
+                .replace('Ç', 'c');
+
+        String decomposed = Normalizer.normalize(normalized, Normalizer.Form.NFD);
+        return decomposed.replaceAll("\\p{M}+", "");
     }
 
     private String slugify(String input) {

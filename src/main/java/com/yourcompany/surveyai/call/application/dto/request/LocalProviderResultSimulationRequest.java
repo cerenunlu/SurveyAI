@@ -1,5 +1,6 @@
 package com.yourcompany.surveyai.call.application.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -11,6 +12,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record LocalProviderResultSimulationRequest(
         @NotNull UUID callJobId,
         String status,
@@ -21,6 +23,7 @@ public record LocalProviderResultSimulationRequest(
         String errorMessage,
         @Valid List<Answer> answers
 ) {
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record Answer(
             String questionCode,
             @Positive Integer questionOrder,

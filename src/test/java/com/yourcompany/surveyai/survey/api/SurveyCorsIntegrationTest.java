@@ -155,6 +155,63 @@ class SurveyCorsIntegrationTest {
         verify(surveyService).updateSurvey(eq(companyId), eq(surveyId), any());
     }
 
+    @Test
+    void createSurveyReturnsForbiddenWhenAuthenticatedCompanyDoesNotMatchRequestCompany() throws Exception {
+        UUID authenticatedCompanyId = UUID.randomUUID();
+        UUID requestedCompanyId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        AppUser user = authenticatedUser(authenticatedCompanyId, userId);
+
+        authService.setResolvedUser(Optional.of(user));
+
+        mockMvc.perform(post("/api/v1/companies/{companyId}/surveys", requestedCompanyId)
+                        .header(HttpHeaders.ORIGIN, FRONTEND_ORIGIN)
+                        .cookie(new Cookie(AuthCookieService.SESSION_COOKIE_NAME, "session-token"))
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "name": "Draft survey",
+                                  "description": "Save from builder",
+                                  "languageCode": "tr",
+                                  "introPrompt": "Welcome",
+                                  "closingPrompt": "Thanks",
+                                  "maxRetryPerQuestion": 2,
+                                  "createdByUserId": "%s"
+                                }
+                                """.formatted(userId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void createSurveyReturnsBadRequestForInvalidCompanyIdQueryParameter() throws Exception {
+        UUID companyId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        AppUser user = authenticatedUser(companyId, userId);
+
+        authService.setResolvedUser(Optional.of(user));
+
+        mockMvc.perform(post("/api/v1/companies/{companyId}/surveys", companyId)
+                        .queryParam("companyId", "not-a-uuid")
+                        .header(HttpHeaders.ORIGIN, FRONTEND_ORIGIN)
+                        .cookie(new Cookie(AuthCookieService.SESSION_COOKIE_NAME, "session-token"))
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "name": "Draft survey",
+                                  "description": "Save from builder",
+                                  "languageCode": "tr",
+                                  "introPrompt": "Welcome",
+                                  "closingPrompt": "Thanks",
+                                  "maxRetryPerQuestion": 2,
+                                  "createdByUserId": "%s"
+                                }
+                                """.formatted(userId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("Invalid company ID"));
+    }
+
     private static AppUser authenticatedUser(UUID companyId, UUID userId) {
         Company company = new Company();
         company.setId(companyId);

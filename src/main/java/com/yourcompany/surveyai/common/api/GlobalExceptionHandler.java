@@ -1,6 +1,7 @@
 package com.yourcompany.surveyai.common.api;
 
 import com.yourcompany.surveyai.common.exception.NotFoundException;
+import com.yourcompany.surveyai.common.exception.CompanyIsolationException;
 import com.yourcompany.surveyai.common.exception.UnauthorizedException;
 import com.yourcompany.surveyai.common.exception.ValidationException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,7 +14,10 @@ import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -43,6 +47,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", ex.getMessage(), List.of(), request.getRequestURI());
     }
 
+    @ExceptionHandler(CompanyIsolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleCompanyIsolation(CompanyIsolationException ex, HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, "FORBIDDEN", ex.getMessage(), List.of(), request.getRequestURI());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleMethodArgumentNotValid(
             MethodArgumentNotValidException ex,
@@ -64,6 +73,54 @@ public class GlobalExceptionHandler {
                 "VALIDATION_ERROR",
                 "Request validation failed",
                 details,
+                request.getRequestURI()
+        );
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleHttpMessageNotReadable(
+            HttpMessageNotReadableException ex,
+            HttpServletRequest request
+    ) {
+        String message = "Request body could not be parsed";
+        Throwable cause = ex.getMostSpecificCause();
+        if (cause != null && cause.getMessage() != null && !cause.getMessage().isBlank()) {
+            message = cause.getMessage();
+        }
+
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_ERROR",
+                message,
+                List.of(),
+                request.getRequestURI()
+        );
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingRequestParameter(
+            MissingServletRequestParameterException ex,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_ERROR",
+                "Missing required request parameter: " + ex.getParameterName(),
+                List.of(),
+                request.getRequestURI()
+        );
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException ex,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_ERROR",
+                "Invalid value for parameter: " + ex.getName(),
+                List.of(),
                 request.getRequestURI()
         );
     }

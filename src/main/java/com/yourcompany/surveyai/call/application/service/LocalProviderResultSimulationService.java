@@ -19,6 +19,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -98,7 +99,7 @@ public class LocalProviderResultSimulationService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("providerCallId", firstNonBlank(callAttempt.getProviderCallId(), "mock-dev-" + callJob.getId()));
         payload.put("idempotencyKey", callJob.getIdempotencyKey());
-        payload.put("status", firstNonBlank(request.status(), CallJobStatus.COMPLETED.name()));
+        payload.put("status", resolveStatus(request.status()).name());
         payload.put("occurredAt", request.occurredAt() != null ? request.occurredAt() : OffsetDateTime.now());
         payload.put("durationSeconds", request.durationSeconds());
         payload.put("errorCode", request.errorCode());
@@ -115,6 +116,15 @@ public class LocalProviderResultSimulationService {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException error) {
             throw new ValidationException("Failed to serialize simulated provider result payload");
+        }
+    }
+
+    private CallJobStatus resolveStatus(String rawStatus) {
+        String candidate = firstNonBlank(rawStatus, CallJobStatus.COMPLETED.name());
+        try {
+            return CallJobStatus.valueOf(candidate.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException error) {
+            throw new ValidationException("Invalid simulation status: " + rawStatus);
         }
     }
 
