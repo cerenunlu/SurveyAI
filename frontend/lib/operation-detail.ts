@@ -123,15 +123,15 @@ export function getAnalyticsKpis(operation: Operation | null, analytics: Operati
 
   return [
     {
-      label: isRunning ? "Toplam aranmis kisi" : "Hazirlanan kisi havuzu",
-      value: String(analytics.totalCallsAttempted || analytics.totalContacts),
-      detail: `${analytics.totalContacts} toplam kisi`,
+      label: isRunning ? "Temas edilen kisi" : "Hazirlanan cagri isi",
+      value: String(isRunning ? analytics.totalCallsAttempted || analytics.totalContacts : analytics.totalCallJobs),
+      detail: isRunning ? `%${analytics.contactReachRate} temas orani` : `${analytics.totalContacts} toplam kisi`,
       tone: "neutral" as const,
     },
     {
-      label: "Tamamlanan gorusme",
-      value: String(analytics.completedResponses),
-      detail: isRunning ? "Canli olarak artar" : "Tamamlanan cevap kayitlari",
+      label: "Tamamlanan cagri",
+      value: String(analytics.totalCompletedCalls),
+      detail: `${analytics.completedResponses} kayitli survey response`,
       tone: "positive" as const,
     },
     {
@@ -143,7 +143,7 @@ export function getAnalyticsKpis(operation: Operation | null, analytics: Operati
     {
       label: "Basarisiz / yanitsiz",
       value: String(analytics.failedCallJobs + analytics.abandonedResponses + analytics.invalidResponses),
-      detail: "Izleme gerektiren sonuclar",
+      detail: `${analytics.partialResponses} kismi response dahil`,
       tone: isFailed ? "danger" as const : "warning" as const,
     },
   ];

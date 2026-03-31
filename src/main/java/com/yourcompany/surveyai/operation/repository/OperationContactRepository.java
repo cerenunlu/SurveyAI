@@ -16,6 +16,8 @@ public interface OperationContactRepository extends JpaRepository<OperationConta
 
     List<OperationContact> findAllByOperation_IdAndCompany_IdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID operationId, UUID companyId);
 
+    long countByOperation_IdAndCompany_IdAndDeletedAtIsNull(UUID operationId, UUID companyId);
+
     List<OperationContact> findAllByOperation_IdAndStatusAndDeletedAtIsNull(UUID operationId, OperationContactStatus status);
 
     List<OperationContact> findAllByCompany_IdAndNextRetryAtBeforeAndDeletedAtIsNull(UUID companyId, OffsetDateTime nextRetryAt);
