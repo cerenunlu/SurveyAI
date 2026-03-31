@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { PlusIcon } from "@/components/ui/Icons";
 import { ChartPlaceholder } from "@/components/ui/ChartPlaceholder";
 import { DataTable } from "@/components/ui/DataTable";
-import { HeroPanel } from "@/components/ui/HeroPanel";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { fetchCompanyOperations } from "@/lib/operations";
@@ -84,24 +84,17 @@ export default function OperationsPage() {
     }
 
     void loadOperations();
-
     return () => controller.abort();
   }, []);
 
   return (
     <PageContainer>
-      <HeroPanel
-        eyebrow={t("operations.hero.eyebrow")}
-        title={t("operations.hero.title")}
-        description={t("operations.hero.description")}
-        actions={
-          <>
-            <Link href="/operations/new" className="button-primary">{t("operations.hero.launchOperation")}</Link>
-            <button className="button-secondary">{t("operations.hero.segmentBuilder")}</button>
-          </>
-        }
-        chips={tm<string[]>("operations.hero.chips")}
-      />
+      <div className="page-section-action-row">
+        <Link href="/operations/new" className="button-primary compact-button page-square-action">
+          <PlusIcon className="nav-icon" />
+          Yeni Operasyon
+        </Link>
+      </div>
 
       <SectionCard title={t("operations.table.title")} description={t("operations.table.description")}>
         {errorMessage ? (

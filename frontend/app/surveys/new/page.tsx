@@ -4,8 +4,10 @@ import { createEmptySurveyDraft } from "@/lib/survey-builder";
 
 export default function NewSurveyPage() {
   return (
-    <PageContainer>
+    <PageContainer hideBackRow>
       <SurveyBuilderShell initialSurvey={createEmptySurveyDraft()} mode="create" />
     </PageContainer>
   );
 }
+
+

@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { PlusIcon } from "@/components/ui/Icons";
 import { ChartPlaceholder } from "@/components/ui/ChartPlaceholder";
 import { DataTable } from "@/components/ui/DataTable";
-import { HeroPanel } from "@/components/ui/HeroPanel";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useTranslations } from "@/lib/i18n/LanguageContext";
@@ -84,24 +84,17 @@ export default function SurveysPage() {
     }
 
     void loadSurveys();
-
     return () => controller.abort();
   }, []);
 
   return (
     <PageContainer>
-      <HeroPanel
-        eyebrow={t("surveys.hero.eyebrow")}
-        title={t("surveys.hero.title")}
-        description={t("surveys.hero.description")}
-        actions={
-          <>
-            <Link href="/surveys/new" className="button-primary">{t("surveys.hero.createSurvey")}</Link>
-            <button className="button-secondary">{t("surveys.hero.importBlueprint")}</button>
-          </>
-        }
-        chips={tm<string[]>("surveys.hero.chips")}
-      />
+      <div className="page-section-action-row">
+        <Link href="/surveys/new" className="button-primary compact-button page-square-action">
+          <PlusIcon className="nav-icon" />
+          Yeni anket
+        </Link>
+      </div>
 
       <SectionCard
         title={t("surveys.table.title")}

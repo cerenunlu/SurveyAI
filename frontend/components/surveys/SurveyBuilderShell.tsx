@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { EmptyBuilderState } from "@/components/surveys/EmptyBuilderState";
+import { PageBackButton } from "@/components/navigation/PageBackButton";
 import { QuestionCard } from "@/components/surveys/QuestionCard";
 import { SurveyBuilderToolbar } from "@/components/surveys/SurveyBuilderToolbar";
 import { PlusIcon } from "@/components/ui/Icons";
@@ -161,6 +161,7 @@ export function SurveyBuilderShell({
         feedbackMessage={feedbackMessage}
         feedbackTone={feedbackTone}
         readOnly={isPublished}
+        leading={<PageBackButton />}
       />
 
       {isPublished ? (
@@ -190,8 +191,6 @@ export function SurveyBuilderShell({
         <div className="survey-form-card-head">
           <div>
             <span className="builder-panel-kicker">{mode === "create" ? "Anket formu" : "Duzenleme formu"}</span>
-            <h2 className="survey-form-card-title">Anket bilgileri</h2>
-            <p>Baslik, aciklama ve soru akisini tek bir duzenleme ekraninda yonetin.</p>
           </div>
           <div className="survey-form-meta">
             <span className="builder-meta-pill">{survey.status}</span>
@@ -221,35 +220,43 @@ export function SurveyBuilderShell({
             />
           </label>
         </div>
+
+        {!isPublished && survey.questions.length === 0 ? (
+          <div className="builder-bottom-actions">
+            <button
+              type="button"
+              className="button-primary compact-button"
+              onClick={() => addQuestion()}
+              disabled={activeAction !== null}
+            >
+              <PlusIcon className="nav-icon" />
+              Yeni soru ekle
+            </button>
+          </div>
+        ) : null}
       </section>
 
-      <section className="builder-canvas-shell panel-card">
-        <div className="builder-canvas-header">
-          <div>
-            <span className="builder-panel-kicker">Sorular</span>
-            <h2>Soru akisi</h2>
-            <p>Her soru kartinda tipi, metni, secenekleri ve zorunlu ayarini dogrudan duzenleyin.</p>
+      {survey.questions.length > 0 ? (
+        <section className="builder-canvas-shell panel-card">
+          <div className="builder-canvas-header">
+            <div />
+
+            <div className="builder-quick-add">
+              {(["short_text", "single_choice", "multi_choice", "dropdown", "rating_1_5", "date"] as SurveyQuestionType[]).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  className="builder-quick-chip"
+                  onClick={() => addQuestion(type)}
+                  disabled={isPublished}
+                >
+                  <PlusIcon className="nav-icon" />
+                  {questionTypeLabels[type]}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="builder-quick-add">
-            {(["short_text", "single_choice", "multi_choice", "dropdown", "rating_1_5", "date"] as SurveyQuestionType[]).map((type) => (
-              <button
-                key={type}
-                type="button"
-                className="builder-quick-chip"
-                onClick={() => addQuestion(type)}
-                disabled={isPublished}
-              >
-                <PlusIcon className="nav-icon" />
-                {questionTypeLabels[type]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {survey.questions.length === 0 ? (
-          <EmptyBuilderState onAdd={() => addQuestion()} disabled={isPublished} />
-        ) : (
           <div className="builder-question-list">
             {survey.questions.map((question, index) => (
               <QuestionCard
@@ -268,23 +275,24 @@ export function SurveyBuilderShell({
               />
             ))}
           </div>
-        )}
 
-        <div className="builder-bottom-actions">
-          <button
-            type="button"
-            className="button-secondary"
-            onClick={() => addQuestion()}
-            disabled={activeAction !== null || isPublished}
-          >
-            <PlusIcon className="nav-icon" />
-            Yeni soru ekle
-          </button>
-        </div>
-      </section>
+          <div className="builder-bottom-actions">
+            <button
+              type="button"
+              className="button-secondary compact-button"
+              onClick={() => addQuestion()}
+              disabled={activeAction !== null || isPublished}
+            >
+              <PlusIcon className="nav-icon" />
+              Yeni soru ekle
+            </button>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
+
 
 
 

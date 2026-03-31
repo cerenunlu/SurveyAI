@@ -31,7 +31,7 @@ const defaultTitles: Record<SurveyQuestionType, string> = {
 };
 
 export function createEmptySurveyDraft(): SurveyBuilderSurvey {
-  const questions = [createQuestion("short_text", 1)];
+  const questions: SurveyBuilderQuestion[] = [];
 
   return {
     id: "new-survey",
@@ -244,3 +244,4 @@ export function withChoiceOptions(question: SurveyBuilderQuestion, type: SurveyQ
       : undefined,
   };
 }
+

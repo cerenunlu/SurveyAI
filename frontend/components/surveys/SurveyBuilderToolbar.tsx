@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { type ReactNode } from "react";
 import { PlusIcon } from "@/components/ui/Icons";
 import type { BuilderSaveAction } from "@/lib/survey-builder-api";
 import type { SurveyBuilderSurvey } from "@/lib/types";
@@ -13,6 +13,7 @@ type SurveyBuilderToolbarProps = {
   feedbackMessage: string | null;
   feedbackTone: "success" | "error" | null;
   readOnly?: boolean;
+  leading?: ReactNode;
 };
 
 export function SurveyBuilderToolbar({
@@ -23,6 +24,7 @@ export function SurveyBuilderToolbar({
   feedbackMessage,
   feedbackTone,
   readOnly = false,
+  leading,
 }: SurveyBuilderToolbarProps) {
   const isBusy = activeAction !== null;
   const isPublished = survey.status === "Live";
@@ -30,9 +32,10 @@ export function SurveyBuilderToolbar({
 
   return (
     <section className="builder-toolbar">
+      {leading ? <div className="builder-toolbar-leading">{leading}</div> : null}
+
       <div className="builder-toolbar-context">
         <div className="builder-toolbar-copy">
-          <span className="builder-panel-kicker">Form Builder</span>
           <strong>
             {isPublished ? "Yayinlanmis anket goruntuleniyor" : survey.status === "Draft" ? "Taslak duzenleniyor" : "Anket duzenleniyor"}
           </strong>
@@ -45,9 +48,6 @@ export function SurveyBuilderToolbar({
       </div>
 
       <div className="builder-toolbar-actions">
-        <Link href="/surveys" className="button-secondary compact-button">
-          Listeye don
-        </Link>
         <button type="button" className="button-secondary compact-button" onClick={onAddQuestion} disabled={disableMutations}>
           <PlusIcon className="nav-icon" />
           Soru ekle
