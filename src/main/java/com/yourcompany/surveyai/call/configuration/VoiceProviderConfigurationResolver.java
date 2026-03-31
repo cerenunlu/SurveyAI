@@ -33,8 +33,11 @@ public class VoiceProviderConfigurationResolver {
                 config.isEnabled(),
                 trimToNull(config.getApiKey()),
                 trimToNull(config.getAgentId()),
+                trimToNull(config.getPhoneNumberId()),
                 trimToNull(config.getWebhookSecret()),
                 trimToNull(config.getBaseUrl()),
+                config.isSandboxMode(),
+                config.getWebhookTimestampToleranceSeconds() == null ? 300L : config.getWebhookTimestampToleranceSeconds(),
                 config.getSettings()
         );
     }

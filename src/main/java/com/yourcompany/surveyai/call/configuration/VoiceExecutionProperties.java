@@ -43,8 +43,11 @@ public class VoiceExecutionProperties {
         private boolean enabled;
         private String apiKey;
         private String agentId;
+        private String phoneNumberId;
         private String webhookSecret;
         private String baseUrl;
+        private boolean sandboxMode;
+        private Long webhookTimestampToleranceSeconds = 300L;
         private Map<String, String> settings = new LinkedHashMap<>();
 
         public boolean isEnabled() {
@@ -79,12 +82,36 @@ public class VoiceExecutionProperties {
             this.webhookSecret = webhookSecret;
         }
 
+        public String getPhoneNumberId() {
+            return phoneNumberId;
+        }
+
+        public void setPhoneNumberId(String phoneNumberId) {
+            this.phoneNumberId = phoneNumberId;
+        }
+
         public String getBaseUrl() {
             return baseUrl;
         }
 
         public void setBaseUrl(String baseUrl) {
             this.baseUrl = baseUrl;
+        }
+
+        public boolean isSandboxMode() {
+            return sandboxMode;
+        }
+
+        public void setSandboxMode(boolean sandboxMode) {
+            this.sandboxMode = sandboxMode;
+        }
+
+        public Long getWebhookTimestampToleranceSeconds() {
+            return webhookTimestampToleranceSeconds;
+        }
+
+        public void setWebhookTimestampToleranceSeconds(Long webhookTimestampToleranceSeconds) {
+            this.webhookTimestampToleranceSeconds = webhookTimestampToleranceSeconds;
         }
 
         public Map<String, String> getSettings() {

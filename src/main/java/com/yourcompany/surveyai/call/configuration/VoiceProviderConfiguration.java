@@ -8,8 +8,11 @@ public record VoiceProviderConfiguration(
         boolean enabled,
         String apiKey,
         String agentId,
+        String phoneNumberId,
         String webhookSecret,
         String baseUrl,
+        boolean sandboxMode,
+        long webhookTimestampToleranceSeconds,
         Map<String, String> settings
 ) {
 }

@@ -97,6 +97,8 @@ public class MockVoiceExecutionProvider implements VoiceExecutionProvider {
                     root.hasNonNull("durationSeconds") ? root.get("durationSeconds").asInt() : null,
                     root.path("errorCode").asText(null),
                     root.path("errorMessage").asText(null),
+                    null,
+                    root.path("transcript").asText(null),
                     request.rawPayload()
             ));
         } catch (Exception ignored) {

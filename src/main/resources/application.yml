@@ -37,7 +37,10 @@ surveyai:
       base-url: https://api.elevenlabs.io
       api-key: ${ELEVENLABS_API_KEY:}
       agent-id: ${ELEVENLABS_AGENT_ID:}
+      phone-number-id: ${ELEVENLABS_PHONE_NUMBER_ID:}
       webhook-secret: ${ELEVENLABS_WEBHOOK_SECRET:}
+      sandbox-mode: ${ELEVENLABS_SANDBOX_MODE:true}
+      webhook-timestamp-tolerance-seconds: 300
 
 logging:
   level:

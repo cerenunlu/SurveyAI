@@ -102,6 +102,11 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         }
         attempt.setDurationSeconds(event.durationSeconds());
         attempt.setFailureReason(event.errorMessage());
+        if (event.transcriptStorageKey() != null && !event.transcriptStorageKey().isBlank()) {
+            attempt.setTranscriptStorageKey(event.transcriptStorageKey());
+        } else if (event.transcriptText() != null && !event.transcriptText().isBlank() && attempt.getProviderCallId() != null) {
+            attempt.setTranscriptStorageKey("inline://elevenlabs/conversations/" + attempt.getProviderCallId());
+        }
         attempt.setRawProviderPayload(event.rawPayload() != null ? event.rawPayload() : attempt.getRawProviderPayload());
         callAttemptRepository.save(attempt);
 

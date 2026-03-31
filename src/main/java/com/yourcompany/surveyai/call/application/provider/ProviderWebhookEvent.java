@@ -15,6 +15,8 @@ public record ProviderWebhookEvent(
         Integer durationSeconds,
         String errorCode,
         String errorMessage,
+        String transcriptStorageKey,
+        String transcriptText,
         String rawPayload
 ) {
 }
