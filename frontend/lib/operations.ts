@@ -1,7 +1,7 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import { Operation, OperationContact } from "@/lib/types";
+import { CallJob, Operation, OperationContact } from "@/lib/types";
 
 type ApiErrorResponse = {
   code?: string;
@@ -43,6 +43,7 @@ type OperationApiResponse = {
   executionSummary: {
     totalCallJobs: number;
     pendingCallJobs: number;
+    completedCallJobs: number;
     newlyPreparedCallJobs: number;
   };
 };
@@ -77,6 +78,34 @@ type OperationContactSummaryApiResponse = {
   latestContacts: OperationContactApiResponse[];
 };
 
+type CallJobApiStatus = "QUEUED" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "SKIPPED";
+
+type CallJobApiResponse = {
+  id: string;
+  companyId: string;
+  operationId: string;
+  operationContactId: string;
+  personName: string;
+  phoneNumber: string;
+  status: CallJobApiStatus;
+  rawStatus: string;
+  attemptCount: number;
+  maxAttempts: number;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  lastResultSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CallJobPageApiResponse = {
+  items: CallJobApiResponse[];
+  totalItems: number;
+  totalPages: number;
+  page: number;
+  size: number;
+};
+
 type CreateOperationRequest = {
   name: string;
   surveyId: string;
@@ -104,6 +133,14 @@ export type OperationContactSummary = {
 
 export type OperationContactPage = {
   items: OperationContact[];
+  totalItems: number;
+  totalPages: number;
+  page: number;
+  size: number;
+};
+
+export type CallJobPage = {
+  items: CallJob[];
   totalItems: number;
   totalPages: number;
   page: number;
@@ -201,6 +238,51 @@ export async function fetchOperationContactsPage(
 
   return {
     items: response.items.map(mapOperationContactDtoToContact),
+    totalItems: response.totalItems,
+    totalPages: response.totalPages,
+    page: response.page,
+    size: response.size,
+  };
+}
+
+export async function fetchOperationCallJobsPage(
+  operationId: string,
+  options?: {
+    companyId?: string;
+    page?: number;
+    size?: number;
+    query?: string;
+    status?: CallJob["status"] | "All";
+    sortBy?: "createdAt" | "updatedAt";
+    direction?: "asc" | "desc";
+    init?: RequestInit;
+  },
+): Promise<CallJobPage> {
+  const companyId = requireCompanyId(options?.companyId);
+  const searchParams = new URLSearchParams({ companyId });
+
+  searchParams.set("page", String(options?.page ?? 0));
+  searchParams.set("size", String(options?.size ?? 25));
+  searchParams.set("sortBy", options?.sortBy ?? "createdAt");
+  searchParams.set("direction", options?.direction ?? "desc");
+
+  if (options?.query?.trim()) {
+    searchParams.set("query", options.query.trim());
+  }
+
+  const status = mapCallJobStatusToApi(options?.status);
+  if (status) {
+    searchParams.set("status", status);
+  }
+
+  const response = await fetchJson<CallJobPageApiResponse>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/jobs?${searchParams.toString()}`,
+    options?.init,
+    "call jobs page",
+  );
+
+  return {
+    items: response.items.map(mapCallJobDtoToCallJob),
     totalItems: response.totalItems,
     totalPages: response.totalPages,
     page: response.page,
@@ -353,7 +435,12 @@ function mapOperationDtoToOperation(dto: OperationApiResponse, surveys: SurveyRe
     channels: buildChannels(dto.status),
     summary: buildSummary(dto, survey?.name),
     readiness: dto.readiness,
-    executionSummary: dto.executionSummary,
+    executionSummary: {
+      totalCallJobs: dto.executionSummary.totalCallJobs,
+      pendingCallJobs: dto.executionSummary.pendingCallJobs,
+      completedCallJobs: dto.executionSummary.completedCallJobs,
+      newlyPreparedCallJobs: dto.executionSummary.newlyPreparedCallJobs,
+    },
     startedAt: dto.startedAt,
     completedAt: dto.completedAt,
     scheduledAt: dto.scheduledAt,
@@ -366,6 +453,24 @@ function mapOperationContactDtoToContact(dto: OperationContactApiResponse): Oper
     name: dto.name,
     phoneNumber: dto.phoneNumber,
     status: mapOperationContactStatus(dto.status),
+    createdAt: formatDateTime(dto.createdAt),
+    updatedAt: formatDateTime(dto.updatedAt),
+  };
+}
+
+function mapCallJobDtoToCallJob(dto: CallJobApiResponse): CallJob {
+  return {
+    id: dto.id,
+    operationContactId: dto.operationContactId,
+    personName: dto.personName,
+    phoneNumber: dto.phoneNumber,
+    status: mapCallJobStatus(dto.status),
+    rawStatus: dto.rawStatus,
+    attemptCount: dto.attemptCount,
+    maxAttempts: dto.maxAttempts,
+    lastErrorCode: dto.lastErrorCode,
+    lastErrorMessage: dto.lastErrorMessage,
+    lastResultSummary: dto.lastResultSummary,
     createdAt: formatDateTime(dto.createdAt),
     updatedAt: formatDateTime(dto.updatedAt),
   };
@@ -427,6 +532,43 @@ function mapOperationContactStatusToApi(
       return "INVALID";
     case "Pending":
       return "PENDING";
+    case "All":
+    case undefined:
+    default:
+      return null;
+  }
+}
+
+function mapCallJobStatus(status: CallJobApiStatus): CallJob["status"] {
+  switch (status) {
+    case "IN_PROGRESS":
+      return "InProgress";
+    case "COMPLETED":
+      return "Completed";
+    case "FAILED":
+      return "Failed";
+    case "SKIPPED":
+      return "Skipped";
+    case "QUEUED":
+    default:
+      return "Queued";
+  }
+}
+
+function mapCallJobStatusToApi(
+  status: CallJob["status"] | "All" | undefined,
+): CallJobApiStatus | null {
+  switch (status) {
+    case "InProgress":
+      return "IN_PROGRESS";
+    case "Completed":
+      return "COMPLETED";
+    case "Failed":
+      return "FAILED";
+    case "Skipped":
+      return "SKIPPED";
+    case "Queued":
+      return "QUEUED";
     case "All":
     case undefined:
     default:
@@ -524,3 +666,5 @@ function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
 
   return `${surveyLabel} icin operasyon hazirlikta.`;
 }
+
+

@@ -277,10 +277,14 @@ public class OperationServiceImpl implements OperationService {
         long pendingCount = callJobs.stream()
                 .filter(job -> OPEN_CALL_JOB_STATUSES.contains(job.getStatus()))
                 .count();
+        long completedCount = callJobs.stream()
+                .filter(job -> job.getStatus() == CallJobStatus.COMPLETED)
+                .count();
 
         return new OperationExecutionSummaryDto(
                 callJobs.size(),
                 pendingCount,
+                completedCount,
                 newJobs.size()
         );
     }
@@ -314,4 +318,5 @@ public class OperationServiceImpl implements OperationService {
         };
     }
 }
+
 

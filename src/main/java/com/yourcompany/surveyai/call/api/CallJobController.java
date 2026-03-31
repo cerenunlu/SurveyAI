@@ -1,0 +1,46 @@
+package com.yourcompany.surveyai.call.api;
+
+import com.yourcompany.surveyai.call.application.dto.response.CallJobListStatusDto;
+import com.yourcompany.surveyai.call.application.dto.response.CallJobPageResponseDto;
+import com.yourcompany.surveyai.call.application.service.CallJobService;
+import java.util.UUID;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/operations/{operationId}/jobs")
+public class CallJobController {
+
+    private final CallJobService callJobService;
+
+    public CallJobController(CallJobService callJobService) {
+        this.callJobService = callJobService;
+    }
+
+    @GetMapping
+    public ResponseEntity<CallJobPageResponseDto> listOperationCallJobs(
+            @PathVariable UUID operationId,
+            @RequestParam UUID companyId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size,
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) CallJobListStatusDto status,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String direction
+    ) {
+        return ResponseEntity.ok(callJobService.listOperationCallJobs(
+                companyId,
+                operationId,
+                page,
+                size,
+                query,
+                status,
+                sortBy,
+                direction
+        ));
+    }
+}

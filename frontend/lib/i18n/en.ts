@@ -62,6 +62,10 @@ export const en = {
         title: "Operation Detail",
         subtitle: "Review pacing, channel mix, and lifecycle movement in one view.",
       },
+      operationJobs: {
+        title: "Call Job Monitor",
+        subtitle: "Track prepared call jobs, statuses, and recent execution outcomes.",
+      },
     },
     navigation: {
       dashboard: { label: "Dashboard", description: "Operations overview" },
@@ -89,6 +93,9 @@ export const en = {
       retry: "Retry",
       invalid: "Invalid",
       pending: "Pending",
+      queued: "Queued",
+      inProgress: "In progress",
+      skipped: "Skipped",
     },
   },
   dashboard: {
@@ -354,6 +361,7 @@ export const en = {
     },
   },
 } as const;
+
 
 
 

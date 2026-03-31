@@ -21,6 +21,9 @@ const statusKeyMap: Record<string, string> = {
   retry: "retry",
   invalid: "invalid",
   pending: "pending",
+  queued: "queued",
+  inprogress: "inProgress",
+  skipped: "skipped",
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {
@@ -30,3 +33,4 @@ export function StatusBadge({ status }: StatusBadgeProps) {
 
   return <span className={`status-badge status-${normalizedStatus}`}>{labelKey ? t(`shell.status.${labelKey}`) : status}</span>;
 }
+

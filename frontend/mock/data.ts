@@ -154,6 +154,7 @@ export const operations: Operation[] = [
     executionSummary: {
       totalCallJobs: 128,
       pendingCallJobs: 42,
+      completedCallJobs: 86,
       newlyPreparedCallJobs: 0,
     },
     startedAt: "2026-03-30T09:00:00Z",
@@ -188,6 +189,7 @@ export const operations: Operation[] = [
     executionSummary: {
       totalCallJobs: 0,
       pendingCallJobs: 0,
+      completedCallJobs: 0,
       newlyPreparedCallJobs: 0,
     },
     startedAt: null,
@@ -222,6 +224,7 @@ export const operations: Operation[] = [
     executionSummary: {
       totalCallJobs: 96,
       pendingCallJobs: 0,
+      completedCallJobs: 96,
       newlyPreparedCallJobs: 0,
     },
     startedAt: "2026-03-26T09:00:00Z",
@@ -415,6 +418,8 @@ export const nextStepActions: ActionItem[] = [
     cta: "Open Calling Ops",
   },
 ];
+
+
 
 
 

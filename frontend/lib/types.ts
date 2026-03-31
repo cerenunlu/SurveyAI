@@ -112,6 +112,7 @@ export type Operation = {
   executionSummary: {
     totalCallJobs: number;
     pendingCallJobs: number;
+    completedCallJobs: number;
     newlyPreparedCallJobs: number;
   };
   startedAt: string | null;
@@ -124,6 +125,22 @@ export type OperationContact = {
   name: string;
   phoneNumber: string;
   status: "Active" | "Completed" | "Failed" | "Retry" | "Invalid" | "Pending";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CallJob = {
+  id: string;
+  operationContactId: string;
+  personName: string;
+  phoneNumber: string;
+  status: "Queued" | "InProgress" | "Completed" | "Failed" | "Skipped";
+  rawStatus: string;
+  attemptCount: number;
+  maxAttempts: number;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  lastResultSummary: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -168,3 +185,5 @@ export type TableColumn<T> = {
   label: string;
   render: (row: T) => ReactNode;
 };
+
+

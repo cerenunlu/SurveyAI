@@ -45,14 +45,6 @@ type ExecutionEventItem = {
   detail: string;
 };
 
-const operationContactStatusLabelKeyMap: Record<string, string> = {
-  Active: "active",
-  Completed: "completed",
-  Failed: "failed",
-  Retry: "retry",
-  Invalid: "invalid",
-  Pending: "pending",
-};
 
 const contactColumns: TableColumn<OperationContact>[] = [
   {
@@ -122,6 +114,7 @@ export default function OperationDetailPage() {
   const [contactsQueryInput, setContactsQueryInput] = useState("");
   const [contactsQuery, setContactsQuery] = useState("");
   const [contactsStatusFilter, setContactsStatusFilter] = useState<"All" | OperationContact["status"]>("All");
+  const [isReadinessPanelOpen, setIsReadinessPanelOpen] = useState(false);
 
   const loadOperationWorkspace = useCallback(async (signal?: AbortSignal) => {
     if (!operationId) {
@@ -223,7 +216,6 @@ export default function OperationDetailPage() {
 
   const contactCount = contactSummary?.totalContacts ?? 0;
   const hasContacts = contactCount > 0;
-  const contactStatusCards = contactSummary?.statusCounts ?? [];
   const checklist = useMemo<ChecklistItem[]>(() => {
     if (!operation) {
       return [];
@@ -289,6 +281,18 @@ export default function OperationDetailPage() {
       ? "Ready"
       : "Pending";
   const showStartBlockers = Boolean(operation && !isOperationRunning && !operation.readiness.readyToStart);
+  const completedCallJobRate = operation && operation.executionSummary.totalCallJobs > 0
+    ? Math.round((operation.executionSummary.completedCallJobs / operation.executionSummary.totalCallJobs) * 100)
+    : 0;
+  const currentStatusSummary = !operation
+    ? "Operasyon yuklenirken guncel statu hazirlaniyor."
+    : operation.executionSummary.totalCallJobs > 0
+      ? `Call job yurutmesi aktif. Basariyla tamamlanan aramalar toplam isin %${completedCallJobRate} seviyesinde.`
+      : isOperationRunning
+        ? "Operasyon yurutmede. Call-job havuzu hazirlandi ve aktif ilerleme izleniyor."
+        : operation.readiness.readyToStart
+          ? "Baslatma asamasinda. Anket, kisi havuzu ve operasyon durumu yurutmeye gecmek icin uygun."
+          : operation.summary?.trim() || "Hazirlik adimlari kontrol ediliyor.";
   const executionEvents = useMemo<ExecutionEventItem[]>(() => {
     if (!operation) {
       return [];
@@ -566,34 +570,47 @@ export default function OperationDetailPage() {
               </div>
               <div className="operation-summary-row">
                 <span>Hazirlanan cagri isi</span>
-                <strong>{operation ? String(operation.executionSummary.totalCallJobs) : "..."}</strong>
+                <div className="operation-summary-row-action">
+                  <strong>{operation ? String(operation.executionSummary.totalCallJobs) : "..."}</strong>
+                  <Link href={`/operations/${operationId}/jobs`} className="button-secondary compact-button operation-summary-inline-link">
+                    Call joblari izle
+                  </Link>
+                </div>
               </div>
             </div>
 
             <div className="operation-summary-note">
-              <span>Hazirlik karari</span>
-              <strong>
-                {isOperationRunning
-                  ? "Operasyon baslatildi. Call-job havuzu hazirlandi ve yurutme akisi aktif durumda ilerliyor."
-                  : operation?.readiness.readyToStart
-                    ? "Anket, kisi havuzu ve operasyon durumu baslatma icin uygun. Tek aksiyonla yurutmeye gecilebilir."
-                    : operation?.summary?.trim() || "Operasyon yuklenirken hazirlik notu olusturuluyor."}
-              </strong>
+              <span>Guncel statu</span>
+              <strong>{currentStatusSummary}</strong>
             </div>
 
-            <div className="operation-readiness-checklist">
-              {checklist.map((item) => (
-                <div key={item.key} className={`operation-readiness-item ${item.ready ? "is-ready" : "is-blocked"}`}>
-                  <div>
-                    <strong>{item.label}</strong>
-                    <span>{item.detail}</span>
-                  </div>
-                  <span className={`operation-readiness-dot ${item.ready ? "is-ready" : "is-blocked"}`}>
-                    {item.ready ? "Hazir" : "Eksik"}
-                  </span>
-                </div>
-              ))}
+            <div className="operation-readiness-toggle-wrap">
+              <button
+                type="button"
+                className="operation-readiness-toggle"
+                aria-expanded={isReadinessPanelOpen}
+                onClick={() => setIsReadinessPanelOpen((current) => !current)}
+              >
+                <span>Gerceklesen statuler</span>
+                <span className="operation-readiness-toggle-icon">{isReadinessPanelOpen ? "Yukari" : "Asagi"}</span>
+              </button>
             </div>
+
+            {isReadinessPanelOpen ? (
+              <div className="operation-readiness-checklist">
+                {checklist.map((item) => (
+                  <div key={item.key} className={`operation-readiness-item ${item.ready ? "is-ready" : "is-blocked"}`}>
+                    <div>
+                      <strong>{item.label}</strong>
+                      <span>{item.detail}</span>
+                    </div>
+                    <span className={`operation-readiness-dot ${item.ready ? "is-ready" : "is-blocked"}`}>
+                      {item.ready ? "Hazir" : "Eksik"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <aside
@@ -674,6 +691,17 @@ export default function OperationDetailPage() {
               </div>
             </div>
 
+            <div className="operation-inline-message compact">
+              <strong>Call job izleme ekrani hazir</strong>
+              <span>
+                {operation?.executionSummary.totalCallJobs
+                  ? "Hazirlanan isleri, durum filtrelerini ve son sonuc ozetlerini tek listede inceleyebilirsiniz."
+                  : operation?.status === "Running"
+                    ? "Operasyon yurutmede; is listesi olusurken ekrani yenileyerek son durumu takip edebilirsiniz."
+                    : "Operasyon baslatildiginda burada olusan call-job kayitlarini sayfali olarak izleyebilirsiniz."}
+              </span>
+            </div>
+
             <input
               ref={fileInputRef}
               type="file"
@@ -686,6 +714,9 @@ export default function OperationDetailPage() {
               <button type="button" className="button-secondary compact-button" onClick={openContactsPanel}>
                 Kisileri ac
               </button>
+              <Link href={`/operations/${operationId}/jobs`} className="button-secondary compact-button">
+                Call joblari ac
+              </Link>
               <button type="button" className="button-secondary compact-button" onClick={openImportPicker}>
                 Kisi Listesi Import Et
               </button>
@@ -951,6 +982,12 @@ function createImportSummaryFromRows(rows: ImportPreviewRow[], ignoredRows: numb
     duplicateInOperationRows,
   };
 }
+
+
+
+
+
+
 
 
 

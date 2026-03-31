@@ -62,6 +62,10 @@ export const tr = {
         title: "Operasyon Detayi",
         subtitle: "Tempoyu, kanal karmasini ve yasam dongusu hareketlerini tek ekranda gorun.",
       },
+      operationJobs: {
+        title: "Call Job Izleme",
+        subtitle: "Operasyonun hazirlanan cagri islerini, durumlarini ve sonuclarini takip edin.",
+      },
     },
     navigation: {
       dashboard: { label: "Panel", description: "Operasyon ozeti" },
@@ -98,6 +102,9 @@ export const tr = {
       retry: "Tekrar dene",
       invalid: "Gecersiz",
       pending: "Beklemede",
+      queued: "Kuyrukta",
+      inProgress: "Suruyor",
+      skipped: "Atlandi",
     },
   },
   dashboard: {
@@ -389,6 +396,7 @@ export const tr = {
     },
   },
 } as const;
+
 
 
 
