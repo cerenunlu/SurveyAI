@@ -1,0 +1,3 @@
+surveyai:
+  dev:
+    provider-result-simulator-enabled: true

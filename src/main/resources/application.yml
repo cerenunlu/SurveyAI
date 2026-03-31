@@ -27,6 +27,8 @@ server:
   port: 8080
 
 surveyai:
+  dev:
+    provider-result-simulator-enabled: false
   calling:
     active-provider: MOCK
     mock:
