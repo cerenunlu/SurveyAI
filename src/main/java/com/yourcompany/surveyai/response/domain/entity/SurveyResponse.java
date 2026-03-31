@@ -71,4 +71,104 @@ public class SurveyResponse extends CompanyScopedEntity {
 
     @OneToMany(mappedBy = "surveyResponse")
     private Set<SurveyAnswer> answers = new LinkedHashSet<>();
+
+    public Survey getSurvey() {
+        return survey;
+    }
+
+    public void setSurvey(Survey survey) {
+        this.survey = survey;
+    }
+
+    public Operation getOperation() {
+        return operation;
+    }
+
+    public void setOperation(Operation operation) {
+        this.operation = operation;
+    }
+
+    public OperationContact getOperationContact() {
+        return operationContact;
+    }
+
+    public void setOperationContact(OperationContact operationContact) {
+        this.operationContact = operationContact;
+    }
+
+    public CallAttempt getCallAttempt() {
+        return callAttempt;
+    }
+
+    public void setCallAttempt(CallAttempt callAttempt) {
+        this.callAttempt = callAttempt;
+    }
+
+    public SurveyResponseStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(SurveyResponseStatus status) {
+        this.status = status;
+    }
+
+    public BigDecimal getCompletionPercent() {
+        return completionPercent;
+    }
+
+    public void setCompletionPercent(BigDecimal completionPercent) {
+        this.completionPercent = completionPercent;
+    }
+
+    public String getRespondentPhone() {
+        return respondentPhone;
+    }
+
+    public void setRespondentPhone(String respondentPhone) {
+        this.respondentPhone = respondentPhone;
+    }
+
+    public OffsetDateTime getStartedAt() {
+        return startedAt;
+    }
+
+    public void setStartedAt(OffsetDateTime startedAt) {
+        this.startedAt = startedAt;
+    }
+
+    public OffsetDateTime getCompletedAt() {
+        return completedAt;
+    }
+
+    public void setCompletedAt(OffsetDateTime completedAt) {
+        this.completedAt = completedAt;
+    }
+
+    public String getTranscriptText() {
+        return transcriptText;
+    }
+
+    public void setTranscriptText(String transcriptText) {
+        this.transcriptText = transcriptText;
+    }
+
+    public String getTranscriptJson() {
+        return transcriptJson;
+    }
+
+    public void setTranscriptJson(String transcriptJson) {
+        this.transcriptJson = transcriptJson;
+    }
+
+    public String getAiSummaryText() {
+        return aiSummaryText;
+    }
+
+    public void setAiSummaryText(String aiSummaryText) {
+        this.aiSummaryText = aiSummaryText;
+    }
+
+    public Set<SurveyAnswer> getAnswers() {
+        return answers;
+    }
 }

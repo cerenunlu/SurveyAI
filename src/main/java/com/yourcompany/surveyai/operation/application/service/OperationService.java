@@ -1,6 +1,7 @@
 package com.yourcompany.surveyai.operation.application.service;
 
 import com.yourcompany.surveyai.operation.application.dto.request.CreateOperationRequest;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsResponseDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationResponseDto;
 import java.util.List;
 import java.util.UUID;
@@ -14,4 +15,6 @@ public interface OperationService {
     List<OperationResponseDto> listOperationsByCompany(UUID companyId);
 
     OperationResponseDto startOperation(UUID companyId, UUID operationId);
+
+    OperationAnalyticsResponseDto getOperationAnalytics(UUID companyId, UUID operationId);
 }

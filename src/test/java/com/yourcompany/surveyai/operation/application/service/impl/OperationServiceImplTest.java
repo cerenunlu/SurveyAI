@@ -23,7 +23,11 @@ import com.yourcompany.surveyai.operation.domain.enums.OperationStatus;
 import com.yourcompany.surveyai.operation.repository.OperationContactRepository;
 import com.yourcompany.surveyai.operation.repository.OperationRepository;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
+import com.yourcompany.surveyai.response.repository.SurveyAnswerRepository;
+import com.yourcompany.surveyai.response.repository.SurveyResponseRepository;
 import com.yourcompany.surveyai.survey.domain.enums.SurveyStatus;
+import com.yourcompany.surveyai.survey.repository.SurveyQuestionOptionRepository;
+import com.yourcompany.surveyai.survey.repository.SurveyQuestionRepository;
 import com.yourcompany.surveyai.survey.repository.SurveyRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Validation;
@@ -33,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -43,9 +48,14 @@ class OperationServiceImplTest {
     private final CallJobRepository callJobRepository = mock(CallJobRepository.class);
     private final CompanyRepository companyRepository = mock(CompanyRepository.class);
     private final SurveyRepository surveyRepository = mock(SurveyRepository.class);
+    private final SurveyQuestionRepository surveyQuestionRepository = mock(SurveyQuestionRepository.class);
+    private final SurveyQuestionOptionRepository surveyQuestionOptionRepository = mock(SurveyQuestionOptionRepository.class);
+    private final SurveyResponseRepository surveyResponseRepository = mock(SurveyResponseRepository.class);
+    private final SurveyAnswerRepository surveyAnswerRepository = mock(SurveyAnswerRepository.class);
     private final AppUserRepository appUserRepository = mock(AppUserRepository.class);
     private final RequestAuthContext requestAuthContext = new RequestAuthContext(mock(HttpServletRequest.class));
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private OperationServiceImpl operationService;
 
@@ -57,9 +67,14 @@ class OperationServiceImplTest {
                 callJobRepository,
                 companyRepository,
                 surveyRepository,
+                surveyQuestionRepository,
+                surveyQuestionOptionRepository,
+                surveyResponseRepository,
+                surveyAnswerRepository,
                 appUserRepository,
                 requestAuthContext,
-                validator
+                validator,
+                objectMapper
         );
 
         when(operationRepository.save(any(Operation.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -172,3 +187,7 @@ class OperationServiceImplTest {
         return contact;
     }
 }
+
+
+
+

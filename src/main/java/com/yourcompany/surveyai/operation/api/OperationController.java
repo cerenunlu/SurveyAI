@@ -1,6 +1,7 @@
 package com.yourcompany.surveyai.operation.api;
 
 import com.yourcompany.surveyai.operation.application.dto.request.CreateOperationRequest;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsResponseDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationResponseDto;
 import com.yourcompany.surveyai.operation.application.service.OperationService;
 import jakarta.validation.Valid;
@@ -49,6 +50,14 @@ public class OperationController {
     @RequestMapping(method = RequestMethod.GET)
     public ResponseEntity<List<OperationResponseDto>> listOperationsByCompany(@RequestParam UUID companyId) {
         return ResponseEntity.ok(operationService.listOperationsByCompany(companyId));
+    }
+
+    @GetMapping("/{operationId}/analytics")
+    public ResponseEntity<OperationAnalyticsResponseDto> getOperationAnalytics(
+            @PathVariable UUID operationId,
+            @RequestParam UUID companyId
+    ) {
+        return ResponseEntity.ok(operationService.getOperationAnalytics(companyId, operationId));
     }
 
     @PostMapping("/{operationId}/start")

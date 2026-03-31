@@ -60,4 +60,100 @@ public class SurveyAnswer extends CompanyScopedEntity {
 
     @Column(name = "retry_count", nullable = false)
     private Integer retryCount;
+
+    public SurveyResponse getSurveyResponse() {
+        return surveyResponse;
+    }
+
+    public void setSurveyResponse(SurveyResponse surveyResponse) {
+        this.surveyResponse = surveyResponse;
+    }
+
+    public SurveyQuestion getSurveyQuestion() {
+        return surveyQuestion;
+    }
+
+    public void setSurveyQuestion(SurveyQuestion surveyQuestion) {
+        this.surveyQuestion = surveyQuestion;
+    }
+
+    public QuestionType getAnswerType() {
+        return answerType;
+    }
+
+    public void setAnswerType(QuestionType answerType) {
+        this.answerType = answerType;
+    }
+
+    public SurveyQuestionOption getSelectedOption() {
+        return selectedOption;
+    }
+
+    public void setSelectedOption(SurveyQuestionOption selectedOption) {
+        this.selectedOption = selectedOption;
+    }
+
+    public String getAnswerText() {
+        return answerText;
+    }
+
+    public void setAnswerText(String answerText) {
+        this.answerText = answerText;
+    }
+
+    public BigDecimal getAnswerNumber() {
+        return answerNumber;
+    }
+
+    public void setAnswerNumber(BigDecimal answerNumber) {
+        this.answerNumber = answerNumber;
+    }
+
+    public String getAnswerJson() {
+        return answerJson;
+    }
+
+    public void setAnswerJson(String answerJson) {
+        this.answerJson = answerJson;
+    }
+
+    public String getRawInputText() {
+        return rawInputText;
+    }
+
+    public void setRawInputText(String rawInputText) {
+        this.rawInputText = rawInputText;
+    }
+
+    public BigDecimal getConfidenceScore() {
+        return confidenceScore;
+    }
+
+    public void setConfidenceScore(BigDecimal confidenceScore) {
+        this.confidenceScore = confidenceScore;
+    }
+
+    public boolean isValid() {
+        return valid;
+    }
+
+    public void setValid(boolean valid) {
+        this.valid = valid;
+    }
+
+    public String getInvalidReason() {
+        return invalidReason;
+    }
+
+    public void setInvalidReason(String invalidReason) {
+        this.invalidReason = invalidReason;
+    }
+
+    public Integer getRetryCount() {
+        return retryCount;
+    }
+
+    public void setRetryCount(Integer retryCount) {
+        this.retryCount = retryCount;
+    }
 }

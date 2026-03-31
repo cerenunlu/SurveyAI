@@ -187,3 +187,55 @@ export type TableColumn<T> = {
 };
 
 
+
+export type OperationAnalyticsBreakdownItem = {
+  key: string;
+  label: string;
+  count: number;
+  percentage: number;
+};
+
+export type OperationAnalyticsQuestionSummary = {
+  questionId: string;
+  questionCode: string;
+  questionOrder: number;
+  questionTitle: string;
+  questionType: "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING";
+  chartKind: "RATING" | "BINARY" | "CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED";
+  answeredCount: number;
+  responseRate: number;
+  averageRating: number | null;
+  emptyStateMessage: string | null;
+  breakdown: OperationAnalyticsBreakdownItem[];
+};
+
+export type OperationAnalyticsTrendPoint = {
+  label: string;
+  count: number;
+};
+
+export type OperationAnalytics = {
+  operationId: string;
+  totalContacts: number;
+  totalPreparedJobs: number;
+  totalCallsAttempted: number;
+  queuedJobs: number;
+  inProgressJobs: number;
+  completedCallJobs: number;
+  failedCallJobs: number;
+  skippedCallJobs: number;
+  totalResponses: number;
+  completedResponses: number;
+  partialResponses: number;
+  abandonedResponses: number;
+  invalidResponses: number;
+  completionRate: number;
+  responseRate: number;
+  participationRate: number;
+  averageCompletionPercent: number;
+  partialData: boolean;
+  insightSummary: string | null;
+  outcomeBreakdown: OperationAnalyticsBreakdownItem[];
+  questionSummaries: OperationAnalyticsQuestionSummary[];
+  responseTrend: OperationAnalyticsTrendPoint[];
+};

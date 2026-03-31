@@ -1,7 +1,7 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import { CallJob, Operation, OperationContact } from "@/lib/types";
+import { CallJob, Operation, OperationAnalytics, OperationAnalyticsBreakdownItem, OperationAnalyticsQuestionSummary, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
 
 type ApiErrorResponse = {
   code?: string;
@@ -105,6 +105,57 @@ type CallJobPageApiResponse = {
   page: number;
   size: number;
 };
+type OperationAnalyticsBreakdownItemApiResponse = {
+  key: string;
+  label: string;
+  count: number;
+  percentage: number;
+};
+
+type OperationAnalyticsQuestionSummaryApiResponse = {
+  questionId: string;
+  questionCode: string;
+  questionOrder: number;
+  questionTitle: string;
+  questionType: OperationAnalyticsQuestionSummary["questionType"];
+  chartKind: OperationAnalyticsQuestionSummary["chartKind"];
+  answeredCount: number;
+  responseRate: number;
+  averageRating: number | null;
+  emptyStateMessage: string | null;
+  breakdown: OperationAnalyticsBreakdownItemApiResponse[];
+};
+
+type OperationAnalyticsTrendPointApiResponse = {
+  label: string;
+  count: number;
+};
+
+type OperationAnalyticsApiResponse = {
+  operationId: string;
+  totalContacts: number;
+  totalPreparedJobs: number;
+  totalCallsAttempted: number;
+  queuedJobs: number;
+  inProgressJobs: number;
+  completedCallJobs: number;
+  failedCallJobs: number;
+  skippedCallJobs: number;
+  totalResponses: number;
+  completedResponses: number;
+  partialResponses: number;
+  abandonedResponses: number;
+  invalidResponses: number;
+  completionRate: number;
+  responseRate: number;
+  participationRate: number;
+  averageCompletionPercent: number;
+  partialData: boolean;
+  insightSummary: string | null;
+  outcomeBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
+  questionSummaries: OperationAnalyticsQuestionSummaryApiResponse[];
+  responseTrend: OperationAnalyticsTrendPointApiResponse[];
+};
 
 type CreateOperationRequest = {
   name: string;
@@ -172,6 +223,60 @@ export async function fetchOperationById(
   ]);
 
   return mapOperationDtoToOperation(operationResponse, surveys);
+}
+
+export async function fetchOperationAnalytics(
+  operationId: string,
+  companyId?: string,
+  init?: RequestInit,
+): Promise<OperationAnalytics> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const response = await fetchJson<OperationAnalyticsApiResponse>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/analytics?companyId=${resolvedCompanyId}`,
+    init,
+    "operation analytics",
+  );
+
+  return {
+    operationId: response.operationId,
+    totalContacts: response.totalContacts,
+    totalPreparedJobs: response.totalPreparedJobs,
+    totalCallsAttempted: response.totalCallsAttempted,
+    queuedJobs: response.queuedJobs,
+    inProgressJobs: response.inProgressJobs,
+    completedCallJobs: response.completedCallJobs,
+    failedCallJobs: response.failedCallJobs,
+    skippedCallJobs: response.skippedCallJobs,
+    totalResponses: response.totalResponses,
+    completedResponses: response.completedResponses,
+    partialResponses: response.partialResponses,
+    abandonedResponses: response.abandonedResponses,
+    invalidResponses: response.invalidResponses,
+    completionRate: response.completionRate,
+    responseRate: response.responseRate,
+    participationRate: response.participationRate,
+    averageCompletionPercent: response.averageCompletionPercent,
+    partialData: response.partialData,
+    insightSummary: response.insightSummary,
+    outcomeBreakdown: response.outcomeBreakdown.map(mapAnalyticsBreakdown),
+    questionSummaries: response.questionSummaries.map((item) => ({
+      questionId: item.questionId,
+      questionCode: item.questionCode,
+      questionOrder: item.questionOrder,
+      questionTitle: item.questionTitle,
+      questionType: item.questionType,
+      chartKind: item.chartKind,
+      answeredCount: item.answeredCount,
+      responseRate: item.responseRate,
+      averageRating: item.averageRating,
+      emptyStateMessage: item.emptyStateMessage,
+      breakdown: item.breakdown.map(mapAnalyticsBreakdown),
+    })),
+    responseTrend: response.responseTrend.map((item): OperationAnalyticsTrendPoint => ({
+      label: formatAnalyticsDate(item.label),
+      count: item.count,
+    })),
+  };
 }
 
 export async function startOperation(
@@ -413,6 +518,15 @@ async function readApiError(response: Response, resourceName: string): Promise<s
   }
 }
 
+function mapAnalyticsBreakdown(item: OperationAnalyticsBreakdownItemApiResponse): OperationAnalyticsBreakdownItem {
+  return {
+    key: item.key,
+    label: item.label,
+    count: item.count,
+    percentage: item.percentage,
+  };
+}
+
 function mapOperationDtoToOperation(dto: OperationApiResponse, surveys: SurveyReference[]): Operation {
   const survey = surveys.find((item) => item.id === dto.surveyId);
   const updatedAtSource = dto.completedAt ?? dto.startedAt ?? dto.scheduledAt ?? dto.updatedAt;
@@ -595,6 +709,18 @@ function formatDateTime(value: string | null): string {
   }).format(date);
 }
 
+function formatAnalyticsDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("tr-TR", {
+    day: "2-digit",
+    month: "short",
+  }).format(date);
+}
+
 function formatSurveyFallback(surveyId: string): string {
   return `Anket ${surveyId.slice(0, 8)}`;
 }
@@ -666,5 +792,6 @@ function buildSummary(dto: OperationApiResponse, surveyName?: string): string {
 
   return `${surveyLabel} icin operasyon hazirlikta.`;
 }
+
 
 

@@ -1,10 +1,16 @@
 package com.yourcompany.surveyai.operation.application.service.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.auth.application.RequestAuthContext;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.operation.application.dto.request.CreateOperationRequest;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsBreakdownItemDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionSummaryDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsResponseDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsTrendPointDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationExecutionSummaryDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationReadinessDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationResponseDto;
@@ -20,18 +26,36 @@ import com.yourcompany.surveyai.common.exception.NotFoundException;
 import com.yourcompany.surveyai.common.exception.ValidationException;
 import com.yourcompany.surveyai.common.repository.AppUserRepository;
 import com.yourcompany.surveyai.common.repository.CompanyRepository;
+import com.yourcompany.surveyai.response.domain.entity.SurveyAnswer;
+import com.yourcompany.surveyai.response.domain.entity.SurveyResponse;
+import com.yourcompany.surveyai.response.domain.enums.SurveyResponseStatus;
+import com.yourcompany.surveyai.response.repository.SurveyAnswerRepository;
+import com.yourcompany.surveyai.response.repository.SurveyResponseRepository;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
+import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
+import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestionOption;
+import com.yourcompany.surveyai.survey.domain.enums.QuestionType;
 import com.yourcompany.surveyai.survey.domain.enums.SurveyStatus;
+import com.yourcompany.surveyai.survey.repository.SurveyQuestionOptionRepository;
+import com.yourcompany.surveyai.survey.repository.SurveyQuestionRepository;
 import com.yourcompany.surveyai.survey.repository.SurveyRepository;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,9 +81,14 @@ public class OperationServiceImpl implements OperationService {
     private final CallJobRepository callJobRepository;
     private final CompanyRepository companyRepository;
     private final SurveyRepository surveyRepository;
+    private final SurveyQuestionRepository surveyQuestionRepository;
+    private final SurveyQuestionOptionRepository surveyQuestionOptionRepository;
+    private final SurveyResponseRepository surveyResponseRepository;
+    private final SurveyAnswerRepository surveyAnswerRepository;
     private final AppUserRepository appUserRepository;
     private final RequestAuthContext requestAuthContext;
     private final Validator validator;
+    private final ObjectMapper objectMapper;
 
     public OperationServiceImpl(
             OperationRepository operationRepository,
@@ -67,18 +96,28 @@ public class OperationServiceImpl implements OperationService {
             CallJobRepository callJobRepository,
             CompanyRepository companyRepository,
             SurveyRepository surveyRepository,
+            SurveyQuestionRepository surveyQuestionRepository,
+            SurveyQuestionOptionRepository surveyQuestionOptionRepository,
+            SurveyResponseRepository surveyResponseRepository,
+            SurveyAnswerRepository surveyAnswerRepository,
             AppUserRepository appUserRepository,
             RequestAuthContext requestAuthContext,
-            Validator validator
+            Validator validator,
+            ObjectMapper objectMapper
     ) {
         this.operationRepository = operationRepository;
         this.operationContactRepository = operationContactRepository;
         this.callJobRepository = callJobRepository;
         this.companyRepository = companyRepository;
         this.surveyRepository = surveyRepository;
+        this.surveyQuestionRepository = surveyQuestionRepository;
+        this.surveyQuestionOptionRepository = surveyQuestionOptionRepository;
+        this.surveyResponseRepository = surveyResponseRepository;
+        this.surveyAnswerRepository = surveyAnswerRepository;
         this.appUserRepository = appUserRepository;
         this.requestAuthContext = requestAuthContext;
         this.validator = validator;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -182,6 +221,137 @@ public class OperationServiceImpl implements OperationService {
         Operation savedOperation = operationRepository.save(operation);
 
         return toDto(savedOperation, contactCount, newJobs);
+    }
+
+    @Override
+    public OperationAnalyticsResponseDto getOperationAnalytics(UUID companyId, UUID operationId) {
+        Operation operation = getOperation(companyId, operationId);
+        long totalContacts = countContacts(operation);
+        syncLifecycleState(operation, totalContacts);
+
+        List<CallJob> callJobs = callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId);
+        List<SurveyResponse> responses = surveyResponseRepository
+                .findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId);
+        List<SurveyQuestion> questions = surveyQuestionRepository
+                .findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId());
+
+        Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId = questions.stream()
+                .collect(Collectors.toMap(
+                        SurveyQuestion::getId,
+                        question -> surveyQuestionOptionRepository
+                                .findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(question.getId()),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        Map<UUID, SurveyResponse> responsesById = responses.stream()
+                .collect(Collectors.toMap(SurveyResponse::getId, response -> response));
+        List<UUID> responseIds = responses.stream().map(SurveyResponse::getId).toList();
+        List<SurveyAnswer> answers = responseIds.isEmpty()
+                ? List.of()
+                : surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(responseIds);
+
+        Map<UUID, List<SurveyAnswer>> answersByQuestionId = answers.stream()
+                .filter(SurveyAnswer::isValid)
+                .filter(answer -> responsesById.containsKey(answer.getSurveyResponse().getId()))
+                .collect(Collectors.groupingBy(
+                        answer -> answer.getSurveyQuestion().getId(),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        long queuedJobs = callJobs.stream().filter(job -> EnumSet.of(
+                CallJobStatus.PENDING,
+                CallJobStatus.QUEUED,
+                CallJobStatus.RETRY
+        ).contains(job.getStatus())).count();
+        long inProgressJobs = callJobs.stream().filter(job -> job.getStatus() == CallJobStatus.IN_PROGRESS).count();
+        long completedCallJobs = callJobs.stream().filter(job -> job.getStatus() == CallJobStatus.COMPLETED).count();
+        long failedCallJobs = callJobs.stream().filter(job -> EnumSet.of(
+                CallJobStatus.FAILED,
+                CallJobStatus.DEAD_LETTER
+        ).contains(job.getStatus())).count();
+        long skippedCallJobs = callJobs.stream().filter(job -> job.getStatus() == CallJobStatus.CANCELLED).count();
+        long totalCallsAttempted = callJobs.size() - queuedJobs;
+
+        long completedResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.COMPLETED).count();
+        long partialResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.PARTIAL).count();
+        long abandonedResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.ABANDONED).count();
+        long invalidResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.INVALID).count();
+
+        double completionRate = percentage(completedResponses, totalContacts);
+        double responseRate = percentage(responses.size(), totalContacts);
+        double participationRate = percentage(completedResponses + partialResponses, totalContacts);
+        double averageCompletionPercent = round(
+                responses.stream()
+                        .map(SurveyResponse::getCompletionPercent)
+                        .filter(java.util.Objects::nonNull)
+                        .mapToDouble(BigDecimal::doubleValue)
+                        .average()
+                        .orElse(0)
+        );
+
+        List<OperationAnalyticsBreakdownItemDto> outcomeBreakdown = List.of(
+                new OperationAnalyticsBreakdownItemDto("queued", "Kuyrukta", queuedJobs, percentage(queuedJobs, callJobs.size())),
+                new OperationAnalyticsBreakdownItemDto("inProgress", "Yurutuluyor", inProgressJobs, percentage(inProgressJobs, callJobs.size())),
+                new OperationAnalyticsBreakdownItemDto("completed", "Tamamlandi", completedCallJobs, percentage(completedCallJobs, callJobs.size())),
+                new OperationAnalyticsBreakdownItemDto("failed", "Basarisiz", failedCallJobs, percentage(failedCallJobs, callJobs.size())),
+                new OperationAnalyticsBreakdownItemDto("skipped", "Atlandi", skippedCallJobs, percentage(skippedCallJobs, callJobs.size()))
+        );
+
+        List<OperationAnalyticsQuestionSummaryDto> questionSummaries = questions.stream()
+                .map(question -> buildQuestionSummary(
+                        question,
+                        optionsByQuestionId.getOrDefault(question.getId(), List.of()),
+                        answersByQuestionId.getOrDefault(question.getId(), List.of()),
+                        totalContacts
+                ))
+                .toList();
+
+        Map<String, Long> trendMap = responses.stream()
+                .collect(Collectors.groupingBy(
+                        response -> (response.getCompletedAt() != null ? response.getCompletedAt() : response.getStartedAt())
+                                .toLocalDate()
+                                .format(DateTimeFormatter.ISO_LOCAL_DATE),
+                        LinkedHashMap::new,
+                        Collectors.counting()
+                ));
+        List<OperationAnalyticsTrendPointDto> responseTrend = trendMap.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> new OperationAnalyticsTrendPointDto(entry.getKey(), entry.getValue()))
+                .toList();
+
+        boolean partialData = operation.getStatus() == OperationStatus.RUNNING
+                || operation.getStatus() == OperationStatus.FAILED
+                || partialResponses > 0
+                || queuedJobs > 0
+                || totalContacts > responses.size();
+
+        return new OperationAnalyticsResponseDto(
+                operation.getId(),
+                totalContacts,
+                callJobs.size(),
+                totalCallsAttempted,
+                queuedJobs,
+                inProgressJobs,
+                completedCallJobs,
+                failedCallJobs,
+                skippedCallJobs,
+                responses.size(),
+                completedResponses,
+                partialResponses,
+                abandonedResponses,
+                invalidResponses,
+                completionRate,
+                responseRate,
+                participationRate,
+                averageCompletionPercent,
+                partialData,
+                buildInsightSummary(operation, totalContacts, completedResponses, partialResponses, failedCallJobs, responseRate),
+                outcomeBreakdown,
+                questionSummaries,
+                responseTrend
+        );
     }
 
     private void validateRequest(CreateOperationRequest request) {
@@ -305,6 +475,246 @@ public class OperationServiceImpl implements OperationService {
                 buildReadiness(operation, contactCount),
                 buildExecutionSummary(operation, newJobs)
         );
+    }
+
+    private OperationAnalyticsQuestionSummaryDto buildQuestionSummary(
+            SurveyQuestion question,
+            List<SurveyQuestionOption> options,
+            List<SurveyAnswer> answers,
+            long totalContacts
+    ) {
+        long answeredCount = answers.size();
+        double responseRate = percentage(answeredCount, totalContacts);
+
+        if (question.getQuestionType() == QuestionType.RATING) {
+            Map<String, Long> ratings = new LinkedHashMap<>();
+            for (SurveyAnswer answer : answers) {
+                if (answer.getAnswerNumber() == null) {
+                    continue;
+                }
+                String key = String.valueOf(answer.getAnswerNumber().stripTrailingZeros().toPlainString());
+                ratings.merge(key, 1L, Long::sum);
+            }
+            double averageRating = round(answers.stream()
+                    .map(SurveyAnswer::getAnswerNumber)
+                    .filter(java.util.Objects::nonNull)
+                    .mapToDouble(BigDecimal::doubleValue)
+                    .average()
+                    .orElse(0));
+            return new OperationAnalyticsQuestionSummaryDto(
+                    question.getId(),
+                    question.getCode(),
+                    question.getQuestionOrder(),
+                    question.getTitle(),
+                    question.getQuestionType(),
+                    "RATING",
+                    answeredCount,
+                    responseRate,
+                    averageRating,
+                    answeredCount == 0 ? "Puan dagilimi, gorusmelerden sayisal cevap geldikce gosterilir." : null,
+                    toBreakdown(ratings, answeredCount)
+            );
+        }
+
+        if (question.getQuestionType() == QuestionType.OPEN_ENDED) {
+            return new OperationAnalyticsQuestionSummaryDto(
+                    question.getId(),
+                    question.getCode(),
+                    question.getQuestionOrder(),
+                    question.getTitle(),
+                    question.getQuestionType(),
+                    "OPEN_ENDED",
+                    answeredCount,
+                    responseRate,
+                    null,
+                    answeredCount == 0 ? "Acik uclu icgoruler, gecerli metin yanitlari geldikce olusur." : null,
+                    buildOpenEndedBreakdown(answers, answeredCount)
+            );
+        }
+
+        Map<String, Long> distributions = buildChoiceDistribution(options, answers);
+        String chartKind = isBinaryQuestion(options) ? "BINARY" : question.getQuestionType() == QuestionType.MULTI_CHOICE
+                ? "MULTI_CHOICE"
+                : "CHOICE";
+
+        return new OperationAnalyticsQuestionSummaryDto(
+                question.getId(),
+                question.getCode(),
+                question.getQuestionOrder(),
+                question.getTitle(),
+                question.getQuestionType(),
+                chartKind,
+                answeredCount,
+                responseRate,
+                null,
+                answeredCount == 0 ? "Bu soru icin dagilim, cevaplar geldikce burada gosterilir." : null,
+                toBreakdown(distributions, answeredCount == 0 ? 1 : answeredCount)
+        );
+    }
+
+    private Map<String, Long> buildChoiceDistribution(List<SurveyQuestionOption> options, List<SurveyAnswer> answers) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        options.forEach(option -> counts.put(option.getLabel(), 0L));
+
+        for (SurveyAnswer answer : answers) {
+            if (answer.getSelectedOption() != null) {
+                counts.merge(answer.getSelectedOption().getLabel(), 1L, Long::sum);
+                continue;
+            }
+
+            extractLabels(answer.getAnswerJson(), options).forEach(label -> counts.merge(label, 1L, Long::sum));
+        }
+
+        return counts;
+    }
+
+    private List<String> extractLabels(String rawJson, List<SurveyQuestionOption> options) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return List.of();
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(rawJson);
+            List<String> labels = new ArrayList<>();
+            if (root.isArray()) {
+                for (JsonNode node : root) {
+                    resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
+                }
+            } else if (root.has("selectedOptionIds") && root.get("selectedOptionIds").isArray()) {
+                for (JsonNode node : root.get("selectedOptionIds")) {
+                    resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
+                }
+            } else if (root.has("selectedOptions") && root.get("selectedOptions").isArray()) {
+                for (JsonNode node : root.get("selectedOptions")) {
+                    resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
+                }
+            } else if (root.has("value")) {
+                resolveOptionLabel(root.get("value").asText(null), options).ifPresent(labels::add);
+            }
+            return labels;
+        } catch (Exception error) {
+            return List.of();
+        }
+    }
+
+    private java.util.Optional<String> resolveOptionLabel(String rawValue, List<SurveyQuestionOption> options) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        String normalized = rawValue.trim();
+        return options.stream()
+                .filter(option -> normalized.equals(option.getId().toString())
+                        || normalized.equalsIgnoreCase(option.getOptionCode())
+                        || normalized.equalsIgnoreCase(option.getValue())
+                        || normalized.equalsIgnoreCase(option.getLabel()))
+                .map(SurveyQuestionOption::getLabel)
+                .findFirst()
+                .or(() -> java.util.Optional.of(normalized));
+    }
+
+    private List<OperationAnalyticsBreakdownItemDto> buildOpenEndedBreakdown(List<SurveyAnswer> answers, long answeredCount) {
+        Map<String, Long> buckets = new LinkedHashMap<>();
+        buckets.put("Kisa yanit", 0L);
+        buckets.put("Orta detay", 0L);
+        buckets.put("Detayli yanit", 0L);
+
+        for (SurveyAnswer answer : answers) {
+            String text = answer.getAnswerText() != null && !answer.getAnswerText().isBlank()
+                    ? answer.getAnswerText().trim()
+                    : answer.getRawInputText();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+
+            int length = text.length();
+            if (length < 40) {
+                buckets.merge("Kisa yanit", 1L, Long::sum);
+            } else if (length < 120) {
+                buckets.merge("Orta detay", 1L, Long::sum);
+            } else {
+                buckets.merge("Detayli yanit", 1L, Long::sum);
+            }
+        }
+
+        return toBreakdown(buckets, answeredCount == 0 ? 1 : answeredCount);
+    }
+
+    private List<OperationAnalyticsBreakdownItemDto> toBreakdown(Map<String, Long> counts, long total) {
+        return counts.entrySet().stream()
+                .map(entry -> new OperationAnalyticsBreakdownItemDto(
+                        slugify(entry.getKey()),
+                        entry.getKey(),
+                        entry.getValue(),
+                        percentage(entry.getValue(), total)
+                ))
+                .toList();
+    }
+
+    private boolean isBinaryQuestion(List<SurveyQuestionOption> options) {
+        if (options.size() != 2) {
+            return false;
+        }
+
+        return options.stream()
+                .map(option -> (option.getLabel() + " " + option.getValue()).toLowerCase(Locale.ROOT))
+                .allMatch(value -> value.contains("yes")
+                        || value.contains("no")
+                        || value.contains("evet")
+                        || value.contains("hayir")
+                        || value.contains("true")
+                        || value.contains("false"));
+    }
+
+    private double percentage(long part, long total) {
+        if (total <= 0) {
+            return 0;
+        }
+        return round((part * 100.0) / total);
+    }
+
+    private double round(double value) {
+        return BigDecimal.valueOf(value).setScale(1, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private String buildInsightSummary(
+            Operation operation,
+            long totalContacts,
+            long completedResponses,
+            long partialResponses,
+            long failedCallJobs,
+            double responseRate
+    ) {
+        if (totalContacts == 0) {
+            return "Bu operasyon icin henuz kisi yuklenmedi. Analitik, yurutme oncesi hazirlik asamasinda bekliyor.";
+        }
+
+        if (completedResponses == 0 && partialResponses == 0) {
+            return operation.getStatus() == OperationStatus.READY
+                    ? "Tum on kosullar tamam. Yurutme basladiginda cevap ve soru dagilimlari burada canli olarak gorunur."
+                    : "Henuz geri donen gorusme yaniti yok. Yurutme basladiktan sonra operasyonel sonuclar bu alana akar.";
+        }
+
+        if (operation.getStatus() == OperationStatus.FAILED) {
+            return "Operasyon durmus olsa da toplanan kismi veri korunuyor. En kritik sonraki adim, basarisiz isleri inceleyip yeniden hazirlama karari vermek.";
+        }
+
+        if (operation.getStatus() == OperationStatus.RUNNING) {
+            return "Canli veri akisi devam ediyor. Su anki tablo, cevap oraninin "
+                    + String.format(Locale.US, "%.1f", responseRate)
+                    + "% seviyesine geldigini ve gorusmeler tamamlandikca dagilimlarin guncellendigini gosteriyor.";
+        }
+
+        if (failedCallJobs > 0) {
+            return "Operasyon kapandi. Tamamlanan cevaplara ek olarak inceleme gerektiren basarisiz cagri isleri de mevcut.";
+        }
+
+        return "Operasyon tamamlandi. Bu sayfa, sonuc ozetini ve soru bazli dagilimlari tek yuzeyde toplar.";
+    }
+
+    private String slugify(String input) {
+        return input.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-|-$)", "");
     }
 
     private String buildStateBlockingReason(OperationStatus status) {
