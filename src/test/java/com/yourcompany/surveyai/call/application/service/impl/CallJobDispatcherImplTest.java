@@ -16,6 +16,7 @@ import com.yourcompany.surveyai.call.application.provider.ProviderDispatchReques
 import com.yourcompany.surveyai.call.application.provider.ProviderDispatchResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookRequest;
+import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.application.provider.VoiceExecutionProvider;
 import com.yourcompany.surveyai.call.configuration.VoiceExecutionProperties;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfigurationResolver;
@@ -45,6 +46,7 @@ class CallJobDispatcherImplTest {
     private final CallJobRepository callJobRepository = mock(CallJobRepository.class);
     private final CallAttemptRepository callAttemptRepository = mock(CallAttemptRepository.class);
     private final OperationContactRepository operationContactRepository = mock(OperationContactRepository.class);
+    private final ProviderExecutionObservationService providerExecutionObservationService = mock(ProviderExecutionObservationService.class);
 
     private final List<CallAttempt> savedAttempts = new ArrayList<>();
 
@@ -62,7 +64,8 @@ class CallJobDispatcherImplTest {
                 new VoiceProviderConfigurationResolver(properties),
                 callJobRepository,
                 callAttemptRepository,
-                operationContactRepository
+                operationContactRepository,
+                providerExecutionObservationService
         );
 
         when(callJobRepository.save(any(CallJob.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -102,7 +105,8 @@ class CallJobDispatcherImplTest {
                 new VoiceProviderConfigurationResolver(properties),
                 callJobRepository,
                 callAttemptRepository,
-                operationContactRepository
+                operationContactRepository,
+                providerExecutionObservationService
         );
 
         CallJob callJob = buildCallJob();

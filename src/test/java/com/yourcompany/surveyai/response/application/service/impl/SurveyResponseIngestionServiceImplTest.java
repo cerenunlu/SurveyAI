@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
+import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
 import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
@@ -47,6 +48,7 @@ class SurveyResponseIngestionServiceImplTest {
     private final SurveyAnswerRepository surveyAnswerRepository = mock(SurveyAnswerRepository.class);
     private final SurveyQuestionRepository surveyQuestionRepository = mock(SurveyQuestionRepository.class);
     private final SurveyQuestionOptionRepository surveyQuestionOptionRepository = mock(SurveyQuestionOptionRepository.class);
+    private final ProviderExecutionObservationService providerExecutionObservationService = mock(ProviderExecutionObservationService.class);
 
     private final List<SurveyResponse> savedResponses = new ArrayList<>();
     private final List<SurveyAnswer> savedAnswers = new ArrayList<>();
@@ -66,7 +68,8 @@ class SurveyResponseIngestionServiceImplTest {
                 surveyAnswerRepository,
                 surveyQuestionRepository,
                 surveyQuestionOptionRepository,
-                new ObjectMapper()
+                new ObjectMapper(),
+                providerExecutionObservationService
         );
 
         when(surveyResponseRepository.save(any(SurveyResponse.class))).thenAnswer(invocation -> {
@@ -178,7 +181,8 @@ class SurveyResponseIngestionServiceImplTest {
                 surveyAnswerRepository,
                 surveyQuestionRepository,
                 surveyQuestionOptionRepository,
-                new ObjectMapper()
+                new ObjectMapper(),
+                providerExecutionObservationService
         );
 
         when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(mockAttempt.getId())).thenReturn(Optional.empty());
@@ -193,6 +197,7 @@ class SurveyResponseIngestionServiceImplTest {
                 CallProvider.MOCK,
                 mockAttempt.getProviderCallId(),
                 mockAttempt.getCallJob().getIdempotencyKey(),
+                "mock_webhook",
                 CallJobStatus.COMPLETED,
                 CallAttemptStatus.COMPLETED,
                 OffsetDateTime.now(),
@@ -320,6 +325,7 @@ class SurveyResponseIngestionServiceImplTest {
                 CallProvider.ELEVENLABS,
                 "conv_123",
                 "op:contact",
+                "post_call_transcription",
                 CallJobStatus.COMPLETED,
                 CallAttemptStatus.COMPLETED,
                 OffsetDateTime.now(),

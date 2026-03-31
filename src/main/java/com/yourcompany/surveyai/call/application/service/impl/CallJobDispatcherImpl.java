@@ -6,6 +6,7 @@ import com.yourcompany.surveyai.call.application.provider.ProviderDispatchReques
 import com.yourcompany.surveyai.call.application.provider.ProviderDispatchResult;
 import com.yourcompany.surveyai.call.application.provider.VoiceExecutionProvider;
 import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
+import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfigurationResolver;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
@@ -35,19 +36,22 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
     private final CallJobRepository callJobRepository;
     private final CallAttemptRepository callAttemptRepository;
     private final OperationContactRepository operationContactRepository;
+    private final ProviderExecutionObservationService providerExecutionObservationService;
 
     public CallJobDispatcherImpl(
             CallProviderRegistry callProviderRegistry,
             VoiceProviderConfigurationResolver configurationResolver,
             CallJobRepository callJobRepository,
             CallAttemptRepository callAttemptRepository,
-            OperationContactRepository operationContactRepository
+            OperationContactRepository operationContactRepository,
+            ProviderExecutionObservationService providerExecutionObservationService
     ) {
         this.callProviderRegistry = callProviderRegistry;
         this.configurationResolver = configurationResolver;
         this.callJobRepository = callJobRepository;
         this.callAttemptRepository = callAttemptRepository;
         this.operationContactRepository = operationContactRepository;
+        this.providerExecutionObservationService = providerExecutionObservationService;
     }
 
     @Override
@@ -116,6 +120,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
         callAttempt.setFailureReason(result.errorMessage());
         callAttempt.setRawProviderPayload(result.rawPayload() != null ? result.rawPayload() : "{}");
         callAttemptRepository.save(callAttempt);
+        providerExecutionObservationService.recordDispatchAccepted(callJob, callAttempt, result);
 
         OperationContact contact = callJob.getOperationContact();
         contact.setLastCallAt(callAttempt.getDialedAt());
@@ -123,10 +128,13 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
         operationContactRepository.save(contact);
 
         log.info(
-                "Dispatch result recorded. provider={} callJobId={} providerCallId={} jobStatus={} attemptStatus={}",
+                "Dispatch result recorded. provider={} operationId={} callJobId={} callAttemptId={} providerCallId={} dispatchAt={} jobStatus={} attemptStatus={}",
                 result.provider(),
+                callJob.getOperation().getId(),
                 callJob.getId(),
+                callAttempt.getId(),
                 result.providerCallId(),
+                callAttempt.getDialedAt(),
                 result.jobStatus(),
                 callAttempt.getStatus()
         );
@@ -161,11 +169,29 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
         callAttempt.setFailureReason(error.getMessage());
         callAttempt.setRawProviderPayload("{\"dispatchError\":true}");
         callAttemptRepository.save(callAttempt);
+        providerExecutionObservationService.recordDispatchFailed(
+                callJob,
+                callAttempt,
+                provider.getProvider(),
+                callAttempt.getDialedAt(),
+                error.getMessage(),
+                callAttempt.getRawProviderPayload()
+        );
 
         OperationContact contact = callJob.getOperationContact();
         contact.setLastCallAt(callAttempt.getDialedAt());
         contact.setStatus(OperationContactStatus.FAILED);
         operationContactRepository.save(contact);
+
+        log.warn(
+                "Dispatch failure recorded. provider={} operationId={} callJobId={} callAttemptId={} dispatchAt={} failureReason={}",
+                provider.getProvider(),
+                callJob.getOperation().getId(),
+                callJob.getId(),
+                callAttempt.getId(),
+                callAttempt.getDialedAt(),
+                error.getMessage()
+        );
     }
 
     private OperationContactStatus mapContactStatus(CallJobStatus jobStatus) {

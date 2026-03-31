@@ -3,6 +3,7 @@ package com.yourcompany.surveyai.response.application.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
+import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.response.application.model.IngestedSurveyAnswer;
 import com.yourcompany.surveyai.response.application.model.IngestedSurveyResult;
@@ -46,6 +47,7 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
     private final SurveyQuestionRepository surveyQuestionRepository;
     private final SurveyQuestionOptionRepository surveyQuestionOptionRepository;
     private final ObjectMapper objectMapper;
+    private final ProviderExecutionObservationService providerExecutionObservationService;
 
     public SurveyResponseIngestionServiceImpl(
             ProviderSurveyResultMapperRegistry mapperRegistry,
@@ -53,7 +55,8 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
             SurveyAnswerRepository surveyAnswerRepository,
             SurveyQuestionRepository surveyQuestionRepository,
             SurveyQuestionOptionRepository surveyQuestionOptionRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            ProviderExecutionObservationService providerExecutionObservationService
     ) {
         this.mapperRegistry = mapperRegistry;
         this.surveyResponseRepository = surveyResponseRepository;
@@ -61,83 +64,116 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
         this.surveyQuestionRepository = surveyQuestionRepository;
         this.surveyQuestionOptionRepository = surveyQuestionOptionRepository;
         this.objectMapper = objectMapper;
+        this.providerExecutionObservationService = providerExecutionObservationService;
     }
 
     @Override
     @Transactional
     public void ingest(CallAttempt callAttempt, ProviderWebhookEvent event) {
-        ProviderSurveyResultMapper mapper = mapperRegistry.getRequiredMapper(callAttempt.getProvider());
-        IngestedSurveyResult mappedResult = mapper.map(callAttempt, event);
+        try {
+            ProviderSurveyResultMapper mapper = mapperRegistry.getRequiredMapper(callAttempt.getProvider());
+            IngestedSurveyResult mappedResult = mapper.map(callAttempt, event);
 
-        SurveyResponse response = surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(callAttempt.getId())
-                .orElseGet(() -> createSurveyResponse(callAttempt));
+            SurveyResponse response = surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(callAttempt.getId())
+                    .orElseGet(() -> createSurveyResponse(callAttempt));
 
-        response.setStatus(mappedResult.responseStatus());
-        response.setCompletionPercent(defaultCompletion(mappedResult.completionPercent()));
-        response.setStartedAt(firstNonNull(mappedResult.startedAt(), callAttempt.getConnectedAt(), callAttempt.getDialedAt(), OffsetDateTime.now()));
-        response.setCompletedAt(mappedResult.completedAt());
-        response.setTranscriptText(mappedResult.transcriptText());
-        response.setTranscriptJson(firstNonBlank(mappedResult.transcriptJson(), "{}"));
-        response.setAiSummaryText(mappedResult.aiSummaryText());
-        SurveyResponse savedResponse = surveyResponseRepository.save(response);
+            response.setStatus(mappedResult.responseStatus());
+            response.setCompletionPercent(defaultCompletion(mappedResult.completionPercent()));
+            response.setStartedAt(firstNonNull(mappedResult.startedAt(), callAttempt.getConnectedAt(), callAttempt.getDialedAt(), OffsetDateTime.now()));
+            response.setCompletedAt(mappedResult.completedAt());
+            response.setTranscriptText(mappedResult.transcriptText());
+            response.setTranscriptJson(firstNonBlank(mappedResult.transcriptJson(), "{}"));
+            response.setAiSummaryText(mappedResult.aiSummaryText());
+            SurveyResponse savedResponse = surveyResponseRepository.save(response);
 
-        List<SurveyQuestion> questions = surveyQuestionRepository
-                .findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(callAttempt.getOperation().getSurvey().getId());
-        Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId = new LinkedHashMap<>();
-        questions.forEach(question -> optionsByQuestionId.put(
-                question.getId(),
-                surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(question.getId())
-        ));
+            List<SurveyQuestion> questions = surveyQuestionRepository
+                    .findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(callAttempt.getOperation().getSurvey().getId());
+            Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId = new LinkedHashMap<>();
+            questions.forEach(question -> optionsByQuestionId.put(
+                    question.getId(),
+                    surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(question.getId())
+            ));
 
-        int upsertedAnswers = 0;
-        List<String> unmappedFields = new ArrayList<>(mappedResult.unmappedFields());
-        for (IngestedSurveyAnswer answer : mappedResult.answers()) {
-            Optional<SurveyQuestion> questionOptional = resolveQuestion(questions, answer);
-            if (questionOptional.isEmpty()) {
-                String ref = answer.questionCode() != null ? answer.questionCode() : firstNonBlank(answer.questionTitle(), answer.rawValue());
-                if (ref != null) {
-                    unmappedFields.add(ref);
+            int upsertedAnswers = 0;
+            List<String> unmappedFields = new ArrayList<>(mappedResult.unmappedFields());
+            for (IngestedSurveyAnswer answer : mappedResult.answers()) {
+                Optional<SurveyQuestion> questionOptional = resolveQuestion(questions, answer);
+                if (questionOptional.isEmpty()) {
+                    String ref = answer.questionCode() != null ? answer.questionCode() : firstNonBlank(answer.questionTitle(), answer.rawValue());
+                    if (ref != null) {
+                        unmappedFields.add(ref);
+                    }
+                    log.warn(
+                            "Provider answer mapping failed. provider={} callAttemptId={} providerCallId={} eventType={} ref={}",
+                            callAttempt.getProvider(),
+                            callAttempt.getId(),
+                            callAttempt.getProviderCallId(),
+                            event.eventType(),
+                            ref
+                    );
+                    continue;
                 }
-                log.info(
-                        "Provider answer could not be mapped to a survey question. callAttemptId={} ref={}",
-                        callAttempt.getId(),
-                        ref
-                );
-                continue;
+
+                SurveyQuestion question = questionOptional.get();
+                SurveyAnswer surveyAnswer = surveyAnswerRepository
+                        .findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(savedResponse.getId(), question.getId())
+                        .orElseGet(() -> createSurveyAnswer(savedResponse, question));
+                applyAnswer(surveyAnswer, question, optionsByQuestionId.getOrDefault(question.getId(), List.of()), answer);
+                surveyAnswerRepository.save(surveyAnswer);
+                upsertedAnswers++;
             }
 
-            SurveyQuestion question = questionOptional.get();
-            SurveyAnswer surveyAnswer = surveyAnswerRepository
-                    .findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(savedResponse.getId(), question.getId())
-                    .orElseGet(() -> createSurveyAnswer(savedResponse, question));
-            applyAnswer(surveyAnswer, question, optionsByQuestionId.getOrDefault(question.getId(), List.of()), answer);
-            surveyAnswerRepository.save(surveyAnswer);
-            upsertedAnswers++;
-        }
+            if (!unmappedFields.isEmpty()) {
+                response.setTranscriptJson(mergeTranscriptJson(response.getTranscriptJson(), mappedResult.providerMetadataJson(), unmappedFields));
+                log.warn(
+                        "Provider result persisted with unmapped fields. provider={} callAttemptId={} providerCallId={} eventType={} count={} refs={}",
+                        callAttempt.getProvider(),
+                        callAttempt.getId(),
+                        callAttempt.getProviderCallId(),
+                        event.eventType(),
+                        unmappedFields.size(),
+                        unmappedFields
+                );
+            }
 
-        if (!unmappedFields.isEmpty()) {
-            response.setTranscriptJson(mergeTranscriptJson(response.getTranscriptJson(), mappedResult.providerMetadataJson(), unmappedFields));
-            log.info(
-                    "Provider result persisted with unmapped fields. callAttemptId={} count={} refs={}",
-                    callAttempt.getId(),
+            response.setCompletionPercent(calculateCompletionPercent(questions.size(), upsertedAnswers, response.getCompletionPercent()));
+            if (response.getStatus() == SurveyResponseStatus.COMPLETED && upsertedAnswers > 0 && upsertedAnswers < questions.size()) {
+                response.setStatus(SurveyResponseStatus.PARTIAL);
+            }
+            SurveyResponse persistedResponse = surveyResponseRepository.save(response);
+            providerExecutionObservationService.recordSurveyResult(
+                    callAttempt,
+                    event,
+                    persistedResponse,
+                    upsertedAnswers,
                     unmappedFields.size(),
-                    unmappedFields
+                    buildResultObservationMessage(persistedResponse, upsertedAnswers, unmappedFields.size())
             );
-        }
 
-        response.setCompletionPercent(calculateCompletionPercent(questions.size(), upsertedAnswers, response.getCompletionPercent()));
-        if (response.getStatus() == SurveyResponseStatus.COMPLETED && upsertedAnswers > 0 && upsertedAnswers < questions.size()) {
-            response.setStatus(SurveyResponseStatus.PARTIAL);
+            log.info(
+                    "Survey response persisted. provider={} eventType={} callAttemptId={} providerCallId={} surveyResponseId={} status={} answersUpserted={} unmappedFieldCount={} transcriptAvailable={}",
+                    callAttempt.getProvider(),
+                    event.eventType(),
+                    callAttempt.getId(),
+                    callAttempt.getProviderCallId(),
+                    persistedResponse.getId(),
+                    persistedResponse.getStatus(),
+                    upsertedAnswers,
+                    unmappedFields.size(),
+                    persistedResponse.getTranscriptText() != null && !persistedResponse.getTranscriptText().isBlank()
+            );
+        } catch (RuntimeException error) {
+            providerExecutionObservationService.recordSurveyResultFailure(callAttempt, event, error.getMessage());
+            log.warn(
+                    "Survey response ingestion failed. provider={} eventType={} callAttemptId={} providerCallId={} message={}",
+                    callAttempt.getProvider(),
+                    event.eventType(),
+                    callAttempt.getId(),
+                    callAttempt.getProviderCallId(),
+                    error.getMessage()
+            );
+            throw error;
         }
-        surveyResponseRepository.save(response);
-
-        log.info(
-                "Survey response persisted. callAttemptId={} surveyResponseId={} status={} answersUpserted={}",
-                callAttempt.getId(),
-                savedResponse.getId(),
-                savedResponse.getStatus(),
-                upsertedAnswers
-        );
     }
 
     private SurveyResponse createSurveyResponse(CallAttempt callAttempt) {
@@ -308,6 +344,16 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
         } catch (JsonProcessingException error) {
             return firstNonBlank(transcriptJson, "{}");
         }
+    }
+
+    private String buildResultObservationMessage(SurveyResponse response, int answerCount, int unmappedFieldCount) {
+        if (unmappedFieldCount > 0) {
+            return "Survey result persisted with partial mapping";
+        }
+        if (response.getTranscriptText() == null || response.getTranscriptText().isBlank()) {
+            return "Survey result persisted without transcript text";
+        }
+        return "Survey result persisted successfully";
     }
 
     private BigDecimal calculateCompletionPercent(int questionCount, int mappedAnswerCount, BigDecimal fallback) {

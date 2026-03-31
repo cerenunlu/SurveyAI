@@ -43,6 +43,9 @@ surveyai:
       webhook-secret: ${ELEVENLABS_WEBHOOK_SECRET:}
       sandbox-mode: ${ELEVENLABS_SANDBOX_MODE:true}
       webhook-timestamp-tolerance-seconds: 300
+      settings:
+        call-recording-enabled: ${ELEVENLABS_CALL_RECORDING_ENABLED:false}
+        public-webhook-base-url: ${PUBLIC_WEBHOOK_BASE_URL:}
 
 logging:
   level:

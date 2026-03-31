@@ -9,6 +9,7 @@ public record ProviderWebhookEvent(
         CallProvider provider,
         String providerCallId,
         String idempotencyKey,
+        String eventType,
         CallJobStatus jobStatus,
         CallAttemptStatus attemptStatus,
         OffsetDateTime occurredAt,

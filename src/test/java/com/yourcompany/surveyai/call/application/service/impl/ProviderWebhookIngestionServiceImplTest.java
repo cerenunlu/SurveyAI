@@ -3,10 +3,13 @@ package com.yourcompany.surveyai.call.application.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.call.application.provider.CallProviderRegistry;
+import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.configuration.VoiceExecutionProperties;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfigurationResolver;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
@@ -39,6 +42,7 @@ class ProviderWebhookIngestionServiceImplTest {
     private final CallJobRepository callJobRepository = mock(CallJobRepository.class);
     private final OperationContactRepository operationContactRepository = mock(OperationContactRepository.class);
     private final SurveyResponseIngestionService surveyResponseIngestionService = mock(SurveyResponseIngestionService.class);
+    private final ProviderExecutionObservationService providerExecutionObservationService = mock(ProviderExecutionObservationService.class);
     private ProviderWebhookIngestionServiceImpl ingestionService;
 
     @BeforeEach
@@ -52,7 +56,8 @@ class ProviderWebhookIngestionServiceImplTest {
                 callAttemptRepository,
                 callJobRepository,
                 operationContactRepository,
-                surveyResponseIngestionService
+                surveyResponseIngestionService,
+                providerExecutionObservationService
         );
 
         when(callAttemptRepository.save(any(CallAttempt.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -87,6 +92,41 @@ class ProviderWebhookIngestionServiceImplTest {
         assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.COMPLETED);
         assertThat(attempt.getCallJob().getStatus()).isEqualTo(CallJobStatus.COMPLETED);
         assertThat(attempt.getOperationContact().getStatus()).isEqualTo(OperationContactStatus.COMPLETED);
+    }
+
+    @Test
+    void ingest_ignoresStaleWebhookThatWouldRegressCompletedAttempt() {
+        CallAttempt attempt = buildAttempt();
+        attempt.setStatus(CallAttemptStatus.COMPLETED);
+        attempt.setConnectedAt(OffsetDateTime.now().minusMinutes(3));
+        attempt.setEndedAt(OffsetDateTime.now().minusMinutes(1));
+        attempt.getCallJob().setStatus(CallJobStatus.COMPLETED);
+        attempt.getOperationContact().setStatus(OperationContactStatus.COMPLETED);
+        attempt.setRawProviderPayload("{\"status\":\"COMPLETED\"}");
+
+        when(callAttemptRepository.findByProviderAndProviderCallIdAndDeletedAtIsNull(CallProvider.MOCK, attempt.getProviderCallId()))
+                .thenReturn(Optional.of(attempt));
+
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        Enumeration<String> headerNames = Collections.enumeration(Collections.emptyList());
+        when(request.getHeaderNames()).thenReturn(headerNames);
+
+        int applied = ingestionService.ingest(
+                CallProvider.MOCK,
+                """
+                {
+                  "providerCallId": "%s",
+                  "status": "IN_PROGRESS",
+                  "occurredAt": "%s"
+                }
+                """.formatted(attempt.getProviderCallId(), OffsetDateTime.now().minusMinutes(2)),
+                request
+        );
+
+        assertThat(applied).isZero();
+        assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.COMPLETED);
+        assertThat(attempt.getCallJob().getStatus()).isEqualTo(CallJobStatus.COMPLETED);
+        verify(surveyResponseIngestionService, never()).ingest(any(), any());
     }
 
     private CallAttempt buildAttempt() {

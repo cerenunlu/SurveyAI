@@ -91,6 +91,7 @@ public class MockVoiceExecutionProvider implements VoiceExecutionProvider {
                     CallProvider.MOCK,
                     root.path("providerCallId").asText(null),
                     root.path("idempotencyKey").asText(null),
+                    root.path("type").asText("mock_webhook"),
                     jobStatus,
                     attemptStatus,
                     occurredAt,

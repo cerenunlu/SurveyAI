@@ -3,6 +3,7 @@ package com.yourcompany.surveyai.call.infrastructure.provider.elevenlabs;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -67,6 +68,7 @@ class ElevenLabsVoiceExecutionProviderTest {
         assertThat(result.provider()).isEqualTo(CallProvider.ELEVENLABS);
         assertThat(result.providerCallId()).startsWith("sandbox-");
         assertThat(result.jobStatus()).isEqualTo(CallJobStatus.QUEUED);
+        verifyNoInteractions(apiClient);
     }
 
     @Test
@@ -83,6 +85,27 @@ class ElevenLabsVoiceExecutionProviderTest {
                         CallProvider.ELEVENLABS,
                         payload,
                         Map.of("elevenlabs-signature", List.of("t=" + timestamp + ",v1=" + signature))
+                ),
+                configuration
+        );
+
+        assertThat(verified).isTrue();
+    }
+
+    @Test
+    void verifyWebhook_acceptsLegacyV0SignatureHeader() throws Exception {
+        VoiceProviderConfiguration configuration = configuration(false);
+        String payload = """
+                {"type":"post_call_transcription","data":{"conversation_id":"conv_123","status":"completed"}}
+                """;
+        String timestamp = String.valueOf(Instant.now().getEpochSecond());
+        String signature = sign(timestamp + "." + payload, configuration.webhookSecret());
+
+        boolean verified = provider.verifyWebhook(
+                new ProviderWebhookRequest(
+                        CallProvider.ELEVENLABS,
+                        payload,
+                        Map.of("elevenlabs-signature", List.of("t=" + timestamp + ",v0=" + signature))
                 ),
                 configuration
         );
@@ -127,6 +150,45 @@ class ElevenLabsVoiceExecutionProviderTest {
             assertThat(event.durationSeconds()).isEqualTo(45);
             assertThat(event.transcriptStorageKey()).isEqualTo("inline://elevenlabs/conversations/conv_123");
             assertThat(event.transcriptText()).contains("agent: Hello");
+        });
+    }
+
+    @Test
+    void parseWebhook_mapsCallInitiationFailureIntoInternalFailureEvent() {
+        List<ProviderWebhookEvent> events = provider.parseWebhook(
+                new ProviderWebhookRequest(
+                        CallProvider.ELEVENLABS,
+                        """
+                        {
+                          "type": "call_initiation_failure",
+                          "event_timestamp": 1739537297,
+                          "data": {
+                            "conversation_id": "conv_456",
+                            "failure_reason": "busy",
+                            "metadata": {
+                              "type": "twilio",
+                              "body": {
+                                "call_status": "busy"
+                              }
+                            },
+                            "conversation_initiation_client_data": {
+                              "dynamic_variables": {
+                                "idempotency_key": "operation:contact-2"
+                              }
+                            }
+                          }
+                        }
+                        """,
+                        Map.of()
+                ),
+                configuration(false)
+        );
+
+        assertThat(events).singleElement().satisfies(event -> {
+            assertThat(event.providerCallId()).isEqualTo("conv_456");
+            assertThat(event.idempotencyKey()).isEqualTo("operation:contact-2");
+            assertThat(event.jobStatus()).isEqualTo(CallJobStatus.FAILED);
+            assertThat(event.errorMessage()).isEqualTo("busy");
         });
     }
 

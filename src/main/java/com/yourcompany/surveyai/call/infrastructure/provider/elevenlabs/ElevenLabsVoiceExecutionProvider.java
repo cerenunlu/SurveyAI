@@ -194,8 +194,8 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
 
         Map<String, String> parts = parseSignature(signatureHeader);
         String timestampValue = parts.get("t");
-        String providedSignature = parts.get("v1");
-        if (timestampValue == null || providedSignature == null) {
+        String providedLegacySignature = firstNonBlank(parts.get("v1"), parts.get("v0"));
+        if (timestampValue == null || providedLegacySignature == null) {
             return false;
         }
 
@@ -210,8 +210,8 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
             byte[] signatureBytes = signPayload(signedPayload, configuration.webhookSecret());
             String expectedBase64 = Base64.getEncoder().encodeToString(signatureBytes);
             String expectedHex = toHex(signatureBytes);
-            return constantTimeEquals(expectedBase64, providedSignature)
-                    || constantTimeEquals(expectedHex, providedSignature);
+            return constantTimeEquals(expectedBase64, providedLegacySignature)
+                    || constantTimeEquals(expectedHex, providedLegacySignature);
         } catch (Exception error) {
             return false;
         }
@@ -235,9 +235,12 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
     private ProviderWebhookEvent buildWebhookEvent(JsonNode root, JsonNode data, String rawPayload) {
         String providerStatus = firstNonBlank(
                 text(data, "status"),
+                text(data, "failure_reason"),
                 text(root, "type"),
-                text(root, "event")
+                text(root, "event"),
+                text(root, "event_type")
         );
+        String eventType = firstNonBlank(text(root, "type"), text(root, "event"), text(root, "event_type"), "elevenlabs_webhook");
         CallJobStatus jobStatus = mapJobStatus(providerStatus);
         String conversationId = firstNonBlank(
                 text(data, "conversation_id"),
@@ -264,17 +267,32 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 CallProvider.ELEVENLABS,
                 conversationId,
                 idempotencyKey,
+                eventType,
                 jobStatus,
                 mapAttemptStatus(jobStatus),
                 resolveOccurredAt(root, resolveOccurredAt(data, OffsetDateTime.now())),
                 integerValue(firstNonBlank(
                         text(data, "duration_seconds"),
                         text(data, "call_duration_secs"),
-                        text(data, "durationSeconds")
+                        text(data, "durationSeconds"),
+                        text(data.path("metadata"), "call_duration_secs")
                 )),
-                firstNonBlank(text(data, "error_code"), text(data, "errorCode")),
-                firstNonBlank(text(data, "error_message"), text(data, "errorMessage"), text(data, "termination_reason")),
-                transcriptReference,
+                firstNonBlank(
+                        text(data, "error_code"),
+                        text(data, "errorCode"),
+                        text(data.path("metadata").path("body"), "twirp_code"),
+                        text(data.path("metadata").path("body"), "sip_status_code")
+                ),
+                firstNonBlank(
+                        text(data, "error_message"),
+                        text(data, "errorMessage"),
+                        text(data, "termination_reason"),
+                        text(data, "failure_reason"),
+                        text(data.path("metadata").path("body"), "error_reason"),
+                        text(data.path("metadata").path("body"), "sip_status"),
+                        text(data.path("metadata").path("body"), "call_status")
+                ),
+                resolveTranscriptReference(conversationId, data, transcriptText),
                 transcriptText,
                 rawPayload
         );
@@ -285,6 +303,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         payload.put("agent_id", configuration.agentId());
         payload.put("agent_phone_number_id", configuration.phoneNumberId());
         payload.put("to_number", normalizePhoneNumber(request.contact().getPhoneNumber()));
+        applyOptionalDispatchSettings(payload, configuration);
 
         Map<String, Object> conversationInitiationClientData = new LinkedHashMap<>();
         Map<String, Object> dynamicVariables = new LinkedHashMap<>();
@@ -334,6 +353,17 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         }
         String compact = value.replaceAll("[^\\d+]", "");
         return compact.startsWith("+") ? compact : "+" + compact;
+    }
+
+    private void applyOptionalDispatchSettings(Map<String, Object> payload, VoiceProviderConfiguration configuration) {
+        if (configuration.settings() == null || configuration.settings().isEmpty()) {
+            return;
+        }
+
+        String callRecordingSetting = configuration.settings().get("call-recording-enabled");
+        if (callRecordingSetting != null && !callRecordingSetting.isBlank()) {
+            payload.put("call_recording_enabled", Boolean.parseBoolean(callRecordingSetting.trim()));
+        }
     }
 
     private JsonNode readJson(String payload) {
@@ -388,6 +418,19 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 }
                 return builder.toString();
             }
+        }
+        return null;
+    }
+
+    private String resolveTranscriptReference(String conversationId, JsonNode data, String transcriptText) {
+        if (conversationId == null || conversationId.isBlank()) {
+            return null;
+        }
+        if (transcriptText != null && !transcriptText.isBlank()) {
+            return "inline://elevenlabs/conversations/" + conversationId;
+        }
+        if (data.hasNonNull("full_audio")) {
+            return "inline://elevenlabs/audio/conversations/" + conversationId;
         }
         return null;
     }
@@ -485,7 +528,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
             case "IN_PROGRESS", "CONNECTED", "ACTIVE", "CALL_IN_PROGRESS" -> CallJobStatus.IN_PROGRESS;
             case "POST_CALL_TRANSCRIPTION", "POST_CALL_AUDIO", "COMPLETED", "FINISHED", "DONE" -> CallJobStatus.COMPLETED;
             case "CANCELLED", "SKIPPED" -> CallJobStatus.CANCELLED;
-            case "FAILED", "ERROR", "NO_ANSWER", "BUSY", "VOICEMAIL", "CALL_FAILED" -> CallJobStatus.FAILED;
+            case "CALL_INITIATION_FAILURE", "FAILED", "ERROR", "NO_ANSWER", "NO-ANSWER", "BUSY", "VOICEMAIL", "UNKNOWN", "CALL_FAILED" -> CallJobStatus.FAILED;
             default -> CallJobStatus.QUEUED;
         };
     }

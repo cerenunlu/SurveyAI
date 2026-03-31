@@ -4,6 +4,7 @@ import com.yourcompany.surveyai.call.application.provider.CallProviderRegistry;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookRequest;
 import com.yourcompany.surveyai.call.application.provider.VoiceExecutionProvider;
+import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.application.service.ProviderWebhookIngestionService;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfigurationResolver;
@@ -11,6 +12,7 @@ import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
+import com.yourcompany.surveyai.call.domain.enums.ProviderExecutionOutcome;
 import com.yourcompany.surveyai.call.repository.CallAttemptRepository;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.common.exception.ValidationException;
@@ -42,6 +44,7 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
     private final CallJobRepository callJobRepository;
     private final OperationContactRepository operationContactRepository;
     private final SurveyResponseIngestionService surveyResponseIngestionService;
+    private final ProviderExecutionObservationService providerExecutionObservationService;
 
     public ProviderWebhookIngestionServiceImpl(
             CallProviderRegistry callProviderRegistry,
@@ -49,7 +52,8 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
             CallAttemptRepository callAttemptRepository,
             CallJobRepository callJobRepository,
             OperationContactRepository operationContactRepository,
-            SurveyResponseIngestionService surveyResponseIngestionService
+            SurveyResponseIngestionService surveyResponseIngestionService,
+            ProviderExecutionObservationService providerExecutionObservationService
     ) {
         this.callProviderRegistry = callProviderRegistry;
         this.configurationResolver = configurationResolver;
@@ -57,18 +61,23 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         this.callJobRepository = callJobRepository;
         this.operationContactRepository = operationContactRepository;
         this.surveyResponseIngestionService = surveyResponseIngestionService;
+        this.providerExecutionObservationService = providerExecutionObservationService;
     }
 
     @Override
     @Transactional
     public int ingest(CallProvider providerKey, String rawPayload, HttpServletRequest request) {
+        OffsetDateTime receivedAt = OffsetDateTime.now();
         VoiceProviderConfiguration configuration = configurationResolver.getConfiguration(providerKey);
         VoiceExecutionProvider provider = callProviderRegistry.getRequiredProvider(providerKey);
         ProviderWebhookRequest webhookRequest = new ProviderWebhookRequest(providerKey, rawPayload, extractHeaders(request));
+        providerExecutionObservationService.recordWebhookReceived(providerKey, rawPayload, receivedAt);
 
-        log.info("Provider webhook received. provider={} contentLength={}", providerKey, rawPayload == null ? 0 : rawPayload.length());
+        log.info("Provider webhook received. provider={} receivedAt={} contentLength={}", providerKey, receivedAt, rawPayload == null ? 0 : rawPayload.length());
 
         if (!provider.verifyWebhook(webhookRequest, configuration)) {
+            providerExecutionObservationService.recordWebhookRejected(providerKey, rawPayload, "Provider webhook verification failed", receivedAt);
+            log.warn("Provider webhook rejected. provider={} receivedAt={} reason={}", providerKey, receivedAt, "Provider webhook verification failed");
             throw new ValidationException("Provider webhook verification failed");
         }
 
@@ -84,11 +93,13 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         Optional<CallAttempt> attemptOptional = resolveAttempt(event);
         if (attemptOptional.isEmpty()) {
             log.warn(
-                    "Provider webhook could not be mapped to a call attempt. provider={} providerCallId={} idempotencyKey={}",
+                    "Provider webhook could not be mapped to a call attempt. provider={} eventType={} providerCallId={} idempotencyKey={}",
                     event.provider(),
+                    event.eventType(),
                     event.providerCallId(),
                     event.idempotencyKey()
             );
+            recordUnmatchedWebhook(event);
             return 0;
         }
 
@@ -96,7 +107,22 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         CallJob callJob = attempt.getCallJob();
         OperationContact contact = attempt.getOperationContact();
 
-        attempt.setStatus(event.attemptStatus());
+        if (isStaleOrDuplicateEvent(attempt, event)) {
+            log.info(
+                    "Provider webhook skipped as stale/duplicate. provider={} eventType={} callJobId={} callAttemptId={} providerCallId={} currentStatus={} incomingStatus={}",
+                    event.provider(),
+                    event.eventType(),
+                    callJob.getId(),
+                    attempt.getId(),
+                    firstNonBlank(event.providerCallId(), attempt.getProviderCallId()),
+                    attempt.getStatus(),
+                    event.attemptStatus()
+            );
+            providerExecutionObservationService.recordWebhookOutcome(attempt, event, ProviderExecutionOutcome.IGNORED, "Duplicate or stale webhook ignored");
+            return 0;
+        }
+
+        attempt.setStatus(event.attemptStatus() != null ? event.attemptStatus() : attempt.getStatus());
         attempt.setProviderCallId(event.providerCallId() != null ? event.providerCallId() : attempt.getProviderCallId());
         if (event.occurredAt() != null && attempt.getConnectedAt() == null && event.attemptStatus() == com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus.IN_PROGRESS) {
             attempt.setConnectedAt(event.occurredAt());
@@ -104,8 +130,15 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         if (isTerminal(event.jobStatus())) {
             attempt.setEndedAt(event.occurredAt() != null ? event.occurredAt() : OffsetDateTime.now());
         }
-        attempt.setDurationSeconds(event.durationSeconds());
-        attempt.setFailureReason(event.errorMessage());
+        if (event.durationSeconds() != null) {
+            attempt.setDurationSeconds(event.durationSeconds());
+        }
+        if (event.errorMessage() != null && !event.errorMessage().isBlank()) {
+            attempt.setFailureReason(event.errorMessage());
+            if (isTerminal(event.jobStatus()) && (attempt.getHangupReason() == null || attempt.getHangupReason().isBlank())) {
+                attempt.setHangupReason(event.errorMessage());
+            }
+        }
         if (event.transcriptStorageKey() != null && !event.transcriptStorageKey().isBlank()) {
             attempt.setTranscriptStorageKey(event.transcriptStorageKey());
         } else if (event.transcriptText() != null && !event.transcriptText().isBlank() && attempt.getProviderCallId() != null) {
@@ -114,7 +147,7 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         attempt.setRawProviderPayload(event.rawPayload() != null ? event.rawPayload() : attempt.getRawProviderPayload());
         callAttemptRepository.save(attempt);
 
-        callJob.setStatus(event.jobStatus());
+        callJob.setStatus(event.jobStatus() != null ? event.jobStatus() : callJob.getStatus());
         callJob.setLastErrorCode(event.errorCode());
         callJob.setLastErrorMessage(event.errorMessage());
         callJobRepository.save(callJob);
@@ -128,11 +161,15 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         if (shouldIngestSurveyResult(event)) {
             surveyResponseIngestionService.ingest(attempt, event);
         }
+        providerExecutionObservationService.recordWebhookOutcome(attempt, event, ProviderExecutionOutcome.ACCEPTED, "Webhook applied to internal state");
 
         log.info(
-                "Provider webhook applied. provider={} callJobId={} providerCallId={} jobStatus={} attemptStatus={}",
+                "Provider webhook applied. provider={} eventType={} operationId={} callJobId={} callAttemptId={} providerCallId={} jobStatus={} attemptStatus={}",
                 event.provider(),
+                event.eventType(),
+                callJob.getOperation().getId(),
                 callJob.getId(),
+                attempt.getId(),
                 attempt.getProviderCallId(),
                 callJob.getStatus(),
                 attempt.getStatus()
@@ -181,6 +218,92 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         return isTerminal(event.jobStatus())
                 || (event.transcriptText() != null && !event.transcriptText().isBlank())
                 || (event.rawPayload() != null && !event.rawPayload().isBlank());
+    }
+
+    private void recordUnmatchedWebhook(ProviderWebhookEvent event) {
+        providerExecutionObservationService.recordWebhookOutcome(null, event, ProviderExecutionOutcome.UNMATCHED, "Webhook did not match an internal call attempt");
+    }
+
+    private boolean isStaleOrDuplicateEvent(CallAttempt attempt, ProviderWebhookEvent event) {
+        if (event.jobStatus() == null || event.attemptStatus() == null) {
+            return false;
+        }
+
+        int currentRank = statusRank(attempt.getCallJob().getStatus());
+        int incomingRank = statusRank(event.jobStatus());
+        if (incomingRank < currentRank) {
+            return true;
+        }
+
+        if (incomingRank == currentRank && isOlderThanRecordedAttempt(attempt, event)) {
+            return true;
+        }
+
+        return incomingRank == currentRank
+                && sameText(attempt.getProviderCallId(), event.providerCallId())
+                && sameText(attempt.getRawProviderPayload(), event.rawPayload())
+                && sameText(attempt.getTranscriptStorageKey(), event.transcriptStorageKey())
+                && sameText(attempt.getFailureReason(), event.errorMessage())
+                && sameInteger(attempt.getDurationSeconds(), event.durationSeconds());
+    }
+
+    private boolean isOlderThanRecordedAttempt(CallAttempt attempt, ProviderWebhookEvent event) {
+        if (event.occurredAt() == null) {
+            return false;
+        }
+
+        OffsetDateTime currentTimestamp = firstNonNull(attempt.getEndedAt(), attempt.getConnectedAt(), attempt.getDialedAt());
+        return currentTimestamp != null && event.occurredAt().isBefore(currentTimestamp);
+    }
+
+    private int statusRank(CallJobStatus status) {
+        if (status == null) {
+            return -1;
+        }
+        return switch (status) {
+            case PENDING -> 0;
+            case QUEUED -> 1;
+            case IN_PROGRESS -> 2;
+            case RETRY -> 3;
+            case COMPLETED, FAILED, DEAD_LETTER, CANCELLED -> 4;
+        };
+    }
+
+    private boolean sameText(String left, String right) {
+        String normalizedLeft = normalizeText(left);
+        String normalizedRight = normalizeText(right);
+        return normalizedLeft == null ? normalizedRight == null : normalizedLeft.equals(normalizedRight);
+    }
+
+    private String normalizeText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private boolean sameInteger(Integer left, Integer right) {
+        return left == null ? right == null : left.equals(right);
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    @SafeVarargs
+    private final <T> T firstNonNull(T... values) {
+        for (T value : values) {
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private OperationContactStatus mapContactStatus(CallJobStatus jobStatus) {
