@@ -160,25 +160,30 @@ export default function OperationDetailPage() {
           : "En az bir kisi yuklenmeden operasyon baslatilamaz.",
         ready: operation.readiness.contactsLoaded,
       },
-      {
+            {
         key: "startable-state",
-        label: "Durum baslatmaya uygun",
-        detail: operation.readiness.startableState
-          ? "Operasyon baslatilabilir bir yasam dongusu durumunda."
-          : "Mevcut durum yeni bir baslatma aksiyonuna izin vermiyor.",
-        ready: operation.readiness.startableState,
+        label: operation.status === "Running" ? "Yurutme aktif" : "Durum baslatmaya uygun",
+        detail: operation.status === "Running"
+          ? "Operasyon baslatildi ve aktif yurutme durumunda devam ediyor."
+          : operation.readiness.startableState
+            ? "Operasyon baslatilabilir bir yasam dongusu durumunda."
+            : "Mevcut durum yeni bir baslatma aksiyonuna izin vermiyor.",
+        ready: operation.status === "Running" || operation.readiness.startableState,
       },
     ];
   }, [contactCount, operation]);
 
-  const readinessToneClass = operation?.readiness.readyToStart
+  const isOperationRunning = operation?.status === "Running";
+  const readinessToneClass = isOperationRunning || operation?.readiness.readyToStart
     ? "operation-readiness-pill is-ready"
     : "operation-readiness-pill is-blocked";
-  const readinessLabel = operation?.readiness.readyToStart
-    ? "Baslatmaya hazir"
-    : operation
-      ? "Hazirlik eksikleri var"
-      : "Kontrol ediliyor";
+  const readinessLabel = isOperationRunning
+    ? "Yurutme aktif"
+    : operation?.readiness.readyToStart
+      ? "Baslatmaya hazir"
+      : operation
+        ? "Hazirlik eksikleri var"
+        : "Kontrol ediliyor";
   const startButtonLabel = operation?.status === "Running"
     ? "Operasyon yurutuluyor"
     : isStarting
@@ -191,6 +196,7 @@ export default function OperationDetailPage() {
     : operation?.readiness.readyToStart
       ? "Ready"
       : "Pending";
+  const showStartBlockers = Boolean(operation && !isOperationRunning && !operation.readiness.readyToStart);
   const executionEvents = useMemo<ExecutionEventItem[]>(() => {
     if (!operation) {
       return [];
@@ -458,9 +464,11 @@ export default function OperationDetailPage() {
             <div className="operation-summary-note">
               <span>Hazirlik karari</span>
               <strong>
-                {operation?.readiness.readyToStart
-                  ? "Anket, kisi havuzu ve operasyon durumu baslatma icin uygun. Tek aksiyonla yurutmeye gecilebilir."
-                  : operation?.summary?.trim() || "Operasyon yuklenirken hazirlik notu olusturuluyor."}
+                {isOperationRunning
+                  ? "Operasyon baslatildi. Call-job havuzu hazirlandi ve yurutme akisi aktif durumda ilerliyor."
+                  : operation?.readiness.readyToStart
+                    ? "Anket, kisi havuzu ve operasyon durumu baslatma icin uygun. Tek aksiyonla yurutmeye gecilebilir."
+                    : operation?.summary?.trim() || "Operasyon yuklenirken hazirlik notu olusturuluyor."}
               </strong>
             </div>
 
@@ -488,9 +496,11 @@ export default function OperationDetailPage() {
             </div>
             <div className="operation-start-panel">
               <p className="operation-next-step-text">
-                {operation?.readiness.readyToStart
-                  ? "Tum temel kosullar saglandi. Baslatma aksiyonu operasyonu RUNNING durumuna alir, kisi bazli call-job kayitlarini hazirlar ve orkestrasyon akisini acik duruma getirir."
-                  : operation?.readiness.blockingReasons.join(" ") || "Operasyon durumu kontrol ediliyor."}
+                {isOperationRunning
+                  ? "Operasyon su anda yurutmede. Bu asamada sistem hazirlanan call-job kayitlarini takip eder; ayni akis yeniden baslatilmaz."
+                  : operation?.readiness.readyToStart
+                    ? "Tum temel kosullar saglandi. Baslatma aksiyonu operasyonu RUNNING durumuna alir, kisi bazli call-job kayitlarini hazirlar ve orkestrasyon akisini acik duruma getirir."
+                    : operation?.readiness.blockingReasons.join(" ") || "Operasyon durumu kontrol ediliyor."}
               </p>
 
               <button
@@ -514,7 +524,7 @@ export default function OperationDetailPage() {
                 ))}
               </div>
 
-              {!operation?.readiness.readyToStart ? (
+              {showStartBlockers ? (
                 <div className="operation-blocker-list">
                   {(operation?.readiness.blockingReasons ?? []).map((reason) => (
                     <div key={reason} className="operation-inline-message compact is-danger">
@@ -855,6 +865,12 @@ function createImportSummaryFromRows(rows: ImportPreviewRow[], ignoredRows: numb
     duplicateInOperationRows,
   };
 }
+
+
+
+
+
+
 
 
 
