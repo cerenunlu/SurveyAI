@@ -207,6 +207,7 @@ export type OperationAnalyticsQuestionSummary = {
   averageRating: number | null;
   emptyStateMessage: string | null;
   breakdown: OperationAnalyticsBreakdownItem[];
+  sampleResponses: string[];
 };
 
 export type OperationAnalyticsTrendPoint = {
@@ -214,11 +215,20 @@ export type OperationAnalyticsTrendPoint = {
   count: number;
 };
 
+export type OperationAnalyticsInsightItem = {
+  key: string;
+  title: string;
+  detail: string;
+  tone: "neutral" | "positive" | "warning";
+};
+
 export type OperationAnalytics = {
   operationId: string;
   totalContacts: number;
+  totalCallJobs: number;
   totalPreparedJobs: number;
   totalCallsAttempted: number;
+  totalCompletedCalls: number;
   queuedJobs: number;
   inProgressJobs: number;
   completedCallJobs: number;
@@ -231,10 +241,12 @@ export type OperationAnalytics = {
   invalidResponses: number;
   completionRate: number;
   responseRate: number;
+  contactReachRate: number;
   participationRate: number;
   averageCompletionPercent: number;
   partialData: boolean;
   insightSummary: string | null;
+  insightItems: OperationAnalyticsInsightItem[];
   outcomeBreakdown: OperationAnalyticsBreakdownItem[];
   questionSummaries: OperationAnalyticsQuestionSummary[];
   responseTrend: OperationAnalyticsTrendPoint[];

@@ -6,8 +6,10 @@ import java.util.UUID;
 public record OperationAnalyticsResponseDto(
         UUID operationId,
         long totalContacts,
+        long totalCallJobs,
         long totalPreparedJobs,
         long totalCallsAttempted,
+        long totalCompletedCalls,
         long queuedJobs,
         long inProgressJobs,
         long completedCallJobs,
@@ -20,10 +22,12 @@ public record OperationAnalyticsResponseDto(
         long invalidResponses,
         double completionRate,
         double responseRate,
+        double contactReachRate,
         double participationRate,
         double averageCompletionPercent,
         boolean partialData,
         String insightSummary,
+        List<OperationAnalyticsInsightItemDto> insightItems,
         List<OperationAnalyticsBreakdownItemDto> outcomeBreakdown,
         List<OperationAnalyticsQuestionSummaryDto> questionSummaries,
         List<OperationAnalyticsTrendPointDto> responseTrend

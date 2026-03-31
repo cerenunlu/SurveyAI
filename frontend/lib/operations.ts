@@ -1,7 +1,7 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import { CallJob, Operation, OperationAnalytics, OperationAnalyticsBreakdownItem, OperationAnalyticsQuestionSummary, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
+import { CallJob, Operation, OperationAnalytics, OperationAnalyticsBreakdownItem, OperationAnalyticsInsightItem, OperationAnalyticsQuestionSummary, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
 
 type ApiErrorResponse = {
   code?: string;
@@ -124,6 +124,14 @@ type OperationAnalyticsQuestionSummaryApiResponse = {
   averageRating: number | null;
   emptyStateMessage: string | null;
   breakdown: OperationAnalyticsBreakdownItemApiResponse[];
+  sampleResponses: string[];
+};
+
+type OperationAnalyticsInsightItemApiResponse = {
+  key: string;
+  title: string;
+  detail: string;
+  tone: OperationAnalyticsInsightItem["tone"];
 };
 
 type OperationAnalyticsTrendPointApiResponse = {
@@ -134,8 +142,10 @@ type OperationAnalyticsTrendPointApiResponse = {
 type OperationAnalyticsApiResponse = {
   operationId: string;
   totalContacts: number;
+  totalCallJobs: number;
   totalPreparedJobs: number;
   totalCallsAttempted: number;
+  totalCompletedCalls: number;
   queuedJobs: number;
   inProgressJobs: number;
   completedCallJobs: number;
@@ -148,10 +158,12 @@ type OperationAnalyticsApiResponse = {
   invalidResponses: number;
   completionRate: number;
   responseRate: number;
+  contactReachRate: number;
   participationRate: number;
   averageCompletionPercent: number;
   partialData: boolean;
   insightSummary: string | null;
+  insightItems: OperationAnalyticsInsightItemApiResponse[];
   outcomeBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
   questionSummaries: OperationAnalyticsQuestionSummaryApiResponse[];
   responseTrend: OperationAnalyticsTrendPointApiResponse[];
@@ -240,8 +252,10 @@ export async function fetchOperationAnalytics(
   return {
     operationId: response.operationId,
     totalContacts: response.totalContacts,
+    totalCallJobs: response.totalCallJobs,
     totalPreparedJobs: response.totalPreparedJobs,
     totalCallsAttempted: response.totalCallsAttempted,
+    totalCompletedCalls: response.totalCompletedCalls,
     queuedJobs: response.queuedJobs,
     inProgressJobs: response.inProgressJobs,
     completedCallJobs: response.completedCallJobs,
@@ -254,10 +268,17 @@ export async function fetchOperationAnalytics(
     invalidResponses: response.invalidResponses,
     completionRate: response.completionRate,
     responseRate: response.responseRate,
+    contactReachRate: response.contactReachRate,
     participationRate: response.participationRate,
     averageCompletionPercent: response.averageCompletionPercent,
     partialData: response.partialData,
     insightSummary: response.insightSummary,
+    insightItems: response.insightItems.map((item) => ({
+      key: item.key,
+      title: item.title,
+      detail: item.detail,
+      tone: item.tone,
+    })),
     outcomeBreakdown: response.outcomeBreakdown.map(mapAnalyticsBreakdown),
     questionSummaries: response.questionSummaries.map((item) => ({
       questionId: item.questionId,
@@ -271,6 +292,7 @@ export async function fetchOperationAnalytics(
       averageRating: item.averageRating,
       emptyStateMessage: item.emptyStateMessage,
       breakdown: item.breakdown.map(mapAnalyticsBreakdown),
+      sampleResponses: item.sampleResponses,
     })),
     responseTrend: response.responseTrend.map((item): OperationAnalyticsTrendPoint => ({
       label: formatAnalyticsDate(item.label),

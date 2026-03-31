@@ -9,6 +9,7 @@ import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.operation.application.dto.request.CreateOperationRequest;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsBreakdownItemDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsInsightItemDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionSummaryDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsResponseDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsTrendPointDto;
@@ -54,15 +55,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional(readOnly = true)
 public class OperationServiceImpl implements OperationService {
+
+    private static final Logger log = LoggerFactory.getLogger(OperationServiceImpl.class);
 
     private static final Set<OperationStatus> STARTABLE_STATUSES = EnumSet.of(
             OperationStatus.DRAFT,
@@ -239,15 +245,17 @@ public class OperationServiceImpl implements OperationService {
                 .findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId);
         List<SurveyQuestion> questions = surveyQuestionRepository
                 .findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId());
-
-        Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId = questions.stream()
-                .collect(Collectors.toMap(
-                        SurveyQuestion::getId,
-                        question -> surveyQuestionOptionRepository
-                                .findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(question.getId()),
-                        (left, right) -> left,
-                        LinkedHashMap::new
-                ));
+        List<UUID> questionIds = questions.stream().map(SurveyQuestion::getId).toList();
+        Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId = questionIds.isEmpty()
+                ? Map.of()
+                : surveyQuestionOptionRepository
+                        .findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(questionIds)
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                option -> option.getSurveyQuestion().getId(),
+                                LinkedHashMap::new,
+                                Collectors.toList()
+                        ));
 
         Map<UUID, SurveyResponse> responsesById = responses.stream()
                 .collect(Collectors.toMap(SurveyResponse::getId, response -> response));
@@ -286,11 +294,12 @@ public class OperationServiceImpl implements OperationService {
 
         double completionRate = percentage(completedResponses, totalContacts);
         double responseRate = percentage(responses.size(), totalContacts);
+        double contactReachRate = percentage(totalCallsAttempted, totalContacts);
         double participationRate = percentage(completedResponses + partialResponses, totalContacts);
         double averageCompletionPercent = round(
                 responses.stream()
                         .map(SurveyResponse::getCompletionPercent)
-                        .filter(java.util.Objects::nonNull)
+                        .filter(Objects::nonNull)
                         .mapToDouble(BigDecimal::doubleValue)
                         .average()
                         .orElse(0)
@@ -332,11 +341,34 @@ public class OperationServiceImpl implements OperationService {
                 || queuedJobs > 0
                 || totalContacts > responses.size();
 
+        List<OperationAnalyticsInsightItemDto> insightItems = buildInsightItems(
+                totalContacts,
+                totalCallsAttempted,
+                completedResponses,
+                partialResponses,
+                failedCallJobs,
+                responseRate,
+                contactReachRate,
+                averageCompletionPercent,
+                questionSummaries
+        );
+
+        log.info(
+                "Generated analytics for operation {}: contacts={}, jobs={}, responses={}, completedResponses={}",
+                operationId,
+                totalContacts,
+                callJobs.size(),
+                responses.size(),
+                completedResponses
+        );
+
         return new OperationAnalyticsResponseDto(
                 operation.getId(),
                 totalContacts,
                 callJobs.size(),
+                callJobs.size(),
                 totalCallsAttempted,
+                completedCallJobs,
                 queuedJobs,
                 inProgressJobs,
                 completedCallJobs,
@@ -349,10 +381,12 @@ public class OperationServiceImpl implements OperationService {
                 invalidResponses,
                 completionRate,
                 responseRate,
+                contactReachRate,
                 participationRate,
                 averageCompletionPercent,
                 partialData,
                 buildInsightSummary(operation, totalContacts, completedResponses, partialResponses, failedCallJobs, responseRate),
+                insightItems,
                 outcomeBreakdown,
                 questionSummaries,
                 responseTrend
@@ -389,12 +423,10 @@ public class OperationServiceImpl implements OperationService {
     }
 
     private long countContacts(Operation operation) {
-        return operationContactRepository
-                .findAllByOperation_IdAndCompany_IdAndDeletedAtIsNullOrderByCreatedAtDesc(
-                        operation.getId(),
-                        operation.getCompany().getId()
-                )
-                .size();
+        return operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(
+                operation.getId(),
+                operation.getCompany().getId()
+        );
     }
 
     private void syncLifecycleState(Operation operation, long contactCount) {
@@ -517,7 +549,8 @@ public class OperationServiceImpl implements OperationService {
                     responseRate,
                     averageRating,
                     answeredCount == 0 ? "Puan dagilimi, gorusmelerden sayisal cevap geldikce gosterilir." : null,
-                    toBreakdown(ratings, answeredCount)
+                    toBreakdown(ratings, answeredCount),
+                    List.of()
             );
         }
 
@@ -533,7 +566,8 @@ public class OperationServiceImpl implements OperationService {
                     responseRate,
                     null,
                     answeredCount == 0 ? "Acik uclu icgoruler, gecerli metin yanitlari geldikce olusur." : null,
-                    buildOpenEndedBreakdown(answers, answeredCount)
+                    buildOpenEndedBreakdown(answers, answeredCount),
+                    buildOpenEndedSamples(answers)
             );
         }
 
@@ -553,7 +587,8 @@ public class OperationServiceImpl implements OperationService {
                 responseRate,
                 null,
                 answeredCount == 0 ? "Bu soru icin dagilim, cevaplar geldikce burada gosterilir." : null,
-                toBreakdown(distributions, answeredCount == 0 ? 1 : answeredCount)
+                toBreakdown(distributions, answeredCount == 0 ? 1 : answeredCount),
+                List.of()
         );
     }
 
@@ -644,6 +679,20 @@ public class OperationServiceImpl implements OperationService {
         return toBreakdown(buckets, answeredCount == 0 ? 1 : answeredCount);
     }
 
+    private List<String> buildOpenEndedSamples(List<SurveyAnswer> answers) {
+        return answers.stream()
+                .map(answer -> answer.getAnswerText() != null && !answer.getAnswerText().isBlank()
+                        ? answer.getAnswerText().trim()
+                        : answer.getRawInputText())
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(text -> !text.isBlank())
+                .map(this::trimSample)
+                .distinct()
+                .limit(3)
+                .toList();
+    }
+
     private List<OperationAnalyticsBreakdownItemDto> toBreakdown(Map<String, Long> counts, long total) {
         return counts.entrySet().stream()
                 .map(entry -> new OperationAnalyticsBreakdownItemDto(
@@ -668,6 +717,94 @@ public class OperationServiceImpl implements OperationService {
                         || value.contains("hayir")
                         || value.contains("true")
                         || value.contains("false"));
+    }
+
+    private List<OperationAnalyticsInsightItemDto> buildInsightItems(
+            long totalContacts,
+            long totalCallsAttempted,
+            long completedResponses,
+            long partialResponses,
+            long failedCallJobs,
+            double responseRate,
+            double contactReachRate,
+            double averageCompletionPercent,
+            List<OperationAnalyticsQuestionSummaryDto> questionSummaries
+    ) {
+        List<OperationAnalyticsInsightItemDto> items = new ArrayList<>();
+
+        if (totalContacts == 0) {
+            items.add(new OperationAnalyticsInsightItemDto(
+                    "awaiting-contacts",
+                    "Analitik icin kisi bekleniyor",
+                    "Bu operasyona kisi eklendiginde cagri ve yanit analitigi burada gercek veriden uretilir.",
+                    "neutral"
+            ));
+            return items;
+        }
+
+        items.add(new OperationAnalyticsInsightItemDto(
+                "reach",
+                "Temas kapsami",
+                totalCallsAttempted > 0
+                        ? totalCallsAttempted + " kisiye cagri denemesi ulasildi. Temas orani %" + contactReachRate + "."
+                        : "Henuz cagri denemesi yok. Operasyon basladiginda temas orani olusacak.",
+                totalCallsAttempted > 0 ? "positive" : "neutral"
+        ));
+
+        OperationAnalyticsQuestionSummaryDto topChoiceQuestion = questionSummaries.stream()
+                .filter(summary -> !"OPEN_ENDED".equals(summary.chartKind()))
+                .filter(summary -> summary.breakdown().stream().anyMatch(item -> item.count() > 0))
+                .findFirst()
+                .orElse(null);
+        if (topChoiceQuestion != null) {
+            OperationAnalyticsBreakdownItemDto topChoice = topChoiceQuestion.breakdown().stream()
+                    .max(Comparator.comparingLong(OperationAnalyticsBreakdownItemDto::count))
+                    .orElse(null);
+            if (topChoice != null && topChoice.count() > 0) {
+                items.add(new OperationAnalyticsInsightItemDto(
+                        "top-choice",
+                        "En guclu cevap sinyali",
+                        "\"" + topChoiceQuestion.questionTitle() + "\" sorusunda en cok secilen cevap "
+                                + topChoice.label() + " oldu (%" + topChoice.percentage() + ").",
+                        "positive"
+                ));
+            }
+        }
+
+        OperationAnalyticsQuestionSummaryDto ratingQuestion = questionSummaries.stream()
+                .filter(summary -> "RATING".equals(summary.chartKind()))
+                .filter(summary -> summary.averageRating() != null)
+                .max(Comparator.comparingDouble(OperationAnalyticsQuestionSummaryDto::averageRating))
+                .orElse(null);
+        if (ratingQuestion != null) {
+            items.add(new OperationAnalyticsInsightItemDto(
+                    "rating",
+                    "Ortalama puan",
+                    "\"" + ratingQuestion.questionTitle() + "\" icin ortalama puan " + ratingQuestion.averageRating() + ".",
+                    ratingQuestion.averageRating() >= 4 ? "positive" : "warning"
+            ));
+        }
+
+        if (failedCallJobs > 0 || averageCompletionPercent < 60 || (completedResponses == 0 && partialResponses > 0)) {
+            items.add(new OperationAnalyticsInsightItemDto(
+                    "attention",
+                    "Takip gerektiren sinyal",
+                    failedCallJobs > 0
+                            ? failedCallJobs + " cagri isi basarisiz sonuclandi. Eksik kalan veri ve cagri nedenleri incelenmeli."
+                            : "Yanitlarin ortalama tamamlama orani %" + averageCompletionPercent
+                                    + ". Kismi gorusmeler soru tamamlama kalitesini dusuruyor.",
+                    "warning"
+            ));
+        } else if (responseRate < 35) {
+            items.add(new OperationAnalyticsInsightItemDto(
+                    "response-rate",
+                    "Cevap orani izlenmeli",
+                    "Cevap orani %" + responseRate + " seviyesinde. Daha fazla tamamlanan gorusme icin akis izlenmeli.",
+                    "warning"
+            ));
+        }
+
+        return items.stream().limit(4).toList();
     }
 
     private double percentage(long part, long total) {
@@ -714,6 +851,13 @@ public class OperationServiceImpl implements OperationService {
         }
 
         return "Operasyon tamamlandi. Bu sayfa, sonuc ozetini ve soru bazli dagilimlari tek yuzeyde toplar.";
+    }
+
+    private String trimSample(String value) {
+        if (value.length() <= 140) {
+            return value;
+        }
+        return value.substring(0, 137).trim() + "...";
     }
 
     private String slugify(String input) {

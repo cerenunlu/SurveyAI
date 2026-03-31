@@ -106,6 +106,21 @@ export function OperationAnalyticsSection({
                     : "İleride AI destekli özet veya kural bazlı yorum bu bölüme beslenebilir."}
                 </p>
               </div>
+              {analytics.insightItems.length > 0 ? (
+                <div className="operation-contact-glimpse-list">
+                  {analytics.insightItems.map((item) => (
+                    <div key={item.key} className="operation-contact-glimpse-item">
+                      <div>
+                        <strong>{item.title}</strong>
+                        <span>{item.detail}</span>
+                      </div>
+                      <span className={`operation-live-pill ${item.tone === "warning" ? "" : ""}`}>
+                        {item.tone === "warning" ? "Izle" : item.tone === "positive" ? "Pozitif" : "Hazir"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               <div className="operation-response-health">
                 <div className="operation-response-health-item">
                   <span>Cevap oranı</span>
@@ -195,6 +210,12 @@ export function OperationAnalyticsSection({
                     ) : (
                       <div className="operation-mini-empty">{presentation.empty}</div>
                     )}
+                    {summary.sampleResponses.length > 0 ? (
+                      <div className="operation-question-submeta">
+                        <span>Ornek yanitlar</span>
+                        <span>{summary.sampleResponses.join(" | ")}</span>
+                      </div>
+                    ) : null}
                   </article>
                 );
               })}
