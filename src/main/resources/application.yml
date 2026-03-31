@@ -26,6 +26,19 @@ spring:
 server:
   port: 8080
 
+surveyai:
+  calling:
+    active-provider: MOCK
+    mock:
+      enabled: true
+      base-url: mock://local
+    elevenlabs:
+      enabled: false
+      base-url: https://api.elevenlabs.io
+      api-key: ${ELEVENLABS_API_KEY:}
+      agent-id: ${ELEVENLABS_AGENT_ID:}
+      webhook-secret: ${ELEVENLABS_WEBHOOK_SECRET:}
+
 logging:
   level:
     org.flywaydb: info

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.auth.application.RequestAuthContext;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
+import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.operation.application.dto.request.CreateOperationRequest;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsBreakdownItemDto;
@@ -86,6 +87,7 @@ public class OperationServiceImpl implements OperationService {
     private final SurveyResponseRepository surveyResponseRepository;
     private final SurveyAnswerRepository surveyAnswerRepository;
     private final AppUserRepository appUserRepository;
+    private final CallJobDispatcher callJobDispatcher;
     private final RequestAuthContext requestAuthContext;
     private final Validator validator;
     private final ObjectMapper objectMapper;
@@ -101,6 +103,7 @@ public class OperationServiceImpl implements OperationService {
             SurveyResponseRepository surveyResponseRepository,
             SurveyAnswerRepository surveyAnswerRepository,
             AppUserRepository appUserRepository,
+            CallJobDispatcher callJobDispatcher,
             RequestAuthContext requestAuthContext,
             Validator validator,
             ObjectMapper objectMapper
@@ -115,6 +118,7 @@ public class OperationServiceImpl implements OperationService {
         this.surveyResponseRepository = surveyResponseRepository;
         this.surveyAnswerRepository = surveyAnswerRepository;
         this.appUserRepository = appUserRepository;
+        this.callJobDispatcher = callJobDispatcher;
         this.requestAuthContext = requestAuthContext;
         this.validator = validator;
         this.objectMapper = objectMapper;
@@ -214,6 +218,7 @@ public class OperationServiceImpl implements OperationService {
 
         if (!newJobs.isEmpty()) {
             callJobRepository.saveAll(newJobs);
+            callJobDispatcher.dispatchPreparedJobs(newJobs);
         }
 
         operation.setStartedAt(startedAt);

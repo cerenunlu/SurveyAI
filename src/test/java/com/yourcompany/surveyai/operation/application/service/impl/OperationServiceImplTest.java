@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.yourcompany.surveyai.auth.application.RequestAuthContext;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
+import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.common.domain.entity.Company;
 import com.yourcompany.surveyai.common.exception.ValidationException;
@@ -53,6 +54,7 @@ class OperationServiceImplTest {
     private final SurveyResponseRepository surveyResponseRepository = mock(SurveyResponseRepository.class);
     private final SurveyAnswerRepository surveyAnswerRepository = mock(SurveyAnswerRepository.class);
     private final AppUserRepository appUserRepository = mock(AppUserRepository.class);
+    private final CallJobDispatcher callJobDispatcher = mock(CallJobDispatcher.class);
     private final RequestAuthContext requestAuthContext = new RequestAuthContext(mock(HttpServletRequest.class));
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -72,6 +74,7 @@ class OperationServiceImplTest {
                 surveyResponseRepository,
                 surveyAnswerRepository,
                 appUserRepository,
+                callJobDispatcher,
                 requestAuthContext,
                 validator,
                 objectMapper
@@ -136,6 +139,7 @@ class OperationServiceImplTest {
                     assertThat(job.getScheduledFor()).isEqualTo(response.startedAt());
                     assertThat(job.getAvailableAt()).isEqualTo(response.startedAt());
                 });
+        verify(callJobDispatcher).dispatchPreparedJobs(savedJobs);
     }
 
     @Test
