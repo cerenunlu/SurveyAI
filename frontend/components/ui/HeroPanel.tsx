@@ -15,9 +15,9 @@ export function HeroPanel({ eyebrow, title, description, actions, chips, variant
       <div className="eyebrow">{eyebrow}</div>
       <h2 className="hero-title">{title}</h2>
       <p className="hero-text">{description}</p>
-      {actions ? <div className="hero-actions" style={{ marginTop: "24px" }}>{actions}</div> : null}
+      {actions ? <div className="hero-actions">{actions}</div> : null}
       {chips?.length ? (
-        <div className="chip-row" style={{ marginTop: "24px" }}>
+        <div className="chip-row">
           {chips.map((chip) => (
             <span className="chip" key={chip}>
               {chip}
@@ -28,4 +28,5 @@ export function HeroPanel({ eyebrow, title, description, actions, chips, variant
     </section>
   );
 }
+
 

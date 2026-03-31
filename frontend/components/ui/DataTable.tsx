@@ -10,7 +10,7 @@ type DataTableProps<T> = {
 export function DataTable<T>({ columns, rows, toolbar }: DataTableProps<T>) {
   return (
     <div>
-      {toolbar ? <div className="table-toolbar" style={{ marginBottom: "10px" }}>{toolbar}</div> : null}
+      {toolbar ? <div className="table-toolbar data-table-toolbar">{toolbar}</div> : null}
       <div className="data-table-wrap">
         <table className="data-table">
           <thead>
@@ -34,3 +34,4 @@ export function DataTable<T>({ columns, rows, toolbar }: DataTableProps<T>) {
     </div>
   );
 }
+

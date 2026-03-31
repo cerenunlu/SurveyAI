@@ -191,7 +191,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                   Log Out
                 </button>
               </div>
-              <button className="icon-button notification-button" style={{ padding: "12px" }} aria-label={t("shell.topbar.notifications")}>
+              <button className="icon-button notification-button compact-icon-button" aria-label={t("shell.topbar.notifications")}>
                 <BellIcon className="nav-icon" />
               </button>
             </div>
@@ -226,3 +226,4 @@ function LanguageButton({
     </button>
   );
 }
+

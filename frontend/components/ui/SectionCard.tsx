@@ -17,7 +17,8 @@ export function SectionCard({ title, description, action, children }: SectionCar
         </div>
         {action}
       </div>
-      <div style={{ marginTop: "18px" }}>{children}</div>
+      <div className="section-card-body">{children}</div>
     </section>
   );
 }
+
