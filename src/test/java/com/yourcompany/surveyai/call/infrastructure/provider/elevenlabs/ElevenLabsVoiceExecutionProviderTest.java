@@ -2,16 +2,19 @@ package com.yourcompany.surveyai.call.infrastructure.provider.elevenlabs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yourcompany.surveyai.call.configuration.VoiceProviderMode;
 import com.yourcompany.surveyai.call.application.provider.ProviderDispatchRequest;
 import com.yourcompany.surveyai.call.application.provider.ProviderDispatchResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookRequest;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration;
+import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
@@ -45,7 +48,7 @@ class ElevenLabsVoiceExecutionProviderTest {
     void dispatchCallJob_mapsAcceptedOutboundCallToInternalQueuedState() {
         ProviderDispatchRequest request = buildRequest();
         VoiceProviderConfiguration configuration = configuration(false);
-        when(apiClient.startOutboundCall(any(), any())).thenReturn("""
+        when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
                 {
                   "conversation_id": "conv_123"
                 }
@@ -60,13 +63,35 @@ class ElevenLabsVoiceExecutionProviderTest {
     }
 
     @Test
-    void dispatchCallJob_usesSandboxModeWithoutCallingApi() {
+    void dispatchCallJob_includesInternalCorrelationMetadataInLivePayload() {
+        ProviderDispatchRequest request = buildRequest();
+        VoiceProviderConfiguration configuration = configuration(false);
+        when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
+                {
+                  "conversation_id": "conv_123"
+                }
+                """);
+
+        provider.dispatchCallJob(request, configuration);
+
+        org.mockito.ArgumentCaptor<String> payloadCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
+        String payload = payloadCaptor.getValue();
+
+        assertThat(payload).contains(request.callAttempt().getId().toString());
+        assertThat(payload).contains(request.callJob().getId().toString());
+        assertThat(payload).contains(request.contact().getId().toString());
+        assertThat(payload).contains("\"user_id\":\"" + request.contact().getId() + "\"");
+    }
+
+    @Test
+    void dispatchCallJob_usesMockModeWithoutCallingApi() {
         ProviderDispatchRequest request = buildRequest();
 
         ProviderDispatchResult result = provider.dispatchCallJob(request, configuration(true));
 
         assertThat(result.provider()).isEqualTo(CallProvider.ELEVENLABS);
-        assertThat(result.providerCallId()).startsWith("sandbox-");
+        assertThat(result.providerCallId()).startsWith("mock-");
         assertThat(result.jobStatus()).isEqualTo(CallJobStatus.QUEUED);
         verifyNoInteractions(apiClient);
     }
@@ -148,6 +173,7 @@ class ElevenLabsVoiceExecutionProviderTest {
             assertThat(event.idempotencyKey()).isEqualTo("operation:contact");
             assertThat(event.jobStatus()).isEqualTo(CallJobStatus.COMPLETED);
             assertThat(event.durationSeconds()).isEqualTo(45);
+            assertThat(event.correlationMetadata().callAttemptId()).isNull();
             assertThat(event.transcriptStorageKey()).isEqualTo("inline://elevenlabs/conversations/conv_123");
             assertThat(event.transcriptText()).contains("agent: Hello");
         });
@@ -233,19 +259,31 @@ class ElevenLabsVoiceExecutionProviderTest {
         callJob.setMaxAttempts(3);
         callJob.setIdempotencyKey("operation:contact");
 
-        return new ProviderDispatchRequest(callJob, operation, contact, survey);
+        CallAttempt callAttempt = new CallAttempt();
+        callAttempt.setId(UUID.randomUUID());
+        callAttempt.setCompany(company);
+        callAttempt.setCallJob(callJob);
+        callAttempt.setOperation(operation);
+        callAttempt.setOperationContact(contact);
+        callAttempt.setAttemptNumber(1);
+        callAttempt.setProvider(CallProvider.ELEVENLABS);
+        callAttempt.setStatus(com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus.INITIATED);
+        callAttempt.setRawProviderPayload("{}");
+
+        return new ProviderDispatchRequest(callAttempt, callJob, operation, contact, survey);
     }
 
-    private VoiceProviderConfiguration configuration(boolean sandboxMode) {
+    private VoiceProviderConfiguration configuration(boolean mockMode) {
         return new VoiceProviderConfiguration(
                 CallProvider.ELEVENLABS,
                 true,
+                mockMode ? VoiceProviderMode.MOCK : VoiceProviderMode.LIVE,
                 "api-key",
                 "agent-123",
                 "pn-123",
                 "webhook-secret",
                 "https://api.elevenlabs.io",
-                sandboxMode,
+                mockMode,
                 300L,
                 Map.of()
         );

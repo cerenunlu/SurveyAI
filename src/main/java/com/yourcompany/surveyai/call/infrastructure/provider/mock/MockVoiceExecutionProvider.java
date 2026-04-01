@@ -2,6 +2,7 @@ package com.yourcompany.surveyai.call.infrastructure.provider.mock;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yourcompany.surveyai.call.application.model.ProviderCorrelationMetadata;
 import com.yourcompany.surveyai.call.application.provider.ProviderCallStatusRequest;
 import com.yourcompany.surveyai.call.application.provider.ProviderCallStatusResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderCancelRequest;
@@ -96,6 +97,12 @@ public class MockVoiceExecutionProvider implements VoiceExecutionProvider {
                     attemptStatus,
                     occurredAt,
                     root.hasNonNull("durationSeconds") ? root.get("durationSeconds").asInt() : null,
+                    new ProviderCorrelationMetadata(
+                            null,
+                            null,
+                            null,
+                            null
+                    ),
                     root.path("errorCode").asText(null),
                     root.path("errorMessage").asText(null),
                     null,

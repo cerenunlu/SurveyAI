@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -152,7 +153,9 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         callJob.setLastErrorMessage(event.errorMessage());
         callJobRepository.save(callJob);
 
-        contact.setStatus(mapContactStatus(event.jobStatus()));
+        if (event.jobStatus() != null) {
+            contact.setStatus(mapContactStatus(event.jobStatus()));
+        }
         if (event.occurredAt() != null) {
             contact.setLastCallAt(event.occurredAt());
         }
@@ -186,6 +189,22 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
             }
         }
 
+        UUID callAttemptId = event.correlationMetadata() != null ? event.correlationMetadata().callAttemptId() : null;
+        if (callAttemptId != null) {
+            Optional<CallAttempt> byCallAttemptId = callAttemptRepository.findByIdAndDeletedAtIsNull(callAttemptId);
+            if (byCallAttemptId.isPresent()) {
+                return byCallAttemptId;
+            }
+        }
+
+        UUID callJobId = event.correlationMetadata() != null ? event.correlationMetadata().callJobId() : null;
+        if (callJobId != null) {
+            Optional<CallAttempt> byCallJobId = callAttemptRepository.findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(callJobId);
+            if (byCallJobId.isPresent()) {
+                return byCallJobId;
+            }
+        }
+
         if (event.idempotencyKey() != null && !event.idempotencyKey().isBlank()) {
             return callJobRepository.findByIdempotencyKeyAndDeletedAtIsNull(event.idempotencyKey())
                     .flatMap(callJob -> callAttemptRepository.findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(callJob.getId()));
@@ -216,8 +235,7 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
 
     private boolean shouldIngestSurveyResult(ProviderWebhookEvent event) {
         return isTerminal(event.jobStatus())
-                || (event.transcriptText() != null && !event.transcriptText().isBlank())
-                || (event.rawPayload() != null && !event.rawPayload().isBlank());
+                || (event.transcriptText() != null && !event.transcriptText().isBlank());
     }
 
     private void recordUnmatchedWebhook(ProviderWebhookEvent event) {

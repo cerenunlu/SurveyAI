@@ -2,6 +2,8 @@ package com.yourcompany.surveyai.call.configuration;
 
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.common.exception.ValidationException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -31,6 +33,7 @@ public class VoiceProviderConfigurationResolver {
         return new VoiceProviderConfiguration(
                 provider,
                 config.isEnabled(),
+                resolveMode(config),
                 trimToNull(config.getApiKey()),
                 trimToNull(config.getAgentId()),
                 trimToNull(config.getPhoneNumberId()),
@@ -38,8 +41,15 @@ public class VoiceProviderConfigurationResolver {
                 trimToNull(config.getBaseUrl()),
                 config.isSandboxMode(),
                 config.getWebhookTimestampToleranceSeconds() == null ? 300L : config.getWebhookTimestampToleranceSeconds(),
-                config.getSettings()
+                trimSettings(config.getSettings())
         );
+    }
+
+    private VoiceProviderMode resolveMode(VoiceExecutionProperties.ProviderProperties config) {
+        if (config.getMode() != null) {
+            return config.getMode();
+        }
+        return config.isSandboxMode() ? VoiceProviderMode.MOCK : VoiceProviderMode.LIVE;
     }
 
     private String trimToNull(String value) {
@@ -48,5 +58,14 @@ public class VoiceProviderConfigurationResolver {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private Map<String, String> trimSettings(Map<String, String> settings) {
+        Map<String, String> trimmed = new LinkedHashMap<>();
+        if (settings == null || settings.isEmpty()) {
+            return trimmed;
+        }
+        settings.forEach((key, value) -> trimmed.put(key, trimToNull(value)));
+        return trimmed;
     }
 }

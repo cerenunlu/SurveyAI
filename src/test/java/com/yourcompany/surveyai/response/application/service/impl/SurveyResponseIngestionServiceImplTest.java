@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yourcompany.surveyai.call.application.model.ProviderCorrelationMetadata;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
 import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
@@ -202,6 +203,7 @@ class SurveyResponseIngestionServiceImplTest {
                 CallAttemptStatus.COMPLETED,
                 OffsetDateTime.now(),
                 30,
+                new ProviderCorrelationMetadata(null, null, null, null),
                 null,
                 null,
                 null,
@@ -330,6 +332,12 @@ class SurveyResponseIngestionServiceImplTest {
                 CallAttemptStatus.COMPLETED,
                 OffsetDateTime.now(),
                 45,
+                new ProviderCorrelationMetadata(
+                        operation.getId(),
+                        contact.getId(),
+                        callJob.getId(),
+                        callAttempt.getId()
+                ),
                 null,
                 null,
                 "inline://elevenlabs/conversations/conv_123",

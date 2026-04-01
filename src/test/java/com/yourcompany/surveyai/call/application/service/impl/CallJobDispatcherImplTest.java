@@ -72,7 +72,12 @@ class CallJobDispatcherImplTest {
         when(operationContactRepository.save(any(OperationContact.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(callAttemptRepository.save(any(CallAttempt.class))).thenAnswer(invocation -> {
             CallAttempt attempt = invocation.getArgument(0);
-            savedAttempts.add(attempt);
+            if (attempt.getId() == null) {
+                attempt.setId(UUID.randomUUID());
+            }
+            if (!savedAttempts.contains(attempt)) {
+                savedAttempts.add(attempt);
+            }
             return attempt;
         });
     }

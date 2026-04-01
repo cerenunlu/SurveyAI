@@ -11,12 +11,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.call.application.provider.CallProviderRegistry;
 import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.configuration.VoiceExecutionProperties;
+import com.yourcompany.surveyai.call.configuration.VoiceProviderMode;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfigurationResolver;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
 import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
+import com.yourcompany.surveyai.call.infrastructure.provider.elevenlabs.ElevenLabsApiClient;
+import com.yourcompany.surveyai.call.infrastructure.provider.elevenlabs.ElevenLabsVoiceExecutionProvider;
 import com.yourcompany.surveyai.call.infrastructure.provider.mock.MockVoiceExecutionProvider;
 import com.yourcompany.surveyai.call.repository.CallAttemptRepository;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
@@ -49,9 +52,16 @@ class ProviderWebhookIngestionServiceImplTest {
     void setUp() {
         VoiceExecutionProperties properties = new VoiceExecutionProperties();
         properties.getMock().setEnabled(true);
+        properties.getElevenlabs().setEnabled(true);
+        properties.getElevenlabs().setMode(VoiceProviderMode.MOCK);
+        properties.getElevenlabs().setBaseUrl("https://api.elevenlabs.io");
+        properties.getElevenlabs().setAgentId("agent-123");
 
         ingestionService = new ProviderWebhookIngestionServiceImpl(
-                new CallProviderRegistry(Collections.singletonList(new MockVoiceExecutionProvider(new ObjectMapper()))),
+                new CallProviderRegistry(java.util.List.of(
+                        new MockVoiceExecutionProvider(new ObjectMapper()),
+                        new ElevenLabsVoiceExecutionProvider(new ObjectMapper(), mock(ElevenLabsApiClient.class))
+                )),
                 new VoiceProviderConfigurationResolver(properties),
                 callAttemptRepository,
                 callJobRepository,
@@ -127,6 +137,49 @@ class ProviderWebhookIngestionServiceImplTest {
         assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.COMPLETED);
         assertThat(attempt.getCallJob().getStatus()).isEqualTo(CallJobStatus.COMPLETED);
         verify(surveyResponseIngestionService, never()).ingest(any(), any());
+    }
+
+    @Test
+    void ingest_matchesElevenLabsWebhookByCallAttemptIdWhenProviderCallIdIsMissing() {
+        CallAttempt attempt = buildAttempt();
+        attempt.setProvider(CallProvider.ELEVENLABS);
+        attempt.setProviderCallId("conv_123");
+
+        when(callAttemptRepository.findByIdAndDeletedAtIsNull(attempt.getId()))
+                .thenReturn(Optional.of(attempt));
+
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        Enumeration<String> headerNames = Collections.enumeration(Collections.emptyList());
+        when(request.getHeaderNames()).thenReturn(headerNames);
+
+        int applied = ingestionService.ingest(
+                CallProvider.ELEVENLABS,
+                """
+                {
+                  "type": "post_call_transcription",
+                  "event_timestamp": "2026-04-01T10:00:00Z",
+                  "data": {
+                    "status": "done",
+                    "conversation_initiation_client_data": {
+                      "dynamic_variables": {
+                        "call_attempt_id": "%s",
+                        "call_job_id": "%s",
+                        "idempotency_key": "%s"
+                      }
+                    },
+                    "transcript": [
+                      {"role": "agent", "message": "Hello"},
+                      {"role": "user", "message": "Hi"}
+                    ]
+                  }
+                }
+                """.formatted(attempt.getId(), attempt.getCallJob().getId(), attempt.getCallJob().getIdempotencyKey()),
+                request
+        );
+
+        assertThat(applied).isEqualTo(1);
+        verify(surveyResponseIngestionService).ingest(any(), any());
+        assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.COMPLETED);
     }
 
     private CallAttempt buildAttempt() {

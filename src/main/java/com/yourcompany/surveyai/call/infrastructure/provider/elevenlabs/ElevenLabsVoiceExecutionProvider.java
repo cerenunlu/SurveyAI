@@ -3,6 +3,7 @@ package com.yourcompany.surveyai.call.infrastructure.provider.elevenlabs;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yourcompany.surveyai.call.application.model.ProviderCorrelationMetadata;
 import com.yourcompany.surveyai.call.application.provider.ProviderCallStatusRequest;
 import com.yourcompany.surveyai.call.application.provider.ProviderCallStatusResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderCancelRequest;
@@ -62,8 +63,8 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
     @Override
     public ProviderDispatchResult dispatchCallJob(ProviderDispatchRequest request, VoiceProviderConfiguration configuration) {
         OffsetDateTime now = OffsetDateTime.now();
-        if (configuration.sandboxMode()) {
-            String sandboxConversationId = "sandbox-" + request.callJob().getId();
+        if (configuration.mockMode()) {
+            String sandboxConversationId = "mock-" + request.callAttempt().getId();
             return new ProviderDispatchResult(
                     CallProvider.ELEVENLABS,
                     sandboxConversationId,
@@ -73,12 +74,23 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                     null,
                     null,
                     """
-                    {"mode":"sandbox","conversation_id":"%s","idempotency_key":"%s"}
-                    """.formatted(sandboxConversationId, request.callJob().getIdempotencyKey()).trim()
+                    {"mode":"MOCK","conversation_id":"%s","idempotency_key":"%s","call_attempt_id":"%s"}
+                    """.formatted(sandboxConversationId, request.callJob().getIdempotencyKey(), request.callAttempt().getId()).trim()
             );
         }
 
         String payload = buildOutboundCallPayload(request, configuration);
+        log.info(
+                "Preparing ElevenLabs outbound dispatch. callJobId={} callAttemptId={} baseUrl={} authHeaderType={} apiKeyPresent={} agentIdPresent={} phoneNumberIdPresent={} webhookBaseUrlPresent={}",
+                request.callJob().getId(),
+                request.callAttempt().getId(),
+                configuration.baseUrl(),
+                "xi-api-key",
+                hasText(configuration.apiKey()),
+                hasText(configuration.agentId()),
+                hasText(configuration.phoneNumberId()),
+                hasText(configuration.settings().get("public-webhook-base-url"))
+        );
         try {
             String responseBody = apiClient.startOutboundCall(payload, configuration);
             JsonNode root = readJson(responseBody);
@@ -133,9 +145,9 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
             );
         }
 
-        if (configuration.sandboxMode() || callAttempt.getProviderCallId().startsWith("sandbox-")) {
+        if (configuration.mockMode() || callAttempt.getProviderCallId().startsWith("mock-") || callAttempt.getProviderCallId().startsWith("sandbox-")) {
             return new ProviderCallStatusResult(
-                    CallJobStatus.QUEUED,
+                CallJobStatus.QUEUED,
                     CallAttemptStatus.INITIATED,
                     OffsetDateTime.now(),
                     callAttempt.getRawProviderPayload()
@@ -144,7 +156,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
 
         String responseBody = apiClient.fetchConversation(callAttempt.getProviderCallId(), configuration);
         JsonNode root = readJson(responseBody);
-        CallJobStatus jobStatus = mapJobStatus(text(root, "status"));
+        CallJobStatus jobStatus = mapJobStatus(text(root, "status"), "conversation_status");
         return new ProviderCallStatusResult(
                 jobStatus,
                 mapAttemptStatus(jobStatus),
@@ -155,8 +167,8 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
 
     @Override
     public ProviderCancelResult cancelCall(ProviderCancelRequest request, VoiceProviderConfiguration configuration) {
-        if (configuration.sandboxMode()) {
-            return new ProviderCancelResult(true, CallJobStatus.CANCELLED, "Sandbox call marked as cancelled");
+        if (configuration.mockMode()) {
+            return new ProviderCancelResult(true, CallJobStatus.CANCELLED, "Mock call marked as cancelled");
         }
         return new ProviderCancelResult(false, request.callAttempt().getCallJob().getStatus(), "ElevenLabs cancellation endpoint is not currently available in this adapter");
     }
@@ -166,13 +178,16 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         if (!configuration.enabled()) {
             return ProviderConfigurationValidationResult.failure("ElevenLabs provider is disabled");
         }
-        if (!configuration.sandboxMode() && configuration.apiKey() == null) {
+        if (configuration.mode() == null) {
+            return ProviderConfigurationValidationResult.failure("ElevenLabs mode is required");
+        }
+        if (configuration.liveMode() && configuration.apiKey() == null) {
             return ProviderConfigurationValidationResult.failure("ElevenLabs API key is required");
         }
         if (configuration.agentId() == null) {
             return ProviderConfigurationValidationResult.failure("ElevenLabs agent id is required");
         }
-        if (!configuration.sandboxMode() && configuration.phoneNumberId() == null) {
+        if (configuration.liveMode() && configuration.phoneNumberId() == null) {
             return ProviderConfigurationValidationResult.failure("ElevenLabs phone number id is required");
         }
         if (configuration.baseUrl() == null) {
@@ -183,7 +198,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
 
     @Override
     public boolean verifyWebhook(ProviderWebhookRequest request, VoiceProviderConfiguration configuration) {
-        if (configuration.sandboxMode() || configuration.webhookSecret() == null || configuration.webhookSecret().isBlank()) {
+        if (configuration.mockMode() || configuration.webhookSecret() == null || configuration.webhookSecret().isBlank()) {
             return true;
         }
 
@@ -241,7 +256,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 text(root, "event_type")
         );
         String eventType = firstNonBlank(text(root, "type"), text(root, "event"), text(root, "event_type"), "elevenlabs_webhook");
-        CallJobStatus jobStatus = mapJobStatus(providerStatus);
+        CallJobStatus jobStatus = mapJobStatus(providerStatus, eventType);
         String conversationId = firstNonBlank(
                 text(data, "conversation_id"),
                 text(data, "conversationId"),
@@ -257,12 +272,14 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 text(data, "client_reference"),
                 text(root, "client_reference")
         );
+        ProviderCorrelationMetadata correlationMetadata = new ProviderCorrelationMetadata(
+                uuidValue(text(dynamicVariables, "operation_id", "operationId")),
+                uuidValue(text(dynamicVariables, "contact_id", "contactId")),
+                uuidValue(text(dynamicVariables, "call_job_id", "callJobId")),
+                uuidValue(text(dynamicVariables, "call_attempt_id", "callAttemptId"))
+        );
 
         String transcriptText = extractTranscript(data);
-        String transcriptReference = transcriptText == null || transcriptText.isBlank() || conversationId == null
-                ? null
-                : "inline://elevenlabs/conversations/" + conversationId;
-
         return new ProviderWebhookEvent(
                 CallProvider.ELEVENLABS,
                 conversationId,
@@ -277,6 +294,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                         text(data, "durationSeconds"),
                         text(data.path("metadata"), "call_duration_secs")
                 )),
+                correlationMetadata,
                 firstNonBlank(
                         text(data, "error_code"),
                         text(data, "errorCode"),
@@ -306,9 +324,11 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         applyOptionalDispatchSettings(payload, configuration);
 
         Map<String, Object> conversationInitiationClientData = new LinkedHashMap<>();
+        conversationInitiationClientData.put("user_id", request.contact().getId().toString());
         Map<String, Object> dynamicVariables = new LinkedHashMap<>();
         dynamicVariables.put("operation_id", request.operation().getId().toString());
         dynamicVariables.put("call_job_id", request.callJob().getId().toString());
+        dynamicVariables.put("call_attempt_id", request.callAttempt().getId().toString());
         dynamicVariables.put("contact_id", request.contact().getId().toString());
         dynamicVariables.put("survey_id", request.survey().getId().toString());
         dynamicVariables.put("idempotency_key", request.callJob().getIdempotencyKey());
@@ -461,6 +481,10 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         return null;
     }
 
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
     private Integer integerValue(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -468,6 +492,17 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         try {
             return Integer.valueOf(value);
         } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private UUID uuidValue(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value.trim());
+        } catch (IllegalArgumentException ignored) {
             return null;
         }
     }
@@ -519,14 +554,14 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         return builder.toString();
     }
 
-    private CallJobStatus mapJobStatus(String providerStatus) {
+    private CallJobStatus mapJobStatus(String providerStatus, String eventType) {
         if (providerStatus == null) {
-            return CallJobStatus.QUEUED;
+            return "post_call_audio".equalsIgnoreCase(eventType) ? null : CallJobStatus.QUEUED;
         }
         return switch (providerStatus.trim().toUpperCase(Locale.ROOT)) {
             case "QUEUED", "INITIATED", "DISPATCHED", "RINGING", "CALL_STARTED" -> CallJobStatus.QUEUED;
             case "IN_PROGRESS", "CONNECTED", "ACTIVE", "CALL_IN_PROGRESS" -> CallJobStatus.IN_PROGRESS;
-            case "POST_CALL_TRANSCRIPTION", "POST_CALL_AUDIO", "COMPLETED", "FINISHED", "DONE" -> CallJobStatus.COMPLETED;
+            case "POST_CALL_TRANSCRIPTION", "COMPLETED", "FINISHED", "DONE" -> CallJobStatus.COMPLETED;
             case "CANCELLED", "SKIPPED" -> CallJobStatus.CANCELLED;
             case "CALL_INITIATION_FAILURE", "FAILED", "ERROR", "NO_ANSWER", "NO-ANSWER", "BUSY", "VOICEMAIL", "UNKNOWN", "CALL_FAILED" -> CallJobStatus.FAILED;
             default -> CallJobStatus.QUEUED;
@@ -534,6 +569,9 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
     }
 
     private CallAttemptStatus mapAttemptStatus(CallJobStatus status) {
+        if (status == null) {
+            return null;
+        }
         return switch (status) {
             case PENDING, QUEUED -> CallAttemptStatus.RINGING;
             case IN_PROGRESS -> CallAttemptStatus.IN_PROGRESS;

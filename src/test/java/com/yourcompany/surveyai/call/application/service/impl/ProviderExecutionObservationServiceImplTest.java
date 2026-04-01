@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yourcompany.surveyai.call.application.model.ProviderCorrelationMetadata;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
 import com.yourcompany.surveyai.call.domain.entity.ProviderExecutionEvent;
 import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
@@ -36,6 +37,7 @@ class ProviderExecutionObservationServiceImplTest {
                 CallAttemptStatus.FAILED,
                 OffsetDateTime.now(),
                 null,
+                new ProviderCorrelationMetadata(null, null, null, null),
                 null,
                 "busy",
                 null,

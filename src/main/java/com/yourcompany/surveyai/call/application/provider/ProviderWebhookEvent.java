@@ -1,5 +1,6 @@
 package com.yourcompany.surveyai.call.application.provider;
 
+import com.yourcompany.surveyai.call.application.model.ProviderCorrelationMetadata;
 import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
@@ -14,6 +15,7 @@ public record ProviderWebhookEvent(
         CallAttemptStatus attemptStatus,
         OffsetDateTime occurredAt,
         Integer durationSeconds,
+        ProviderCorrelationMetadata correlationMetadata,
         String errorCode,
         String errorMessage,
         String transcriptStorageKey,

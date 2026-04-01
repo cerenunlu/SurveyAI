@@ -19,4 +19,6 @@ public interface CallAttemptRepository extends JpaRepository<CallAttempt, UUID> 
     java.util.Optional<CallAttempt> findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(UUID callJobId);
 
     Optional<CallAttempt> findByProviderAndProviderCallIdAndDeletedAtIsNull(CallProvider provider, String providerCallId);
+
+    Optional<CallAttempt> findByIdAndDeletedAtIsNull(UUID id);
 }

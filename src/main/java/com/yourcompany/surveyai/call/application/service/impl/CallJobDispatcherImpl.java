@@ -69,11 +69,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
         }
 
         for (CallJob callJob : callJobs) {
-            try {
-                dispatchSingleJob(callJob, provider, configuration);
-            } catch (RuntimeException error) {
-                recordDispatchFailure(callJob, provider, error);
-            }
+            dispatchSingleJob(callJob, provider, configuration);
         }
     }
 
@@ -90,57 +86,55 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
                 callJob.getOperationContact().getId()
         );
 
-        ProviderDispatchResult result = provider.dispatchCallJob(
-                new ProviderDispatchRequest(
-                        callJob,
-                        callJob.getOperation(),
-                        callJob.getOperationContact(),
-                        callJob.getOperation().getSurvey()
-                ),
-                configuration
-        );
-
+        CallAttempt callAttempt = createPendingAttempt(callJob, provider.getProvider());
         int nextAttemptNumber = (callJob.getAttemptCount() == null ? 0 : callJob.getAttemptCount()) + 1;
-        callJob.setAttemptCount(nextAttemptNumber);
-        callJob.setStatus(result.jobStatus());
-        callJob.setLastErrorCode(result.errorCode());
-        callJob.setLastErrorMessage(result.errorMessage());
-        callJobRepository.save(callJob);
+        try {
+            ProviderDispatchResult result = provider.dispatchCallJob(
+                    new ProviderDispatchRequest(
+                            callAttempt,
+                            callJob,
+                            callJob.getOperation(),
+                            callJob.getOperationContact(),
+                            callJob.getOperation().getSurvey()
+                    ),
+                    configuration
+            );
 
-        CallAttempt callAttempt = new CallAttempt();
-        callAttempt.setCompany(callJob.getCompany());
-        callAttempt.setCallJob(callJob);
-        callAttempt.setOperation(callJob.getOperation());
-        callAttempt.setOperationContact(callJob.getOperationContact());
-        callAttempt.setAttemptNumber(nextAttemptNumber);
-        callAttempt.setProvider(result.provider());
-        callAttempt.setProviderCallId(result.providerCallId());
-        callAttempt.setStatus(result.attemptStatus() != null ? result.attemptStatus() : CallAttemptStatus.INITIATED);
-        callAttempt.setDialedAt(result.occurredAt() != null ? result.occurredAt() : OffsetDateTime.now());
-        callAttempt.setFailureReason(result.errorMessage());
-        callAttempt.setRawProviderPayload(result.rawPayload() != null ? result.rawPayload() : "{}");
-        callAttemptRepository.save(callAttempt);
-        providerExecutionObservationService.recordDispatchAccepted(callJob, callAttempt, result);
+            callJob.setAttemptCount(nextAttemptNumber);
+            callJob.setStatus(result.jobStatus());
+            callJob.setLastErrorCode(result.errorCode());
+            callJob.setLastErrorMessage(result.errorMessage());
+            callJobRepository.save(callJob);
+            callAttempt.setProviderCallId(result.providerCallId());
+            callAttempt.setStatus(result.attemptStatus() != null ? result.attemptStatus() : CallAttemptStatus.INITIATED);
+            callAttempt.setDialedAt(result.occurredAt() != null ? result.occurredAt() : OffsetDateTime.now());
+            callAttempt.setFailureReason(result.errorMessage());
+            callAttempt.setRawProviderPayload(result.rawPayload() != null ? result.rawPayload() : "{}");
+            callAttemptRepository.save(callAttempt);
+            providerExecutionObservationService.recordDispatchAccepted(callJob, callAttempt, result);
 
-        OperationContact contact = callJob.getOperationContact();
-        contact.setLastCallAt(callAttempt.getDialedAt());
-        contact.setStatus(mapContactStatus(result.jobStatus()));
-        operationContactRepository.save(contact);
+            OperationContact contact = callJob.getOperationContact();
+            contact.setLastCallAt(callAttempt.getDialedAt());
+            contact.setStatus(mapContactStatus(result.jobStatus()));
+            operationContactRepository.save(contact);
 
-        log.info(
-                "Dispatch result recorded. provider={} operationId={} callJobId={} callAttemptId={} providerCallId={} dispatchAt={} jobStatus={} attemptStatus={}",
-                result.provider(),
-                callJob.getOperation().getId(),
-                callJob.getId(),
-                callAttempt.getId(),
-                result.providerCallId(),
-                callAttempt.getDialedAt(),
-                result.jobStatus(),
-                callAttempt.getStatus()
-        );
+            log.info(
+                    "Dispatch result recorded. provider={} operationId={} callJobId={} callAttemptId={} providerCallId={} dispatchAt={} jobStatus={} attemptStatus={}",
+                    result.provider(),
+                    callJob.getOperation().getId(),
+                    callJob.getId(),
+                    callAttempt.getId(),
+                    result.providerCallId(),
+                    callAttempt.getDialedAt(),
+                    result.jobStatus(),
+                    callAttempt.getStatus()
+            );
+        } catch (RuntimeException error) {
+            recordDispatchFailure(callJob, callAttempt, provider, error);
+        }
     }
 
-    private void recordDispatchFailure(CallJob callJob, VoiceExecutionProvider provider, RuntimeException error) {
+    private void recordDispatchFailure(CallJob callJob, CallAttempt callAttempt, VoiceExecutionProvider provider, RuntimeException error) {
         log.warn(
                 "Dispatch failed. provider={} callJobId={} operationId={} contactId={} message={}",
                 provider.getProvider(),
@@ -156,14 +150,6 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
         callJob.setLastErrorCode("DISPATCH_ERROR");
         callJob.setLastErrorMessage(error.getMessage());
         callJobRepository.save(callJob);
-
-        CallAttempt callAttempt = new CallAttempt();
-        callAttempt.setCompany(callJob.getCompany());
-        callAttempt.setCallJob(callJob);
-        callAttempt.setOperation(callJob.getOperation());
-        callAttempt.setOperationContact(callJob.getOperationContact());
-        callAttempt.setAttemptNumber(nextAttemptNumber);
-        callAttempt.setProvider(provider.getProvider());
         callAttempt.setStatus(CallAttemptStatus.FAILED);
         callAttempt.setDialedAt(OffsetDateTime.now());
         callAttempt.setFailureReason(error.getMessage());
@@ -192,6 +178,20 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
                 callAttempt.getDialedAt(),
                 error.getMessage()
         );
+    }
+
+    private CallAttempt createPendingAttempt(CallJob callJob, com.yourcompany.surveyai.call.domain.enums.CallProvider provider) {
+        int nextAttemptNumber = (callJob.getAttemptCount() == null ? 0 : callJob.getAttemptCount()) + 1;
+        CallAttempt callAttempt = new CallAttempt();
+        callAttempt.setCompany(callJob.getCompany());
+        callAttempt.setCallJob(callJob);
+        callAttempt.setOperation(callJob.getOperation());
+        callAttempt.setOperationContact(callJob.getOperationContact());
+        callAttempt.setAttemptNumber(nextAttemptNumber);
+        callAttempt.setProvider(provider);
+        callAttempt.setStatus(CallAttemptStatus.INITIATED);
+        callAttempt.setRawProviderPayload("{}");
+        return callAttemptRepository.save(callAttempt);
     }
 
     private OperationContactStatus mapContactStatus(CallJobStatus jobStatus) {

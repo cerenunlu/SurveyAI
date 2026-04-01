@@ -41,6 +41,7 @@ public class VoiceExecutionProperties {
     public static class ProviderProperties {
 
         private boolean enabled;
+        private VoiceProviderMode mode;
         private String apiKey;
         private String agentId;
         private String phoneNumberId;
@@ -56,6 +57,14 @@ public class VoiceExecutionProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+
+        public VoiceProviderMode getMode() {
+            return mode;
+        }
+
+        public void setMode(VoiceProviderMode mode) {
+            this.mode = mode;
         }
 
         public String getApiKey() {

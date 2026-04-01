@@ -6,6 +6,7 @@ import java.util.Map;
 public record VoiceProviderConfiguration(
         CallProvider provider,
         boolean enabled,
+        VoiceProviderMode mode,
         String apiKey,
         String agentId,
         String phoneNumberId,
@@ -15,4 +16,11 @@ public record VoiceProviderConfiguration(
         long webhookTimestampToleranceSeconds,
         Map<String, String> settings
 ) {
+    public boolean liveMode() {
+        return mode == VoiceProviderMode.LIVE;
+    }
+
+    public boolean mockMode() {
+        return mode == VoiceProviderMode.MOCK;
+    }
 }

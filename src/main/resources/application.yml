@@ -30,18 +30,19 @@ surveyai:
   dev:
     provider-result-simulator-enabled: false
   calling:
-    active-provider: MOCK
+    active-provider: ${SURVEYAI_CALLING_ACTIVE_PROVIDER:MOCK}
     mock:
-      enabled: true
+      enabled: ${SURVEYAI_CALLING_MOCK_ENABLED:true}
       base-url: mock://local
     elevenlabs:
-      enabled: false
-      base-url: https://api.elevenlabs.io
+      enabled: ${SURVEYAI_CALLING_ELEVENLABS_ENABLED:false}
+      mode: ${ELEVENLABS_MODE:MOCK}
+      base-url: ${ELEVENLABS_BASE_URL:https://api.elevenlabs.io}
       api-key: ${ELEVENLABS_API_KEY:}
       agent-id: ${ELEVENLABS_AGENT_ID:}
       phone-number-id: ${ELEVENLABS_PHONE_NUMBER_ID:}
       webhook-secret: ${ELEVENLABS_WEBHOOK_SECRET:}
-      sandbox-mode: ${ELEVENLABS_SANDBOX_MODE:true}
+      sandbox-mode: ${ELEVENLABS_SANDBOX_MODE:false}
       webhook-timestamp-tolerance-seconds: 300
       settings:
         call-recording-enabled: ${ELEVENLABS_CALL_RECORDING_ENABLED:false}
