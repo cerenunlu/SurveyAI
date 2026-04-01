@@ -47,6 +47,10 @@ surveyai:
       settings:
         call-recording-enabled: ${ELEVENLABS_CALL_RECORDING_ENABLED:false}
         public-webhook-base-url: ${PUBLIC_WEBHOOK_BASE_URL:}
+        tool-api-secret: ${ELEVENLABS_TOOL_API_SECRET:${ELEVENLABS_WEBHOOK_SECRET:}}
+        agent-prompt-override-enabled: ${ELEVENLABS_AGENT_PROMPT_OVERRIDE_ENABLED:false}
+        agent-first-message-override-enabled: ${ELEVENLABS_AGENT_FIRST_MESSAGE_OVERRIDE_ENABLED:false}
+        agent-language-override-enabled: ${ELEVENLABS_AGENT_LANGUAGE_OVERRIDE_ENABLED:false}
 
 logging:
   level:

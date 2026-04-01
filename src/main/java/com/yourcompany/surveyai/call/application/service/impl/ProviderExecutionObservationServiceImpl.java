@@ -2,6 +2,7 @@ package com.yourcompany.surveyai.call.application.service.impl;
 
 import com.yourcompany.surveyai.call.application.dto.response.ProviderExecutionEventPageResponseDto;
 import com.yourcompany.surveyai.call.application.dto.response.ProviderExecutionEventResponseDto;
+import com.yourcompany.surveyai.call.application.provider.ProviderCallStatusResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderDispatchResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
 import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
@@ -61,6 +62,44 @@ public class ProviderExecutionObservationServiceImpl implements ProviderExecutio
         event.setReceivedAt(OffsetDateTime.now());
         event.setDispatchAt(dispatchAt);
         event.setRawPayload(rawPayload);
+        providerExecutionEventRepository.save(event);
+    }
+
+    @Override
+    @Transactional
+    public void recordStatusSnapshot(
+            CallJob callJob,
+            CallAttempt callAttempt,
+            CallProvider provider,
+            ProviderCallStatusResult result,
+            String message
+    ) {
+        ProviderExecutionEvent event = baseEvent(callJob, callAttempt, provider);
+        event.setStage(ProviderExecutionStage.STATUS);
+        event.setOutcome(ProviderExecutionOutcome.ACCEPTED);
+        event.setEventType("status.snapshot");
+        event.setProviderCallId(callAttempt != null ? callAttempt.getProviderCallId() : null);
+        event.setIdempotencyKey(callJob != null ? callJob.getIdempotencyKey() : null);
+        event.setMessage(message);
+        event.setOccurredAt(result.occurredAt());
+        event.setReceivedAt(OffsetDateTime.now());
+        event.setFailureReason(callAttempt != null ? callAttempt.getFailureReason() : null);
+        event.setRawPayload(result.rawPayload());
+        providerExecutionEventRepository.save(event);
+    }
+
+    @Override
+    @Transactional
+    public void recordStatusSnapshotFailure(CallJob callJob, CallAttempt callAttempt, CallProvider provider, String failureReason) {
+        ProviderExecutionEvent event = baseEvent(callJob, callAttempt, provider);
+        event.setStage(ProviderExecutionStage.STATUS);
+        event.setOutcome(ProviderExecutionOutcome.FAILED);
+        event.setEventType("status.snapshot.failed");
+        event.setProviderCallId(callAttempt != null ? callAttempt.getProviderCallId() : null);
+        event.setIdempotencyKey(callJob != null ? callJob.getIdempotencyKey() : null);
+        event.setMessage("Provider status snapshot failed");
+        event.setFailureReason(failureReason);
+        event.setReceivedAt(OffsetDateTime.now());
         providerExecutionEventRepository.save(event);
     }
 

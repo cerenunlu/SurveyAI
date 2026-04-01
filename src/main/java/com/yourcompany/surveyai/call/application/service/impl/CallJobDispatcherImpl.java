@@ -1,6 +1,8 @@
 package com.yourcompany.surveyai.call.application.service.impl;
 
 import com.yourcompany.surveyai.call.application.provider.CallProviderRegistry;
+import com.yourcompany.surveyai.call.application.provider.ProviderCallStatusRequest;
+import com.yourcompany.surveyai.call.application.provider.ProviderCallStatusResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderConfigurationValidationResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderDispatchRequest;
 import com.yourcompany.surveyai.call.application.provider.ProviderDispatchResult;
@@ -112,6 +114,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
             callAttempt.setRawProviderPayload(result.rawPayload() != null ? result.rawPayload() : "{}");
             callAttemptRepository.save(callAttempt);
             providerExecutionObservationService.recordDispatchAccepted(callJob, callAttempt, result);
+            captureInitialProviderStatus(callJob, callAttempt, provider, configuration);
 
             OperationContact contact = callJob.getOperationContact();
             contact.setLastCallAt(callAttempt.getDialedAt());
@@ -178,6 +181,52 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
                 callAttempt.getDialedAt(),
                 error.getMessage()
         );
+    }
+
+    private void captureInitialProviderStatus(
+            CallJob callJob,
+            CallAttempt callAttempt,
+            VoiceExecutionProvider provider,
+            VoiceProviderConfiguration configuration
+    ) {
+        if (configuration.mockMode() || callAttempt.getProviderCallId() == null || callAttempt.getProviderCallId().isBlank()) {
+            return;
+        }
+
+        try {
+            ProviderCallStatusResult statusResult = provider.fetchCallStatus(new ProviderCallStatusRequest(callAttempt), configuration);
+            providerExecutionObservationService.recordStatusSnapshot(
+                    callJob,
+                    callAttempt,
+                    provider.getProvider(),
+                    statusResult,
+                    "Initial provider status snapshot captured after dispatch acceptance"
+            );
+            log.info(
+                    "Initial provider status snapshot. provider={} callJobId={} callAttemptId={} providerCallId={} jobStatus={} attemptStatus={}",
+                    provider.getProvider(),
+                    callJob.getId(),
+                    callAttempt.getId(),
+                    callAttempt.getProviderCallId(),
+                    statusResult.jobStatus(),
+                    statusResult.attemptStatus()
+            );
+        } catch (RuntimeException error) {
+            providerExecutionObservationService.recordStatusSnapshotFailure(
+                    callJob,
+                    callAttempt,
+                    provider.getProvider(),
+                    error.getMessage()
+            );
+            log.warn(
+                    "Initial provider status snapshot failed. provider={} callJobId={} callAttemptId={} providerCallId={} message={}",
+                    provider.getProvider(),
+                    callJob.getId(),
+                    callAttempt.getId(),
+                    callAttempt.getProviderCallId(),
+                    error.getMessage()
+            );
+        }
     }
 
     private CallAttempt createPendingAttempt(CallJob callJob, com.yourcompany.surveyai.call.domain.enums.CallProvider provider) {

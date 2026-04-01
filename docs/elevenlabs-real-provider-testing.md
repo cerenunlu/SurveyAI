@@ -12,6 +12,10 @@ Optional:
 
 - `ELEVENLABS_SANDBOX_MODE=true|false`
 - `ELEVENLABS_CALL_RECORDING_ENABLED=true|false`
+- `ELEVENLABS_TOOL_API_SECRET`
+- `ELEVENLABS_AGENT_PROMPT_OVERRIDE_ENABLED=true|false`
+- `ELEVENLABS_AGENT_FIRST_MESSAGE_OVERRIDE_ENABLED=true|false`
+- `ELEVENLABS_AGENT_LANGUAGE_OVERRIDE_ENABLED=true|false`
 
 ## Provider mode
 
@@ -28,6 +32,14 @@ Configure ElevenLabs post-call webhooks to POST to:
 
 The server will log the expected URL at startup. For local testing, expose the app with ngrok or another public tunnel and set `PUBLIC_WEBHOOK_BASE_URL` to that public base URL.
 
+## Important live-call assumptions
+
+- Live outbound calls use the stored agent configuration referenced by `ELEVENLABS_AGENT_ID`.
+- Preview-only or unsaved dashboard changes do not affect live outbound calls.
+- Code-side prompt, first-message, and language overrides are now opt-in. They are only sent when the corresponding `ELEVENLABS_AGENT_*_OVERRIDE_ENABLED` flag is `true`.
+- Even when the app sends those overrides, the same fields must also be explicitly allowed in the agent Security tab or ElevenLabs may reject the runtime override during conversation startup.
+- For Twilio-backed phone calls, configure the agent for `mu-law 8000 Hz` input and output. A telephony audio mismatch can cause the call to connect but fail before the conversational layer stabilizes.
+
 ## One-contact E2E test flow
 
 1. Start the app and confirm startup diagnostics log the active provider, sandbox/live mode, and expected webhook URL.
@@ -42,6 +54,7 @@ The server will log the expected URL at startup. For local testing, expose the a
    - `provider=ELEVENLABS`
    - a `providerCallId`
    - `dispatch.accepted` or `dispatch.failed`
+   - `status.snapshot` shortly after dispatch in live mode when ElevenLabs status fetch succeeds
 7. Wait for the post-call webhook and confirm a webhook event shows:
    - event type such as `post_call_transcription` or `call_initiation_failure`
    - for matched webhooks, populated `callJobId` and `callAttemptId`
@@ -59,6 +72,10 @@ The server will log the expected URL at startup. For local testing, expose the a
   Look for `dispatch.failed` in `/provider-executions`, then check `call_job.last_error_message` and `call_attempt.failure_reason`.
 - Missing webhook:
   Confirm ElevenLabs can reach the public webhook URL and that the server logs `Provider webhook received`.
+- No tool hits in a real live call:
+  If `/api/v1/provider-tools/...` is never reached, the call likely never entered the conversational tool layer. Check `status.snapshot`, the raw provider payload, the published agent configuration for `ELEVENLABS_AGENT_ID`, telephony audio format, and whether runtime overrides are being rejected by agent security.
+- Call answered then ends immediately:
+  Treat this as a pre-tool failure until proven otherwise. First inspect `dispatch.accepted`, `status.snapshot` / `status.snapshot.failed`, and any terminal webhook reason such as Twilio `call_status`, `sip_status`, or ElevenLabs `termination_reason`.
 - Rejected webhook:
   Check server logs for `Provider webhook rejected`, then verify signature secret / timestamp drift.
 - Duplicate webhook:

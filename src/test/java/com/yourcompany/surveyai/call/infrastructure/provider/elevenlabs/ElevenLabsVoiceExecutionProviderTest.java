@@ -82,6 +82,10 @@ class ElevenLabsVoiceExecutionProviderTest {
         assertThat(payload).contains(request.callJob().getId().toString());
         assertThat(payload).contains(request.contact().getId().toString());
         assertThat(payload).contains("\"user_id\":\"" + request.contact().getId() + "\"");
+        assertThat(payload).contains("survey_start_interview");
+        assertThat(payload).contains("survey_submit_answer");
+        assertThat(payload).contains(request.operation().getName());
+        assertThat(payload).contains(request.survey().getName());
     }
 
     @Test
@@ -285,7 +289,11 @@ class ElevenLabsVoiceExecutionProviderTest {
                 "https://api.elevenlabs.io",
                 mockMode,
                 300L,
-                Map.of()
+                Map.of(
+                        "agent-prompt-override-enabled", "true",
+                        "agent-first-message-override-enabled", "true",
+                        "agent-language-override-enabled", "true"
+                )
         );
     }
 

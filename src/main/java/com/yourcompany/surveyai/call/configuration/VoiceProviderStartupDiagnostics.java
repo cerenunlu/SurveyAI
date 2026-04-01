@@ -49,8 +49,12 @@ public class VoiceProviderStartupDiagnostics implements ApplicationRunner {
 
         if (activeProvider == CallProvider.ELEVENLABS) {
             String publicWebhookBaseUrl = configuration.settings().get("public-webhook-base-url");
+            String toolApiSecret = configuration.settings().get("tool-api-secret");
+            boolean promptOverrideEnabled = isEnabled(configuration, "agent-prompt-override-enabled");
+            boolean firstMessageOverrideEnabled = isEnabled(configuration, "agent-first-message-override-enabled");
+            boolean languageOverrideEnabled = isEnabled(configuration, "agent-language-override-enabled");
             log.info(
-                    "ElevenLabs runtime config. baseUrl={} outboundEndpoint={} authHeaderType={} apiKeyPresent={} apiKeySuffix={} agentIdPresent={} phoneNumberIdPresent={} webhookBaseUrlPresent={}",
+                    "ElevenLabs runtime config. baseUrl={} outboundEndpoint={} authHeaderType={} apiKeyPresent={} apiKeySuffix={} agentIdPresent={} phoneNumberIdPresent={} webhookBaseUrlPresent={} toolApiSecretPresent={} promptOverrideEnabled={} firstMessageOverrideEnabled={} languageOverrideEnabled={}",
                     configuration.baseUrl(),
                     resolveOutboundEndpoint(configuration.baseUrl()),
                     "xi-api-key",
@@ -58,13 +62,25 @@ public class VoiceProviderStartupDiagnostics implements ApplicationRunner {
                     redactSuffix(configuration.apiKey()),
                     hasText(configuration.agentId()),
                     hasText(configuration.phoneNumberId()),
-                    hasText(publicWebhookBaseUrl)
+                    hasText(publicWebhookBaseUrl),
+                    hasText(toolApiSecret),
+                    promptOverrideEnabled,
+                    firstMessageOverrideEnabled,
+                    languageOverrideEnabled
             );
 
             if (configuration.mockMode()) {
                 log.info("ElevenLabs mock mode is enabled. Dispatch requests will not place real calls.");
             } else {
                 log.info("ElevenLabs live mode is enabled. Real outbound calls may be placed for started operations.");
+            }
+
+            log.info("ElevenLabs outbound calls use the stored agent configuration for agentId={}. Preview-only or unsaved dashboard changes will not affect live outbound calls.", configuration.agentId());
+            log.info("ElevenLabs telephony agents should be configured for mu-law 8000 Hz input and output when using Twilio-backed phone calls.");
+            if (!promptOverrideEnabled || !firstMessageOverrideEnabled || !languageOverrideEnabled) {
+                log.info("Code-side agent overrides are partially or fully disabled. Live calls will rely on the published agent configuration unless the corresponding override flags are enabled and allowed in the agent Security tab.");
+            } else {
+                log.info("Code-side agent overrides are enabled. Ensure the agent Security tab explicitly allows prompt, first message, and language overrides.");
             }
 
             if (publicWebhookBaseUrl == null || publicWebhookBaseUrl.isBlank()) {
@@ -74,6 +90,10 @@ public class VoiceProviderStartupDiagnostics implements ApplicationRunner {
                         ? publicWebhookBaseUrl.substring(0, publicWebhookBaseUrl.length() - 1)
                         : publicWebhookBaseUrl;
                 log.info("Expected ElevenLabs webhook URL: {}/api/v1/provider-webhooks/{}", normalizedBase, activeProvider.name());
+                log.info("Expected ElevenLabs tool start URL: {}/api/v1/provider-tools/elevenlabs/interviews/start", normalizedBase);
+                log.info("Expected ElevenLabs tool current-question URL: {}/api/v1/provider-tools/elevenlabs/interviews/current-question", normalizedBase);
+                log.info("Expected ElevenLabs tool answer URL: {}/api/v1/provider-tools/elevenlabs/interviews/answer", normalizedBase);
+                log.info("Expected ElevenLabs tool finish URL: {}/api/v1/provider-tools/elevenlabs/interviews/finish", normalizedBase);
             }
         }
     }
@@ -88,6 +108,11 @@ public class VoiceProviderStartupDiagnostics implements ApplicationRunner {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private boolean isEnabled(VoiceProviderConfiguration configuration, String key) {
+        String value = configuration.settings().get(key);
+        return value != null && Boolean.parseBoolean(value.trim());
     }
 
     private String redactSuffix(String value) {

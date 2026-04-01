@@ -81,7 +81,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
 
         String payload = buildOutboundCallPayload(request, configuration);
         log.info(
-                "Preparing ElevenLabs outbound dispatch. callJobId={} callAttemptId={} baseUrl={} authHeaderType={} apiKeyPresent={} agentIdPresent={} phoneNumberIdPresent={} webhookBaseUrlPresent={}",
+                "Preparing ElevenLabs outbound dispatch. callJobId={} callAttemptId={} baseUrl={} authHeaderType={} apiKeyPresent={} agentIdPresent={} phoneNumberIdPresent={} webhookBaseUrlPresent={} promptOverrideEnabled={} firstMessageOverrideEnabled={} languageOverrideEnabled={}",
                 request.callJob().getId(),
                 request.callAttempt().getId(),
                 configuration.baseUrl(),
@@ -89,7 +89,10 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 hasText(configuration.apiKey()),
                 hasText(configuration.agentId()),
                 hasText(configuration.phoneNumberId()),
-                hasText(configuration.settings().get("public-webhook-base-url"))
+                hasText(configuration.settings().get("public-webhook-base-url")),
+                isOverrideEnabled(configuration, "agent-prompt-override-enabled"),
+                isOverrideEnabled(configuration, "agent-first-message-override-enabled"),
+                isOverrideEnabled(configuration, "agent-language-override-enabled")
         );
         try {
             String responseBody = apiClient.startOutboundCall(payload, configuration);
@@ -336,15 +339,26 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         dynamicVariables.put("contact_phone", normalizePhoneNumber(request.contact().getPhoneNumber()));
         dynamicVariables.put("operation_name", request.operation().getName());
         dynamicVariables.put("survey_name", request.survey().getName());
+        dynamicVariables.put("survey_intro", firstNonBlank(request.survey().getIntroPrompt(), ""));
+        dynamicVariables.put("survey_closing", firstNonBlank(request.survey().getClosingPrompt(), ""));
         conversationInitiationClientData.put("dynamic_variables", dynamicVariables);
 
         Map<String, Object> conversationConfigOverride = new LinkedHashMap<>();
         Map<String, Object> agentOverrides = new LinkedHashMap<>();
-        if (request.survey().getIntroPrompt() != null && !request.survey().getIntroPrompt().isBlank()) {
+        if (isOverrideEnabled(configuration, "agent-first-message-override-enabled")
+                && request.survey().getIntroPrompt() != null
+                && !request.survey().getIntroPrompt().isBlank()) {
             agentOverrides.put("first_message", request.survey().getIntroPrompt().trim());
         }
-        if (request.survey().getLanguageCode() != null && !request.survey().getLanguageCode().isBlank()) {
+        if (isOverrideEnabled(configuration, "agent-language-override-enabled")
+                && request.survey().getLanguageCode() != null
+                && !request.survey().getLanguageCode().isBlank()) {
             agentOverrides.put("language", request.survey().getLanguageCode().trim());
+        }
+        if (isOverrideEnabled(configuration, "agent-prompt-override-enabled")) {
+            Map<String, Object> promptOverrides = new LinkedHashMap<>();
+            promptOverrides.put("prompt", buildAgentPrompt(request));
+            agentOverrides.put("prompt", promptOverrides);
         }
         if (!agentOverrides.isEmpty()) {
             conversationConfigOverride.put("agent", agentOverrides);
@@ -365,6 +379,35 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         String lastName = request.contact().getLastName() == null ? "" : request.contact().getLastName().trim();
         String fullName = (firstName + " " + lastName).trim();
         return fullName.isBlank() ? "Unknown contact" : fullName;
+    }
+
+    private String buildAgentPrompt(ProviderDispatchRequest request) {
+        return """
+                You are conducting a live survey interview for SurveyAI.
+                The backend is the source of truth for survey flow. Never invent the question order, skip ahead, or decide completion on your own.
+                Start by calling the `survey_start_interview` tool when the call begins.
+                Ask only the question returned by the backend and wait for the caller's answer.
+                After each caller turn, call `survey_submit_answer` with the latest utterance unless the caller is asking you to repeat, asking who you are, or asking to stop.
+                If the caller asks who you are, call the backend flow with the identity-request signal and follow its returned prompt.
+                If the caller asks you to repeat, call the backend flow with the repeat-request signal and repeat only the current question.
+                If the caller wants to stop, call `survey_finish_interview`, deliver the closing message, and use the built-in end-call tool.
+                If the backend response says the survey is complete, read the closing message briefly and end the call.
+                Keep your tone concise, polite, and natural. Ask one question at a time.
+                Operation: %s
+                Survey: %s
+                Contact: %s
+                Call attempt id: %s
+                """.formatted(
+                request.operation().getName(),
+                request.survey().getName(),
+                buildContactName(request),
+                request.callAttempt().getId()
+        ).trim();
+    }
+
+    private boolean isOverrideEnabled(VoiceProviderConfiguration configuration, String settingKey) {
+        String raw = configuration.settings().get(settingKey);
+        return raw != null && Boolean.parseBoolean(raw.trim());
     }
 
     private String normalizePhoneNumber(String value) {

@@ -136,8 +136,9 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
                 );
             }
 
-            response.setCompletionPercent(calculateCompletionPercent(questions.size(), upsertedAnswers, response.getCompletionPercent()));
-            if (response.getStatus() == SurveyResponseStatus.COMPLETED && upsertedAnswers > 0 && upsertedAnswers < questions.size()) {
+            int persistedAnswerCount = surveyAnswerRepository.findAllBySurveyResponse_IdAndDeletedAtIsNull(savedResponse.getId()).size();
+            response.setCompletionPercent(calculateCompletionPercent(questions.size(), persistedAnswerCount, response.getCompletionPercent()));
+            if (response.getStatus() == SurveyResponseStatus.COMPLETED && persistedAnswerCount > 0 && persistedAnswerCount < questions.size()) {
                 response.setStatus(SurveyResponseStatus.PARTIAL);
             }
             SurveyResponse persistedResponse = surveyResponseRepository.save(response);

@@ -1,6 +1,7 @@
 package com.yourcompany.surveyai.call.application.service;
 
 import com.yourcompany.surveyai.call.application.dto.response.ProviderExecutionEventPageResponseDto;
+import com.yourcompany.surveyai.call.application.provider.ProviderCallStatusResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderDispatchResult;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
@@ -16,6 +17,10 @@ public interface ProviderExecutionObservationService {
     void recordDispatchAccepted(CallJob callJob, CallAttempt callAttempt, ProviderDispatchResult result);
 
     void recordDispatchFailed(CallJob callJob, CallAttempt callAttempt, CallProvider provider, OffsetDateTime dispatchAt, String failureReason, String rawPayload);
+
+    void recordStatusSnapshot(CallJob callJob, CallAttempt callAttempt, CallProvider provider, ProviderCallStatusResult result, String message);
+
+    void recordStatusSnapshotFailure(CallJob callJob, CallAttempt callAttempt, CallProvider provider, String failureReason);
 
     void recordWebhookReceived(CallProvider provider, String rawPayload, OffsetDateTime receivedAt);
 
