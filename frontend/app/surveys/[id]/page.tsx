@@ -34,7 +34,7 @@ export default function SurveyDetailPage() {
           return;
         }
 
-        const message = error instanceof Error ? error.message : "Anket detayı yüklenemedi.";
+        const message = error instanceof Error ? error.message : "Anket detayi yuklenemedi.";
         if (message.includes("(404)")) {
           setIsMissing(true);
           return;
@@ -61,7 +61,7 @@ export default function SurveyDetailPage() {
       {errorMessage ? (
         <section className="panel-card">
           <div className="operation-inline-message is-danger">
-            <strong>Anket düzenleme alanı yüklenemedi</strong>
+            <strong>Anket duzenleme alani yuklenemedi</strong>
             <span>{errorMessage}</span>
           </div>
         </section>
@@ -71,8 +71,8 @@ export default function SurveyDetailPage() {
         <section className="panel-card">
           <div className="list-item">
             <div>
-              <strong>Anket yükleniyor</strong>
-              <span>Düzenleme ekranı hazırlanıyor.</span>
+              <strong>Anket yukleniyor</strong>
+              <span>Duzenleme ekrani hazirlaniyor.</span>
             </div>
           </div>
         </section>
@@ -82,5 +82,3 @@ export default function SurveyDetailPage() {
     </PageContainer>
   );
 }
-
-

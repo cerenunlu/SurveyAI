@@ -4,12 +4,13 @@ import * as XLSX from "xlsx";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { SectionCard } from "@/components/ui/SectionCard";
+import { StatCard } from "@/components/ui/StatCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import {
-  createOperation,
-  createOperationContacts,
-} from "@/lib/operations";
+import { ContactIcon, OperationIcon, PlayIcon, SurveyIcon } from "@/components/ui/Icons";
+import { createOperation, createOperationContacts } from "@/lib/operations";
 import {
   ACCEPTED_OPERATION_CONTACT_FILE_TYPES,
   OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT,
@@ -33,6 +34,14 @@ type FormErrors = {
 type SubmitIntent = "draft" | "create";
 type SubmitPhase = "idle" | "creating" | "importing";
 
+type PreparationItem = {
+  key: string;
+  title: string;
+  detail: string;
+  status: "Ready" | "Warning" | "Pending";
+  label: string;
+};
+
 export default function NewOperationPage() {
   const router = useRouter();
   const [operationName, setOperationName] = useState("");
@@ -54,25 +63,20 @@ export default function NewOperationPage() {
   const [importSummary, setImportSummary] = useState<ImportSummary>(createEmptyImportSummary());
   const [importError, setImportError] = useState<string | null>(null);
 
-  const publishedSurveys = useMemo(
-    () => surveys.filter((survey) => survey.status === "Live"),
-    [surveys],
-  );
+  usePageHeaderOverride({
+    title: "Yeni Operasyon Tasarimi",
+    subtitle: "Operasyon kimligini, bagli anketi ve kisi planini ayni karar ekraninda netlestirin.",
+  });
+
+  const publishedSurveys = useMemo(() => surveys.filter((survey) => survey.status === "Live"), [surveys]);
 
   const selectedSurvey = useMemo(
     () => publishedSurveys.find((survey) => survey.id === selectedSurveyId) ?? null,
     [publishedSurveys, selectedSurveyId],
   );
 
-  const previewRows = useMemo(
-    () => importRows.slice(0, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT),
-    [importRows],
-  );
-
-  const validImportRows = useMemo(
-    () => importRows.filter((row) => row.isValid),
-    [importRows],
-  );
+  const previewRows = useMemo(() => importRows.slice(0, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT), [importRows]);
+  const validImportRows = useMemo(() => importRows.filter((row) => row.isValid), [importRows]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -252,22 +256,22 @@ export default function NewOperationPage() {
     }
   }
 
+  const trimmedOperationName = operationName.trim();
   const surveyQuestionCount = selectedSurveyDetail
     ? `${selectedSurveyDetail.questions.length} soru`
     : isLoadingSurveyDetail && selectedSurveyId
       ? "Soru bilgisi yukleniyor"
       : "Soru ozeti hazir degil";
-
   const surveyLanguage = selectedSurveyDetail?.languageCode?.toUpperCase() ?? selectedSurvey?.audience ?? "-";
   const surveyStatus = selectedSurveyDetail?.status ?? selectedSurvey?.status ?? "Live";
   const personStatus =
     contactMode === "now"
       ? importSummary.validRows > 0
-        ? `${importSummary.validRows} kisi olusturma sonrasi baglanacak`
+        ? `${importSummary.validRows} kisi ilk dalgaya hazir`
         : selectedFileName
-          ? "Gecerli kisi bekleniyor"
+          ? "Dogrulama sonrasi baglanacak"
           : "Toplu import dosyasi bekleniyor"
-      : "Kisiler daha sonra eklenecek";
+      : "Kisi listesi sonraki adima birakildi";
   const isSubmitDisabled = isSubmitting || isLoadingSurveys || publishedSurveys.length === 0;
   const isImportVisible = contactMode === "now";
   const actionLabel =
@@ -277,20 +281,129 @@ export default function NewOperationPage() {
         ? "Gecerli kisiler yeni operasyona baglaniyor..."
         : null;
 
-  return (
-    <PageContainer>
-      <div className="operation-create-shell">
-        <div className="operation-create-layout">
-          <div className="operation-create-main">
-            <section className="panel-card survey-form-card operation-create-card">
-              <div className="survey-form-card-head operation-create-card-head">
-                <div>
-                  <p className="builder-panel-kicker">Operation Info</p>
-                  <h2>Operasyon bilgileri</h2>
-                  <p>Operasyonu ekip icinde kolay ayirt edilecek net bir adla olusturun.</p>
-                </div>
-              </div>
+  const preparationItems = useMemo<PreparationItem[]>(
+    () => [
+      {
+        key: "name",
+        title: "Operasyon kimligi",
+        detail: trimmedOperationName
+          ? "Operasyon adi ekipler tarafindan ayirt edilebilir durumda."
+          : "Operasyonun ekip icinde taniyacagi net bir ada ihtiyaci var.",
+        status: trimmedOperationName ? "Ready" : "Warning",
+        label: trimmedOperationName ? "Hazir" : "Eksik",
+      },
+      {
+        key: "survey",
+        title: "Yayinlanmis anket baglantisi",
+        detail: selectedSurvey
+          ? `${selectedSurvey.name} operasyon icin secildi.`
+          : "Operasyonu baslatmak icin yayinlanmis bir anket secilmeli.",
+        status: selectedSurvey ? "Ready" : "Warning",
+        label: selectedSurvey ? "Baglandi" : "Secim bekliyor",
+      },
+      {
+        key: "contacts",
+        title: "Kisi stratejisi",
+        detail:
+          contactMode === "later"
+            ? "Kisi listesi daha sonra baglanacak; bu secim operasyon olusturmaya engel degil."
+            : validImportRows.length > 0
+              ? `${validImportRows.length} kisi ilk import icin gecerli gorunuyor.`
+              : selectedFileName
+                ? "Dosya secildi ancak gecerli satir sayisi netlesmedi."
+                : "Toplu import dosyasi bekleniyor.",
+        status:
+          contactMode === "later" || validImportRows.length > 0
+            ? "Ready"
+            : selectedFileName
+              ? "Pending"
+              : "Pending",
+        label:
+          contactMode === "later"
+            ? "Planlandi"
+            : validImportRows.length > 0
+              ? "Hazir"
+              : "Bekliyor",
+      },
+      {
+        key: "note",
+        title: "Hazirlik notu",
+        detail: operationNote.trim()
+          ? "Baglam notu ekip ici iletisim icin hazir."
+          : "Baglam notu istege bagli; operasyon kapsaminda netlik saglayabilir.",
+        status: operationNote.trim() ? "Ready" : "Pending",
+        label: operationNote.trim() ? "Girildi" : "Istege bagli",
+      },
+    ],
+    [contactMode, operationNote, selectedFileName, selectedSurvey, trimmedOperationName, validImportRows.length],
+  );
 
+  const readiness = useMemo(() => {
+    const completed = preparationItems.filter((item) => item.status === "Ready").length;
+
+    if (completed >= 3) {
+      return {
+        label: "Hazir",
+        status: "Ready" as const,
+        detail: "Operasyon tanimi, anket baglantisi ve ilk uygulama karari netlesti.",
+      };
+    }
+
+    if (completed >= 2) {
+      return {
+        label: "Kismen hazir",
+        status: "Warning" as const,
+        detail: "Operasyon olusturulabilir; yine de hazirlik maddelerinin bir bolumu takibe ihtiyac duyuyor.",
+      };
+    }
+
+    return {
+      label: "Hazirlikta",
+      status: "Pending" as const,
+      detail: "Temel tanim ve anket secimi tamamlanmadan operasyon kalici olarak acilmamali.",
+    };
+  }, [preparationItems]);
+
+  return (
+    <PageContainer hideBackRow>
+      <div className="ops-create-shell">
+        <div className="ops-create-top-row">
+          <Link href="/operations" className="button-secondary compact-button">
+            Operasyonlara don
+          </Link>
+          <StatusBadge status={readiness.status} label={readiness.label} />
+        </div>
+
+        <section className="ops-summary-strip ops-create-summary-strip">
+          <StatCard
+            label="Yayinlanmis anket"
+            value={publishedSurveys.length}
+            detail="Operasyona baglanabilir aktif anket havuzu."
+            icon={<SurveyIcon className="nav-icon" />}
+          />
+          <StatCard
+            label="Secilen sablon"
+            value={selectedSurvey ? surveyQuestionCount : "-"}
+            detail={selectedSurvey ? selectedSurvey.name : "Henuz operasyona baglanacak anket secilmedi."}
+            icon={<OperationIcon className="nav-icon" />}
+          />
+          <StatCard
+            label="Kisi plani"
+            value={contactMode === "now" ? validImportRows.length : "Sonra"}
+            detail={personStatus}
+            icon={<ContactIcon className="nav-icon" />}
+          />
+          <StatCard
+            label="Hazirlik seviyesi"
+            value={readiness.label}
+            detail={readiness.detail}
+            icon={<PlayIcon className="nav-icon" />}
+          />
+        </section>
+
+        <div className="ops-two-column-layout ops-create-layout">
+          <div className="ops-create-main">
+            <SectionCard eyebrow="Brif" title="Operasyon Kimligi" description="Operasyonu net, izlenebilir ve ekip diline uygun bir cercevede tanimlayin.">
               <div className="survey-form-fields">
                 <label className="builder-field">
                   <strong>Operasyon adi</strong>
@@ -315,22 +428,23 @@ export default function NewOperationPage() {
                     rows={4}
                     value={operationNote}
                     onChange={(event) => setOperationNote(event.target.value)}
-                    placeholder="Operasyon kapsami, segment notu veya ekip icin kisa baglam ekleyin."
+                    placeholder="Kapsam, segment veya ekip icin karar notunu ekleyin."
                   />
-                  <span>Bu alan MVP adiminda backend create istegine dahil edilmiyor; yalnizca hazirlik notu olarak sunuluyor.</span>
+                  <span>Bu alan su an backend create istegine gitmez; ekip ici hazirlik baglami olarak kullanilir.</span>
                 </label>
               </div>
-            </section>
+            </SectionCard>
 
-            <section className="panel-card survey-form-card operation-create-card">
-              <div className="survey-form-card-head operation-create-card-head">
-                <div>
-                  <p className="builder-panel-kicker">Published Survey</p>
-                  <h2>Anket secimi</h2>
-                  <p>Operasyonlar yalnizca yayinlanmis anketlerle baslatilabilir. Taslak anketler burada listelenmez.</p>
-                </div>
-              </div>
-
+            <SectionCard
+              eyebrow="Baglanti"
+              title="Anket Baglantisi"
+              description="Operasyon yalnizca yayinlanmis anketlerle calisabilir. Taslaklar burada secilemez."
+              action={
+                <Link href="/surveys/new" className="button-secondary compact-button">
+                  Yeni Anket
+                </Link>
+              }
+            >
               <div className="survey-form-fields">
                 {loadError ? (
                   <div className="operation-inline-message is-danger">
@@ -340,12 +454,12 @@ export default function NewOperationPage() {
                 ) : isLoadingSurveys ? (
                   <div className="operation-inline-message">
                     <strong>Yayinlanmis anketler yukleniyor</strong>
-                    <span>Backend uzerinden operasyona uygun anketler getiriliyor.</span>
+                    <span>Operasyona baglanabilir sablonlar sirket havuzundan getiriliyor.</span>
                   </div>
                 ) : publishedSurveys.length === 0 ? (
                   <div className="operation-inline-message">
                     <strong>Kullanilabilir yayinlanmis anket yok</strong>
-                    <span>Operasyon olusturmadan once en az bir anket yayinlamaniz gerekiyor.</span>
+                    <span>Yeni bir operasyon acmadan once en az bir anketi yayinlamaniz gerekiyor.</span>
                   </div>
                 ) : (
                   <label className="builder-field">
@@ -374,7 +488,7 @@ export default function NewOperationPage() {
                 )}
 
                 {selectedSurvey ? (
-                  <div className="operation-survey-summary">
+                  <div className="operation-survey-summary ops-create-survey-summary">
                     <div className="operation-survey-summary-head">
                       <div>
                         <strong>{selectedSurvey.name}</strong>
@@ -397,20 +511,16 @@ export default function NewOperationPage() {
                         <strong>{surveyStatus}</strong>
                       </div>
                     </div>
+
+                    <p className="ops-create-inline-note">
+                      {selectedSurvey.goal || "Bu anketin kisa operasyon baglami henuz eklenmedi."}
+                    </p>
                   </div>
                 ) : null}
               </div>
-            </section>
+            </SectionCard>
 
-            <section className="panel-card survey-form-card operation-create-card">
-              <div className="survey-form-card-head operation-create-card-head">
-                <div>
-                  <p className="builder-panel-kicker">Contact Readiness</p>
-                  <h2>Kisi hazirligi</h2>
-                  <p>Kisileri hemen yuklemek zorunda degilsiniz. Operasyon olustuktan sonra bu adimi tamamlayabilirsiniz.</p>
-                </div>
-              </div>
-
+            <SectionCard eyebrow="Kisiler" title="Kisi Yukleme Stratejisi" description="Kisi listesini simdi baglayabilir veya operasyonu acip sonrasinda tamamlayabilirsiniz.">
               <div className="survey-form-fields">
                 <div className="operation-choice-grid" role="radiogroup" aria-label="Kisi hazirligi secimi">
                   <button
@@ -437,8 +547,8 @@ export default function NewOperationPage() {
                 {isImportVisible ? (
                   <>
                     <div className="operation-inline-message is-accent">
-                      <strong>Toplu import yeni operasyona baglanacak</strong>
-                      <span>Burada parse edilen gecerli kisiler, once operasyon olusturulduktan sonra otomatik olarak yeni operasyon kaydina eklenecek.</span>
+                      <strong>Toplu import ilk dalgaya baglanacak</strong>
+                      <span>Burada dogrulanan gecerli kisiler, operasyon olustuktan hemen sonra yeni kayda aktarilir.</span>
                     </div>
 
                     <div className="operation-bulk-import">
@@ -514,7 +624,7 @@ export default function NewOperationPage() {
                       {importSummary.invalidRows > 0 && !importError ? (
                         <div className="operation-inline-message is-danger compact">
                           <strong>Gecersiz satirlar import edilmeyecek</strong>
-                          <span>Sadece gecerli satirlar yeni operasyona baglanir. Gecersiz satirlari duzeltebilir veya bu haliyle devam edebilirsiniz.</span>
+                          <span>Sadece gecerli satirlar yeni operasyona baglanir. Dilerseniz gecersiz satirlari duzeltip tekrar yukleyebilirsiniz.</span>
                         </div>
                       ) : null}
 
@@ -529,49 +639,25 @@ export default function NewOperationPage() {
                 ) : (
                   <div className="operation-inline-message">
                     <strong>Kisi listesi daha sonra eklenebilir</strong>
-                    <span>Bu secim operasyonu hemen olusturur. Kisi importu operasyon detayindaki mevcut akisla daha sonra yapilabilir.</span>
+                    <span>Bu tercih operasyonu hemen acar. Kisi importu, operasyon detayindaki mevcut akistan daha sonra devam edebilir.</span>
                   </div>
                 )}
               </div>
-            </section>
+            </SectionCard>
           </div>
 
-          <aside className="operation-create-side">
-            <section className="panel-card operation-summary-panel">
-              <div className="section-header operation-summary-header">
-                <div className="section-copy">
-                  <h2>Operasyon Ozeti</h2>
-                  <p>Olusturulacak kaydin temel operasyon durusunu burada aninda kontrol edin.</p>
-                </div>
-                <StatusBadge status="Draft" />
-              </div>
-
-              <div className="operation-summary-list">
-                <div className="operation-summary-row">
-                  <span>Operasyon adi</span>
-                  <strong>{operationName.trim() || "Henuz ad verilmedi"}</strong>
-                </div>
-                <div className="operation-summary-row">
-                  <span>Secilen anket</span>
-                  <strong>{selectedSurvey?.name ?? "Henuz anket secilmedi"}</strong>
-                </div>
-                <div className="operation-summary-row">
-                  <span>Durum</span>
-                  <strong>Taslak</strong>
-                </div>
-                <div className="operation-summary-row">
-                  <span>Kisi durumu</span>
-                  <strong>{personStatus}</strong>
-                </div>
-              </div>
-
-              <div className="operation-summary-helper">
-                <strong>Sonraki adim</strong>
-                <p>
-                  {contactMode === "now"
-                    ? "Operasyon once backendde olusturulur, sonra previewde gecerli gorunen kisiler yeni operasyona toplu olarak baglanir."
-                    : "Operasyon olusturulduktan sonra kisi yukleme mevcut operasyon detay akisindan devam eder."}
-                </p>
+          <aside className="ops-create-side">
+            <SectionCard eyebrow="Analiz" title="Hazirlik Degerlendirmesi" description="Sistem, operasyonu acmadan once ana karar noktalarini burada ozetler." action={<StatusBadge status={readiness.status} label={readiness.label} />}>
+              <div className="ops-create-checklist">
+                {preparationItems.map((item) => (
+                  <div key={item.key} className="ops-create-check-row">
+                    <div className="ops-create-check-copy">
+                      <strong>{item.title}</strong>
+                      <span>{item.detail}</span>
+                    </div>
+                    <StatusBadge status={item.status} label={item.label} />
+                  </div>
+                ))}
               </div>
 
               {actionLabel ? (
@@ -587,11 +673,48 @@ export default function NewOperationPage() {
                   <span>{submitError}</span>
                 </div>
               ) : null}
-            </section>
+            </SectionCard>
+
+            <SectionCard eyebrow="Ozet" title="Operasyon Ozeti" description="Olusturulacak kaydin sahaya nasil cikacagini bu panelden hizla kontrol edin.">
+              <div className="operation-summary-list">
+                <div className="operation-summary-row">
+                  <span>Operasyon adi</span>
+                  <strong>{trimmedOperationName || "Henuz ad verilmedi"}</strong>
+                </div>
+                <div className="operation-summary-row">
+                  <span>Secilen anket</span>
+                  <strong>{selectedSurvey?.name ?? "Henuz anket secilmedi"}</strong>
+                </div>
+                <div className="operation-summary-row">
+                  <span>Durum</span>
+                  <strong>{readiness.label}</strong>
+                </div>
+                <div className="operation-summary-row">
+                  <span>Kisi plani</span>
+                  <strong>{personStatus}</strong>
+                </div>
+              </div>
+
+              <div className="operation-summary-helper ops-create-summary-helper">
+                <strong>Sonraki adim</strong>
+                <p>
+                  {contactMode === "now"
+                    ? "Operasyon once backendde olusturulur, sonra onizlemede gecerli gorunen kisiler ilk dalga olarak otomatik baglanir."
+                    : "Operasyon olusturulduktan sonra kisi yukleme, operasyon detay ekranindaki mevcut akistan devam eder."}
+                </p>
+              </div>
+
+              {operationNote.trim() ? (
+                <div className="ops-create-note">
+                  <strong>Hazirlik notu</strong>
+                  <p>{operationNote}</p>
+                </div>
+              ) : null}
+            </SectionCard>
           </aside>
         </div>
 
-        <div className="operation-action-bar panel-card">
+        <div className="operation-action-bar panel-card ops-create-action-bar">
           <Link href="/operations" className="button-secondary compact-button">
             Iptal
           </Link>
@@ -604,7 +727,7 @@ export default function NewOperationPage() {
             >
               {isSubmitting && submitIntent === "draft"
                 ? submitPhase === "importing"
-                  ? "Taslak olusturuldu, kisiler baglaniyor..."
+                  ? "Taslak olustu, kisiler baglaniyor..."
                   : "Taslak olusturuluyor..."
                 : "Taslak olarak olustur"}
             </button>
@@ -627,7 +750,7 @@ export default function NewOperationPage() {
   );
 }
 
-function intentLabel(intent: SubmitIntent | null, phase: "creating"): string {
+function intentLabel(intent: SubmitIntent | null, phase: "creating") {
   if (phase === "creating") {
     return intent === "draft" ? "Taslak operasyon backendde olusturuluyor..." : "Operasyon backendde olusturuluyor...";
   }

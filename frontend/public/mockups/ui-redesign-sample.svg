@@ -1,0 +1,134 @@
+<svg width="1600" height="1000" viewBox="0 0 1600 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="1000" fill="#F6F0E7"/>
+  <rect x="32" y="24" width="1536" height="952" rx="28" fill="#FBF7F1" stroke="#D9CCBC"/>
+  <rect x="56" y="48" width="246" height="904" rx="24" fill="#FFFBF6" stroke="#E1D7CB"/>
+  <rect x="76" y="68" width="42" height="42" rx="14" fill="url(#paint0_linear_1_2)"/>
+  <text x="132" y="96" fill="#221B16" font-family="Arial, sans-serif" font-size="28" font-weight="700">SurveyAI</text>
+  <text x="132" y="118" fill="#786B5F" font-family="Arial, sans-serif" font-size="15">Research operations</text>
+
+  <rect x="76" y="158" width="206" height="54" rx="14" fill="#E8F2F0" stroke="#C7DAD6"/>
+  <text x="98" y="190" fill="#2A665F" font-family="Arial, sans-serif" font-size="18" font-weight="700">Dashboard</text>
+  <rect x="76" y="222" width="206" height="54" rx="14" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="98" y="254" fill="#221B16" font-family="Arial, sans-serif" font-size="18" font-weight="700">Surveys</text>
+  <rect x="76" y="286" width="206" height="54" rx="14" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="98" y="318" fill="#221B16" font-family="Arial, sans-serif" font-size="18" font-weight="700">Operations</text>
+  <rect x="76" y="350" width="206" height="54" rx="14" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="98" y="382" fill="#221B16" font-family="Arial, sans-serif" font-size="18" font-weight="700">Contacts</text>
+
+  <rect x="76" y="822" width="206" height="96" rx="18" fill="#FFF8EE" stroke="#E4D7C8"/>
+  <text x="96" y="854" fill="#76695E" font-family="Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.5">READINESS</text>
+  <text x="96" y="890" fill="#221B16" font-family="Arial, sans-serif" font-size="26" font-weight="700">2 / 3 ready</text>
+
+  <rect x="326" y="48" width="1216" height="84" rx="22" fill="#FFFCF8" stroke="#E1D7CB"/>
+  <text x="358" y="84" fill="#221B16" font-family="Arial, sans-serif" font-size="34" font-weight="700">Operations Overview</text>
+  <text x="358" y="110" fill="#726557" font-family="Arial, sans-serif" font-size="16">Current records and readiness checks for survey, contact, and operation workflows.</text>
+  <rect x="1268" y="68" width="126" height="42" rx="14" fill="#2E7D74"/>
+  <text x="1297" y="95" fill="#FFFDF8" font-family="Arial, sans-serif" font-size="17" font-weight="700">New survey</text>
+  <rect x="1408" y="68" width="112" height="42" rx="14" fill="#FFFFFF" stroke="#D9CCBC"/>
+  <text x="1437" y="95" fill="#221B16" font-family="Arial, sans-serif" font-size="17" font-weight="700">Contacts</text>
+
+  <rect x="326" y="152" width="292" height="152" rx="18" fill="#FFFCF8" stroke="#E1D7CB"/>
+  <text x="352" y="182" fill="#7A6D61" font-family="Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.5">SURVEYS</text>
+  <text x="352" y="250" fill="#221B16" font-family="Arial, sans-serif" font-size="64" font-weight="700">6</text>
+  <text x="352" y="280" fill="#726557" font-family="Arial, sans-serif" font-size="16">Available survey records in current scope.</text>
+
+  <rect x="634" y="152" width="292" height="152" rx="18" fill="#FFFCF8" stroke="#E1D7CB"/>
+  <text x="660" y="182" fill="#7A6D61" font-family="Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.5">CONTACTS</text>
+  <text x="660" y="250" fill="#221B16" font-family="Arial, sans-serif" font-size="64" font-weight="700">124</text>
+  <text x="660" y="280" fill="#726557" font-family="Arial, sans-serif" font-size="16">Participant rows attached to operations.</text>
+
+  <rect x="942" y="152" width="292" height="152" rx="18" fill="#FFFCF8" stroke="#E1D7CB"/>
+  <text x="968" y="182" fill="#7A6D61" font-family="Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.5">OPERATIONS</text>
+  <text x="968" y="250" fill="#221B16" font-family="Arial, sans-serif" font-size="64" font-weight="700">2</text>
+  <text x="968" y="280" fill="#726557" font-family="Arial, sans-serif" font-size="16">Execution workspaces present in backend.</text>
+
+  <rect x="1250" y="152" width="292" height="152" rx="18" fill="#F2FAF7" stroke="#C4D9D4"/>
+  <text x="1276" y="182" fill="#7A6D61" font-family="Arial, sans-serif" font-size="13" font-weight="700" letter-spacing="1.5">READINESS</text>
+  <text x="1276" y="250" fill="#221B16" font-family="Arial, sans-serif" font-size="64" font-weight="700">2 / 3</text>
+  <text x="1276" y="280" fill="#726557" font-family="Arial, sans-serif" font-size="16">Contact load requires attention.</text>
+
+  <rect x="326" y="324" width="760" height="250" rx="18" fill="#FFFCF8" stroke="#E1D7CB"/>
+  <text x="352" y="356" fill="#221B16" font-family="Arial, sans-serif" font-size="24" font-weight="700">Readiness checks</text>
+  <text x="352" y="382" fill="#726557" font-family="Arial, sans-serif" font-size="15">Operational prerequisites for moving into execution.</text>
+
+  <rect x="352" y="406" width="708" height="48" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="372" y="435" fill="#221B16" font-family="Arial, sans-serif" font-size="17" font-weight="700">Survey definition</text>
+  <text x="612" y="435" fill="#726557" font-family="Arial, sans-serif" font-size="15">6 survey records available</text>
+  <rect x="868" y="416" width="70" height="28" rx="14" fill="#E5F3EA"/>
+  <text x="889" y="435" fill="#2D6444" font-family="Arial, sans-serif" font-size="14" font-weight="700">Ready</text>
+  <rect x="954" y="412" width="86" height="36" rx="12" fill="#FFFFFF" stroke="#D9CCBC"/>
+  <text x="975" y="435" fill="#221B16" font-family="Arial, sans-serif" font-size="14" font-weight="700">Open</text>
+
+  <rect x="352" y="466" width="708" height="48" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="372" y="495" fill="#221B16" font-family="Arial, sans-serif" font-size="17" font-weight="700">Contact load</text>
+  <text x="612" y="495" fill="#726557" font-family="Arial, sans-serif" font-size="15">124 contacts loaded</text>
+  <rect x="868" y="476" width="70" height="28" rx="14" fill="#E5F3EA"/>
+  <text x="889" y="495" fill="#2D6444" font-family="Arial, sans-serif" font-size="14" font-weight="700">Ready</text>
+  <rect x="954" y="472" width="86" height="36" rx="12" fill="#FFFFFF" stroke="#D9CCBC"/>
+  <text x="975" y="495" fill="#221B16" font-family="Arial, sans-serif" font-size="14" font-weight="700">Open</text>
+
+  <rect x="352" y="526" width="708" height="48" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="372" y="555" fill="#221B16" font-family="Arial, sans-serif" font-size="17" font-weight="700">Operation workspace</text>
+  <text x="612" y="555" fill="#726557" font-family="Arial, sans-serif" font-size="15">2 operations available</text>
+  <rect x="850" y="536" width="88" height="28" rx="14" fill="#F9EEDB"/>
+  <text x="869" y="555" fill="#A26B2B" font-family="Arial, sans-serif" font-size="14" font-weight="700">Pending</text>
+  <rect x="954" y="532" width="86" height="36" rx="12" fill="#FFFFFF" stroke="#D9CCBC"/>
+  <text x="975" y="555" fill="#221B16" font-family="Arial, sans-serif" font-size="14" font-weight="700">Open</text>
+
+  <rect x="1106" y="324" width="436" height="250" rx="18" fill="#FFFCF8" stroke="#E1D7CB"/>
+  <text x="1132" y="356" fill="#221B16" font-family="Arial, sans-serif" font-size="24" font-weight="700">Queue summary</text>
+  <text x="1132" y="382" fill="#726557" font-family="Arial, sans-serif" font-size="15">Immediate counts for the next operator action.</text>
+
+  <rect x="1132" y="406" width="384" height="40" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="1150" y="431" fill="#221B16" font-family="Arial, sans-serif" font-size="16" font-weight="700">Survey backlog</text>
+  <text x="1326" y="431" fill="#726557" font-family="Arial, sans-serif" font-size="15">6 items</text>
+
+  <rect x="1132" y="456" width="384" height="40" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="1150" y="481" fill="#221B16" font-family="Arial, sans-serif" font-size="16" font-weight="700">Contact backlog</text>
+  <text x="1320" y="481" fill="#726557" font-family="Arial, sans-serif" font-size="15">124 items</text>
+
+  <rect x="1132" y="506" width="384" height="40" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="1150" y="531" fill="#221B16" font-family="Arial, sans-serif" font-size="16" font-weight="700">Next likely action</text>
+  <text x="1282" y="531" fill="#726557" font-family="Arial, sans-serif" font-size="15">Open operations</text>
+
+  <rect x="326" y="594" width="760" height="332" rx="18" fill="#FFFCF8" stroke="#E1D7CB"/>
+  <text x="352" y="626" fill="#221B16" font-family="Arial, sans-serif" font-size="24" font-weight="700">Recent surveys</text>
+  <text x="352" y="652" fill="#726557" font-family="Arial, sans-serif" font-size="15">Latest survey records returned by backend.</text>
+  <rect x="960" y="614" width="100" height="34" rx="12" fill="#FFFFFF" stroke="#D9CCBC"/>
+  <text x="989" y="636" fill="#221B16" font-family="Arial, sans-serif" font-size="14" font-weight="700">View all</text>
+
+  <rect x="352" y="678" width="708" height="56" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="372" y="709" fill="#221B16" font-family="Arial, sans-serif" font-size="16" font-weight="700">Customer Satisfaction Pulse</text>
+  <text x="372" y="728" fill="#726557" font-family="Arial, sans-serif" font-size="14">Quarterly customer interview flow</text>
+  <text x="816" y="709" fill="#726557" font-family="Arial, sans-serif" font-size="14">2026-04-01</text>
+  <rect x="938" y="692" width="78" height="28" rx="14" fill="#E5F3EA"/>
+  <text x="960" y="710" fill="#2D6444" font-family="Arial, sans-serif" font-size="14" font-weight="700">Live</text>
+
+  <rect x="352" y="746" width="708" height="56" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="372" y="777" fill="#221B16" font-family="Arial, sans-serif" font-size="16" font-weight="700">Segment Readiness Audit</text>
+  <text x="372" y="796" fill="#726557" font-family="Arial, sans-serif" font-size="14">Internal operations QA survey</text>
+  <text x="816" y="777" fill="#726557" font-family="Arial, sans-serif" font-size="14">2026-03-30</text>
+  <rect x="938" y="760" width="86" height="28" rx="14" fill="#F9EEDB"/>
+  <text x="960" y="778" fill="#A26B2B" font-family="Arial, sans-serif" font-size="14" font-weight="700">Draft</text>
+
+  <rect x="1106" y="594" width="436" height="332" rx="18" fill="#FFFCF8" stroke="#E1D7CB"/>
+  <text x="1132" y="626" fill="#221B16" font-family="Arial, sans-serif" font-size="24" font-weight="700">Recent contacts</text>
+  <text x="1132" y="652" fill="#726557" font-family="Arial, sans-serif" font-size="15">Latest contact rows loaded from operations.</text>
+  <rect x="1430" y="614" width="86" height="34" rx="12" fill="#FFFFFF" stroke="#D9CCBC"/>
+  <text x="1452" y="636" fill="#221B16" font-family="Arial, sans-serif" font-size="14" font-weight="700">Open</text>
+
+  <rect x="1132" y="678" width="384" height="56" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="1152" y="709" fill="#221B16" font-family="Arial, sans-serif" font-size="16" font-weight="700">Ayse Demir</text>
+  <text x="1152" y="728" fill="#726557" font-family="Arial, sans-serif" font-size="14">CX follow-up / +90 555 000 00 01</text>
+
+  <rect x="1132" y="746" width="384" height="56" rx="12" fill="#FFFFFF" stroke="#E6DDD2"/>
+  <text x="1152" y="777" fill="#221B16" font-family="Arial, sans-serif" font-size="16" font-weight="700">Murat Kaya</text>
+  <text x="1152" y="796" fill="#726557" font-family="Arial, sans-serif" font-size="14">NPS recovery / +90 555 000 00 02</text>
+
+  <defs>
+    <linearGradient id="paint0_linear_1_2" x1="76" y1="68" x2="118" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2E7D74"/>
+      <stop offset="1" stop-color="#9AC5BA"/>
+    </linearGradient>
+  </defs>
+</svg>

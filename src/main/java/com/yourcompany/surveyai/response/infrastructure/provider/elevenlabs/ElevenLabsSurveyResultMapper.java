@@ -21,10 +21,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class ElevenLabsSurveyResultMapper implements ProviderSurveyResultMapper {
+
+    private static final Pattern QUESTION_RESPONSE_KEY_PATTERN = Pattern.compile("^survey_question_(\\d+)_response$", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> NON_ANSWER_KEYS = Set.of(
+            "survey_completion_status",
+            "survey_consent_given",
+            "user_feedback_summary"
+    );
 
     private final ObjectMapper objectMapper;
 
@@ -79,6 +89,9 @@ public class ElevenLabsSurveyResultMapper implements ProviderSurveyResultMapper 
             candidate.fields().forEachRemaining(entry -> {
                 String key = entry.getKey();
                 JsonNode value = entry.getValue();
+                if (isNonAnswerField(key)) {
+                    return;
+                }
                 answers.add(buildAnswerFromEntry(key, value));
             });
             return answers;
@@ -93,6 +106,9 @@ public class ElevenLabsSurveyResultMapper implements ProviderSurveyResultMapper 
                         text(item, "questionTitle"),
                         text(item, "field")
                 );
+                if (isNonAnswerField(key)) {
+                    continue;
+                }
                 answers.add(buildAnswerFromEntry(key, item));
             }
         }
@@ -108,7 +124,7 @@ public class ElevenLabsSurveyResultMapper implements ProviderSurveyResultMapper 
         List<String> normalizedValues = extractNormalizedValues(value, rawValue);
         return new IngestedSurveyAnswer(
                 key,
-                value != null && value.hasNonNull("question_order") ? value.get("question_order").asInt() : null,
+                resolveQuestionOrder(key, value),
                 value != null ? firstNonBlank(text(value, "question_title"), text(value, "label")) : null,
                 rawValue,
                 rawText,
@@ -168,11 +184,40 @@ public class ElevenLabsSurveyResultMapper implements ProviderSurveyResultMapper 
                 .toList();
         List<String> unmapped = new ArrayList<>();
         candidate.fieldNames().forEachRemaining(fieldName -> {
+            if (isNonAnswerField(fieldName)) {
+                return;
+            }
             if (!mappedKeys.contains(fieldName)) {
                 unmapped.add(fieldName);
             }
         });
         return unmapped;
+    }
+
+    private boolean isNonAnswerField(String key) {
+        if (key == null || key.isBlank()) {
+            return false;
+        }
+        return NON_ANSWER_KEYS.contains(key.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private Integer resolveQuestionOrder(String key, JsonNode value) {
+        if (value != null) {
+            if (value.hasNonNull("question_order")) {
+                return value.get("question_order").asInt();
+            }
+            if (value.hasNonNull("questionOrder")) {
+                return value.get("questionOrder").asInt();
+            }
+        }
+        if (key == null) {
+            return null;
+        }
+        Matcher matcher = QUESTION_RESPONSE_KEY_PATTERN.matcher(key.trim());
+        if (matcher.matches()) {
+            return Integer.parseInt(matcher.group(1));
+        }
+        return null;
     }
 
     private SurveyResponseStatus mapResponseStatus(CallJobStatus jobStatus, boolean noAnswers) {

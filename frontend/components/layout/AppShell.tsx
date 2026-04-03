@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getNavigationItems } from "@/components/layout/navigation";
 import { PageHeaderProvider, useResolvedPageHeader } from "@/components/layout/PageHeaderContext";
-import { BellIcon, CollapseIcon, MenuIcon, SearchIcon, SparkIcon } from "@/components/ui/Icons";
+import { BellIcon, CollapseIcon, MenuIcon, SearchIcon } from "@/components/ui/Icons";
 import { useAuth } from "@/lib/auth";
 import { useLanguage, useTranslations } from "@/lib/i18n/LanguageContext";
 import type { Language } from "@/lib/i18n";
@@ -32,6 +32,8 @@ function AppShellFrame({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const { language, setLanguage } = useLanguage();
   const { status, currentUser, logout } = useAuth();
   const { t } = useTranslations();
@@ -39,6 +41,12 @@ function AppShellFrame({ children }: { children: ReactNode }) {
 
   const navigationItems = getNavigationItems(t);
   const isAuthRoute = pathname === "/login";
+  const isDashboardHome = pathname === "/";
+
+  useEffect(() => {
+    setIsUserMenuOpen(false);
+    setIsMobileNavOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (status === "unauthenticated" && !isAuthRoute) {
@@ -54,9 +62,9 @@ function AppShellFrame({ children }: { children: ReactNode }) {
     return (
       <div className="auth-shell-loading">
         <div className="panel-card auth-shell-loading-card">
-          <span className="eyebrow">Session</span>
-          <h1>Loading your workspace</h1>
-          <p>We are resolving your current user and company context before opening the app.</p>
+          <span className="eyebrow">Oturum</span>
+          <h1>Calisma alani hazirlaniyor</h1>
+          <p>Kullanici ve sirket baglami dogrulaniyor. Ardindan panel acilacak.</p>
         </div>
       </div>
     );
@@ -112,7 +120,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
             {!isSidebarCollapsed ? (
               <div className="brand-copy">
                 <p className="brand-title">SurveyAI</p>
-                <p className="brand-subtitle">{t("shell.brandSubtitle")}</p>
+                <p className="brand-subtitle">Arastirma Operasyonlari</p>
               </div>
             ) : null}
           </div>
@@ -147,13 +155,9 @@ function AppShellFrame({ children }: { children: ReactNode }) {
           </nav>
 
           {!isSidebarCollapsed ? (
-            <div className="sidebar-footer">
-              <div className="eyebrow">
-                <SparkIcon className="nav-icon" />
-                {t("shell.sidebar.dailyFocus")}
-              </div>
-              <strong>{t("shell.sidebar.readinessTitle")}</strong>
-              <p>{t("shell.sidebar.readinessDescription")}</p>
+            <div className="sidebar-footer sidebar-footer-compact">
+              <strong>Operasyon ozeti</strong>
+              <p>Bugunku akis icin anketleri, operasyonlari ve kisi listelerini ayni ritimde yonetin.</p>
             </div>
           ) : null}
         </div>
@@ -161,39 +165,80 @@ function AppShellFrame({ children }: { children: ReactNode }) {
 
       <main className="app-main">
         <div className="main-frame">
-          <header className="topbar">
-            <div className="header-cluster">
+          <header className={["topbar", isDashboardHome ? "is-dashboard-topbar" : ""].filter(Boolean).join(" ")}>
+            <div className="header-cluster topbar-context">
               <button className="mobile-menu-button mobile-only" onClick={() => setIsMobileNavOpen(true)}>
                 <MenuIcon className="nav-icon" />
-                {t("shell.topbar.menu")}
+                Gezinme
               </button>
-              <div className="topbar-copy">
+              <div className={["topbar-copy", "topbar-copy-compact", isDashboardHome ? "is-dashboard-copy" : ""].filter(Boolean).join(" ")}>
+                <span className="topbar-kicker">{currentUser.company.name}</span>
                 <h1>{currentMeta.title}</h1>
                 <p>{currentMeta.subtitle}</p>
               </div>
             </div>
 
             <div className="topbar-actions">
+              <label className="search-field topbar-search" aria-label="Genel arama">
+                <SearchIcon className="nav-icon" />
+                <input
+                  type="search"
+                  placeholder="Anket, operasyon veya kisi ara"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+                <span className="topbar-search-shortcut">35K</span>
+              </label>
+
               <div className="language-switcher" role="group" aria-label={t("shell.topbar.languageLabel")}>
                 <LanguageButton current={language} code="tr" label={t("shell.topbar.tr")} onSelect={setLanguage} />
                 <LanguageButton current={language} code="en" label={t("shell.topbar.en")} onSelect={setLanguage} />
               </div>
-              <label className="search-field topbar-search">
-                <SearchIcon className="nav-icon" />
-                <input placeholder={t("shell.topbar.searchPlaceholder")} />
-              </label>
-              <div className="topbar-account">
-                <div className="topbar-account-copy">
-                  <strong>{currentUser.user.fullName}</strong>
-                  <span>{currentUser.company.name}</span>
-                </div>
-                <button type="button" className="button-secondary compact-button" onClick={() => void handleLogout()}>
-                  Log Out
-                </button>
-              </div>
-              <button className="icon-button notification-button compact-icon-button" aria-label={t("shell.topbar.notifications")}>
+
+              <button type="button" className="icon-button notification-button" aria-label="Bildirimler">
                 <BellIcon className="nav-icon" />
+                <span className="notification-indicator" />
               </button>
+
+              <div className="topbar-account-menu">
+                <button
+                  type="button"
+                  className="topbar-account"
+                  aria-expanded={isUserMenuOpen}
+                  onClick={() => setIsUserMenuOpen((value) => !value)}
+                >
+                  <span className="topbar-account-avatar">{currentUser.user.fullName.slice(0, 1).toUpperCase()}</span>
+                  <div className="topbar-account-copy">
+                    <span className="topbar-account-label">Sirket</span>
+                    <strong>{currentUser.company.name}</strong>
+                    <span>{currentUser.user.fullName}</span>
+                  </div>
+                </button>
+
+                <div className={["topbar-account-panel", isUserMenuOpen ? "is-open" : ""].filter(Boolean).join(" ")}>
+                  <div className="topbar-account-panel-copy">
+                    <strong>{currentUser.user.fullName}</strong>
+                    <span>{currentUser.user.email}</span>
+                  </div>
+                  <div className="topbar-account-panel-copy">
+                    <strong>{currentUser.company.name}</strong>
+                    <span>Mevcut calisma alani</span>
+                  </div>
+                  <Link href="/surveys/new" className="button-secondary compact-button" onClick={() => setIsUserMenuOpen(false)}>
+                    Yeni Anket
+                  </Link>
+                  <button
+                    type="button"
+                    className="button-secondary compact-button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      void handleLogout();
+                    }}
+                  >
+                    Cikis Yap
+                  </button>
+                </div>
+              </div>
             </div>
           </header>
 

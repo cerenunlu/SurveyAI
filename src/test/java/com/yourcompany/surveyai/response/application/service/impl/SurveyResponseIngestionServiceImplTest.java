@@ -168,6 +168,33 @@ class SurveyResponseIngestionServiceImplTest {
     }
 
     @Test
+    void ingest_mapsGenericElevenLabsQuestionResponseKeysByQuestionOrder() {
+        TestFixture fixture = buildFixture();
+        when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(fixture.callAttempt().getId())).thenReturn(Optional.empty());
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey().getId()))
+                .thenReturn(List.of(fixture.choiceQuestion(), fixture.ratingQuestion()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.choiceQuestion().getId()))
+                .thenReturn(List.of(fixture.yesOption(), fixture.noOption()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.ratingQuestion().getId()))
+                .thenReturn(List.of());
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(any(), any()))
+                .thenReturn(Optional.empty());
+
+        service.ingest(fixture.callAttempt(), fixture.completedWebhookWithGenericQuestionKeys());
+
+        assertThat(savedAnswers).hasSize(2);
+        assertThat(savedAnswers)
+                .anySatisfy(answer -> {
+                    assertThat(answer.getSurveyQuestion().getQuestionOrder()).isEqualTo(1);
+                    assertThat(answer.getSelectedOption()).isEqualTo(fixture.yesOption());
+                })
+                .anySatisfy(answer -> {
+                    assertThat(answer.getSurveyQuestion().getQuestionOrder()).isEqualTo(2);
+                    assertThat(answer.getAnswerNumber()).isEqualByComparingTo(BigDecimal.valueOf(9));
+                });
+    }
+
+    @Test
     void ingest_matchesSingleChoiceAnswersDespiteTurkishCharacterDifferences() {
         TurkishChoiceFixture fixture = buildTurkishChoiceFixture();
         CallAttempt mockAttempt = fixture.mockCallAttempt();
@@ -364,7 +391,65 @@ class SurveyResponseIngestionServiceImplTest {
                 """
         );
 
-        return new TestFixture(company, survey, operation, contact, callJob, callAttempt, mockCallAttempt, choiceQuestion, ratingQuestion, yesOption, noOption, completedWebhook);
+        ProviderWebhookEvent completedWebhookWithGenericQuestionKeys = new ProviderWebhookEvent(
+                CallProvider.ELEVENLABS,
+                "conv_123",
+                "op:contact",
+                "post_call_transcription",
+                CallJobStatus.COMPLETED,
+                CallAttemptStatus.COMPLETED,
+                OffsetDateTime.now(),
+                45,
+                new ProviderCorrelationMetadata(
+                        operation.getId(),
+                        contact.getId(),
+                        callJob.getId(),
+                        callAttempt.getId()
+                ),
+                null,
+                null,
+                "inline://elevenlabs/conversations/conv_123",
+                "agent: Hello\nuser: Hi",
+                """
+                {
+                  "type": "post_call_transcription",
+                  "data": {
+                    "conversation_id": "conv_123",
+                    "status": "done",
+                    "transcript": [
+                      {"role": "agent", "message": "Hello"},
+                      {"role": "user", "message": "Hi"}
+                    ],
+                    "analysis": {
+                      "transcript_summary": "Summary",
+                      "data_collection_results": {
+                        "survey_consent_given": {"value": "yes"},
+                        "survey_completion_status": {"value": "completed"},
+                        "survey_question_1_response": {"value": "yes"},
+                        "survey_question_2_response": {"value": "9", "number": 9},
+                        "user_feedback_summary": {"value": "Looks good"}
+                      }
+                    }
+                  }
+                }
+                """
+        );
+
+        return new TestFixture(
+                company,
+                survey,
+                operation,
+                contact,
+                callJob,
+                callAttempt,
+                mockCallAttempt,
+                choiceQuestion,
+                ratingQuestion,
+                yesOption,
+                noOption,
+                completedWebhook,
+                completedWebhookWithGenericQuestionKeys
+        );
     }
 
     private record TestFixture(
@@ -379,7 +464,8 @@ class SurveyResponseIngestionServiceImplTest {
             SurveyQuestion ratingQuestion,
             SurveyQuestionOption yesOption,
             SurveyQuestionOption noOption,
-            ProviderWebhookEvent completedWebhook
+            ProviderWebhookEvent completedWebhook,
+            ProviderWebhookEvent completedWebhookWithGenericQuestionKeys
     ) {
     }
 

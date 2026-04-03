@@ -18,16 +18,16 @@ export function ChoiceOptionsEditor({ type, options, onChange, disabled = false 
   ].join(" ");
   const isFixedBinaryChoice = type === "yes_no";
   const helperCopy = isDropdownQuestion(type)
-    ? "Seçenekler açılır liste olarak gösterilir ve katılımcı tek bir seçim yapar."
+    ? "Secenekler acilir liste olarak gosterilir ve katilimci tek bir secim yapar."
     : isMultiSelectQuestion(type)
-      ? "Seçenek metnine tıklayıp kart içinde doğrudan düzenleyin. Katılımcı birden fazla seçim yapabilir."
-      : "Seçenek metnine tıklayıp kart içinde doğrudan düzenleyin.";
+      ? "Secenek metnini kart icinde dogrudan duzenleyin. Katilimci birden fazla secim yapabilir."
+      : "Secenek metnini kart icinde dogrudan duzenleyin.";
 
   return (
     <div className="choice-inline-editor">
       <div className="choice-inline-header">
         <div>
-          <strong>Yanıt seçenekleri</strong>
+          <strong>Yanit secenekleri</strong>
           <p>{helperCopy}</p>
         </div>
       </div>
@@ -37,14 +37,14 @@ export function ChoiceOptionsEditor({ type, options, onChange, disabled = false 
           <div className="builder-option-row choice-inline-row" key={option.id}>
             <span className={markerClassName} aria-hidden="true" />
             <div className="choice-inline-input-shell">
-              <span className="choice-inline-input-label">Seçenek {index + 1}</span>
+              <span className="choice-inline-input-label">Secenek {index + 1}</span>
               <input
                 value={option.label}
                 onChange={(event) =>
                   onChange(options.map((item) => (item.id === option.id ? { ...item, label: event.target.value } : item)))
                 }
-                placeholder={`Seçenek ${index + 1}`}
-                aria-label={`Seçenek ${index + 1}`}
+                placeholder={`Secenek ${index + 1}`}
+                aria-label={`Secenek ${index + 1}`}
                 disabled={disabled}
               />
             </div>
@@ -63,11 +63,16 @@ export function ChoiceOptionsEditor({ type, options, onChange, disabled = false 
       <button
         type="button"
         className="choice-inline-add"
-        onClick={() => onChange([...options, createChoiceOption(`option-${options.length + 1}-${Date.now()}`, `Seçenek ${options.length + 1}`, options.length + 1)])}
+        onClick={() =>
+          onChange([
+            ...options,
+            createChoiceOption(`option-${options.length + 1}-${Date.now()}`, `Secenek ${options.length + 1}`, options.length + 1),
+          ])
+        }
         disabled={disabled || isFixedBinaryChoice}
       >
         <PlusIcon className="nav-icon" />
-        Seçenek ekle
+        Secenek ekle
       </button>
     </div>
   );
