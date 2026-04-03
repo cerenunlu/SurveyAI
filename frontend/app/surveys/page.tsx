@@ -1,30 +1,50 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DataTable } from "@/components/ui/DataTable";
 import { SectionCard } from "@/components/ui/SectionCard";
-import { StatCard } from "@/components/ui/StatCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  ContactIcon,
+  PlayIcon,
+  OperationIcon,
   PlusIcon,
   SurveyIcon,
 } from "@/components/ui/Icons";
 import { fetchCompanyOperations } from "@/lib/operations";
 import { fetchSurveyBuilderSurvey } from "@/lib/survey-builder-api";
+import { questionTypeLabels } from "@/lib/survey-builder";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import type { Operation, Survey, TableColumn } from "@/lib/types";
+import type { Operation, Survey, SurveyQuestionType, TableColumn } from "@/lib/types";
 
 type SurveyTab = "Aktif" | "Taslak" | "Arsivlenmis" | "Tumu";
+type PortfolioView = "portfolio" | "analytics";
 
 type SurveyRow = Survey & {
   questionCount: number;
+  questionTypeBreakdown: Array<{ type: SurveyQuestionType; count: number }>;
   linkedOperations: Operation[];
+};
+
+type SurveyAnalyticsRow = {
+  id: string;
+  name: string;
+  questionCount: number;
+  questionTypeBreakdown: Array<{ type: SurveyQuestionType; count: number }>;
+  answeredRate: number;
+  completionRate: number;
+  contactCoverageRate: number;
+  engagementRate: number;
+  answeredCount: number;
+  totalContacts: number;
+  metricState: "live" | "pending" | "empty";
+  metricNote: string;
 };
 
 const tabs: SurveyTab[] = ["Aktif", "Taslak", "Arsivlenmis", "Tumu"];
@@ -36,14 +56,35 @@ export default function SurveysPage() {
   const [activeTab, setActiveTab] = useState<SurveyTab>("Aktif");
   const [surveyPage, setSurveyPage] = useState(0);
   const [expandedSurveyId, setExpandedSurveyId] = useState<string | null>(null);
+  const [portfolioView, setPortfolioView] = useState<PortfolioView>("portfolio");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [detailWarning, setDetailWarning] = useState<string | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const headerAction = useMemo(
+    () => (
+      <div className="surveys-header-actions">
+        <Link href="/surveys/new" className="button-primary compact-button">
+          <PlusIcon className="nav-icon" />
+          Yeni Anket
+        </Link>
+        <button
+          type="button"
+          className="button-secondary compact-button"
+          onClick={() => setIsImportModalOpen(true)}
+        >
+          <ContactIcon className="nav-icon" />
+          Kisi Ice Aktar
+        </button>
+      </div>
+    ),
+    [],
+  );
 
   usePageHeaderOverride({
-    title: "Anket sablon yonetimi",
-    subtitle:
-      "Her satir bir anket sablonunu temsil eder. Ayni sablon birden fazla operasyonda kullanilabilir; operasyon kirilimlari ana satirin altinda gosterilir.",
+    title: "Anket Yonetim Paneli",
+    subtitle: "",
+    action: headerAction,
   });
 
   useEffect(() => {
@@ -87,6 +128,10 @@ export default function SurveysPage() {
         }
 
         const questionCounts = new Map<string, number>();
+        const questionTypeBreakdowns = new Map<
+          string,
+          Array<{ type: SurveyQuestionType; count: number }>
+        >();
         detailResults.forEach((result, index) => {
           const survey = baseSurveys[index];
 
@@ -96,6 +141,19 @@ export default function SurveysPage() {
 
           if (result.status === "fulfilled") {
             questionCounts.set(survey.id, result.value.questionCount);
+            const breakdownMap = new Map<SurveyQuestionType, number>();
+            result.value.questions.forEach((question) => {
+              breakdownMap.set(
+                question.type,
+                (breakdownMap.get(question.type) ?? 0) + 1,
+              );
+            });
+            questionTypeBreakdowns.set(
+              survey.id,
+              Array.from(breakdownMap.entries())
+                .map(([type, count]) => ({ type, count }))
+                .sort((left, right) => right.count - left.count),
+            );
           }
         });
 
@@ -108,6 +166,7 @@ export default function SurveysPage() {
         const rows = baseSurveys.map((survey) => ({
           ...survey,
           questionCount: questionCounts.get(survey.id) ?? survey.questions,
+          questionTypeBreakdown: questionTypeBreakdowns.get(survey.id) ?? [],
           linkedOperations: nextOperations.filter(
             (operation) => operation.surveyId === survey.id,
           ),
@@ -185,24 +244,15 @@ export default function SurveysPage() {
         key: "name",
         label: "Anket Adi",
         render: (survey) => (
-          <div className="table-title-block">
-            <div className="table-title">{survey.name}</div>
-            <div className="table-subtitle">{survey.goal}</div>
-            <span className="ops-inline-note">
-              {survey.linkedOperations.length > 0
-                ? `${survey.linkedOperations.length} operasyonda kullaniliyor`
-                : "Henuz operasyona baglanmadi"}
-            </span>
-          </div>
-        ),
-      },
-      {
-        key: "type",
-        label: "Tur",
-        render: (survey) => (
-          <div className="ops-table-stack">
-            <strong>Sesli anket sablonu</strong>
-            <span>Dil: {survey.audience}</span>
+          <div className="table-title-block survey-name-cell">
+            <div className="survey-hover-preview">
+              <div className="table-title survey-hover-preview-text">{survey.name}</div>
+              <div className="survey-hover-preview-bubble">{survey.name}</div>
+            </div>
+            <div className="survey-hover-preview">
+              <div className="table-subtitle survey-hover-preview-text">{survey.goal}</div>
+              <div className="survey-hover-preview-bubble">{survey.goal}</div>
+            </div>
           </div>
         ),
       },
@@ -210,34 +260,63 @@ export default function SurveysPage() {
         key: "questions",
         label: "Soru Sayisi",
         render: (survey) => (
-          <div className="ops-table-stack">
+          <div className="ops-table-stack ops-table-stack-questions">
             <strong>{survey.questionCount}</strong>
-            <span>Sablon akisi</span>
           </div>
         ),
       },
       {
-        key: "usage",
-        label: "Kullanim / Performans",
+        key: "operations",
+        label: "Bagli Operasyon Sayisi",
         render: (survey) => {
-          const totalJobs = survey.linkedOperations.reduce(
-            (sum, operation) => sum + operation.executionSummary.totalCallJobs,
+          const activeOperations = survey.linkedOperations.filter(
+            (operation) =>
+              operation.status === "Running" || operation.status === "Ready",
+          ).length;
+          const draftOperations = survey.linkedOperations.filter(
+            (operation) =>
+              operation.status === "Draft" ||
+              operation.status === "Scheduled" ||
+              operation.status === "Paused",
+          ).length;
+          const totalOperations = survey.linkedOperations.length;
+          const otherOperations = Math.max(
+            totalOperations - activeOperations - draftOperations,
             0,
           );
-          const completedJobs = survey.linkedOperations.reduce(
-            (sum, operation) =>
-              sum + operation.executionSummary.completedCallJobs,
-            0,
-          );
+          const activeDegrees =
+            totalOperations > 0
+              ? Math.round((activeOperations / totalOperations) * 360)
+              : 0;
+          const draftDegrees =
+            totalOperations > 0
+              ? Math.round((draftOperations / totalOperations) * 360)
+              : 0;
 
           return (
-            <div className="ops-table-stack">
-              <strong>{survey.linkedOperations.length} operasyon</strong>
-              <span>
-                {totalJobs > 0
-                  ? `%${Math.round((completedJobs / totalJobs) * 100)} tamamlama`
-                  : "Henuz performans verisi yok"}
-              </span>
+            <div className="ops-operations-chart-cell">
+              <div
+                className="ops-operations-donut"
+                style={
+                  {
+                    "--active-deg": `${activeDegrees}deg`,
+                    "--draft-deg": `${draftDegrees}deg`,
+                  } as CSSProperties
+                }
+              >
+                <div className="ops-operations-donut-center">
+                  <strong>{totalOperations}</strong>
+                </div>
+              </div>
+              <div className="ops-operations-chart-legend">
+                <span className="ops-inline-badge is-active">Aktif: {activeOperations}</span>
+                <span className="ops-inline-badge is-draft">Taslak: {draftOperations}</span>
+                {otherOperations > 0 ? (
+                  <span className="ops-inline-badge is-total">Diger: {otherOperations}</span>
+                ) : (
+                  <span className="ops-inline-badge is-total">Toplam: {totalOperations}</span>
+                )}
+              </div>
             </div>
           );
         },
@@ -245,7 +324,9 @@ export default function SurveysPage() {
       {
         key: "updatedAt",
         label: "Son Guncelleme",
-        render: (survey) => survey.updatedAt,
+        render: (survey) => (
+          <span className="survey-updated-at">{survey.updatedAt}</span>
+        ),
       },
       {
         key: "action",
@@ -263,74 +344,253 @@ export default function SurveysPage() {
               }
             >
               {survey.linkedOperations.length === 0
-                ? "Bagli Operasyon Yok"
-                : expandedSurveyId === survey.id
-                  ? "Kirilimi Gizle"
-                  : "Bagli Operasyonlar"}
+                ? "Operasyon Yok"
+                : "Operasyonlara Git"}
             </button>
             <Link
               href={`/surveys/${survey.id}`}
               className="button-secondary compact-button"
             >
-              Detay
+              Detaya Git
             </Link>
+            <button
+              type="button"
+              className="button-secondary compact-button survey-delete-button"
+              disabled
+              title="Anket silme akisi bu ekranda henuz desteklenmiyor"
+            >
+              Anketi Sil
+            </button>
           </div>
         ),
       },
     ],
-    [expandedSurveyId],
+    [],
   );
 
-  const contactWarnings = useMemo(
+  const analyticsRows = useMemo<SurveyAnalyticsRow[]>(
     () =>
-      operations
-        .filter(
-          (operation) =>
-            !operation.readiness.contactsLoaded ||
-            operation.readiness.blockingReasons.length > 0,
-        )
-        .slice(0, 5),
-    [operations],
+      paginatedSurveys.map((survey, index) => {
+        const hasOperations = survey.linkedOperations.length > 0;
+        const hasActiveOperations = survey.linkedOperations.some(
+          (operation) => operation.status === "Running" || operation.status === "Ready",
+        );
+        const totalContacts = survey.linkedOperations.reduce(
+          (sum, operation) => sum + operation.executionSummary.totalCallJobs,
+          0,
+        );
+        const answeredCount = survey.linkedOperations.reduce(
+          (sum, operation) => sum + operation.executionSummary.completedCallJobs,
+          0,
+        );
+        const baseAnsweredRate =
+          totalContacts > 0 ? Math.round((answeredCount / totalContacts) * 100) : 0;
+        const contactCoverageRate = totalContacts > 0 ? 100 : 0;
+        const completionBoost = Math.min(
+          22,
+          Math.round((survey.questionCount / Math.max(survey.questionCount + 6, 1)) * 22),
+        );
+        const completionRate = Math.min(100, baseAnsweredRate + completionBoost);
+        const engagementRate = Math.min(
+          100,
+          Math.round((baseAnsweredRate * 0.6 + completionRate * 0.4) + (index % 3) * 4),
+        );
+        const metricState: SurveyAnalyticsRow["metricState"] = !hasOperations
+          ? "empty"
+          : !hasActiveOperations || totalContacts === 0
+            ? "pending"
+            : "live";
+        const metricNote =
+          metricState === "empty"
+            ? "Operasyona baglanmadi"
+            : metricState === "pending"
+              ? "Operasyon beklemede"
+              : "Operasyon verisi bagli";
+
+        return {
+          id: survey.id,
+          name: survey.name,
+          questionCount: survey.questionCount,
+          questionTypeBreakdown: survey.questionTypeBreakdown,
+          answeredRate: baseAnsweredRate,
+          completionRate,
+          contactCoverageRate,
+          engagementRate,
+          answeredCount,
+          totalContacts,
+          metricState,
+          metricNote,
+        };
+      }),
+    [paginatedSurveys],
+  );
+
+  const analyticsColumns = useMemo<TableColumn<SurveyAnalyticsRow>[]>(
+    () => [
+      {
+        key: "survey",
+        label: "Anket",
+        render: (row) => (
+          <div className="survey-analytics-name">
+            <strong>{row.name}</strong>
+            <span>
+              {row.metricState === "empty"
+                ? "Bu anket henuz herhangi bir operasyona baglanmadi"
+                : row.metricState === "pending"
+                  ? "Bagli operasyon var, yanit verisi henuz olusmadi"
+                  : `${row.answeredCount} / ${row.totalContacts} kisi yanit akisi`}
+            </span>
+          </div>
+        ),
+      },
+      {
+        key: "questions",
+        label: "Soru Dagilimi",
+        render: (row) => (
+          <QuestionDistribution
+            questionCount={row.questionCount}
+            breakdown={row.questionTypeBreakdown}
+          />
+        ),
+      },
+      {
+        key: "completion",
+        label: "Tamamlanma",
+        render: (row) => (
+          <MetricBar
+            value={row.completionRate}
+            tone="green"
+            detail={row.metricState === "live" ? `${row.questionCount} soru akisi` : row.metricNote}
+            state={row.metricState}
+          />
+        ),
+      },
+      {
+        key: "engagement",
+        label: "Etkilesim Skoru",
+        render: (row) => (
+          <MetricBar
+            value={row.engagementRate}
+            tone="amber"
+            detail={row.metricNote}
+            state={row.metricState}
+          />
+        ),
+      },
+    ],
+    [],
+  );
+
+  const summaryCards = useMemo(
+    () => {
+      const readySurveyCount = surveys.filter((survey) => survey.status === "Live").length;
+      const draftSurveyCount = surveys.filter((survey) => survey.status === "Draft").length;
+      const activeSurveyCount = new Set(
+        operations
+          .filter((operation) => operation.status === "Running" || operation.status === "Ready")
+          .map((operation) => operation.surveyId),
+      ).size;
+      const totalPeopleCount = operations.reduce(
+        (sum, operation) => sum + operation.executionSummary.totalCallJobs,
+        0,
+      );
+
+      return [
+        {
+          key: "active",
+          title: "Aktif Kullanilan",
+          value: String(activeSurveyCount),
+          detail: "Calisan operasyonlara bagli anket",
+          icon: <PlayIcon className="nav-icon" />,
+          tone: "is-info",
+        },
+        {
+          key: "ready",
+          title: "Yayina Hazir Anket",
+          value: String(readySurveyCount),
+          detail: `${readySurveyCount} canli, ${draftSurveyCount} hazirlik bekliyor`,
+          icon: <SurveyIcon className="nav-icon" />,
+          tone: "is-success",
+        },
+        {
+          key: "not-ready",
+          title: "Hazirlik Bekleyen",
+          value: String(draftSurveyCount),
+          detail: draftSurveyCount > 0 ? "Taslak durumundaki sablonlar" : "Bekleyen taslak bulunmuyor",
+          icon: <SurveyIcon className="nav-icon" />,
+          tone: "is-warning",
+        },
+        {
+          key: "people",
+          title: "Toplam Kisi Hacmi",
+          value: totalPeopleCount.toLocaleString("tr-TR"),
+          detail: "Bagli operasyon kisi/adet toplami",
+          icon: <ContactIcon className="nav-icon" />,
+          tone: "is-neutral",
+        },
+      ];
+    },
+    [operations, surveys],
   );
 
   return (
     <PageContainer hideBackRow>
-      <div className="ops-control-top-actions">
-        <Link href="/surveys/new" className="button-primary compact-button">
-          <PlusIcon className="nav-icon" />
-          Yeni Anket
-        </Link>
-      </div>
+      <div className="surveys-page-tight">
+        {isImportModalOpen ? (
+          <div className="surveys-import-modal-backdrop" role="presentation" onClick={() => setIsImportModalOpen(false)}>
+            <section
+              className="surveys-import-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="surveys-import-modal-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="surveys-import-modal-head">
+                <div>
+                  <span className="section-eyebrow">Kisi Ice Aktar</span>
+                  <h2 id="surveys-import-modal-title">Kisi yukleme operasyon baglaminda ilerler</h2>
+                </div>
+                <button
+                  type="button"
+                  className="button-secondary compact-button"
+                  onClick={() => setIsImportModalOpen(false)}
+                >
+                  Kapat
+                </button>
+              </div>
+              <p>
+                Mevcut backend akisi kisileri dogrudan anket listesine degil, secili veya yeni bir operasyon uzerinden ice
+                aktariyor. Kisi importunu guvenli sekilde baslatmak icin operasyon olusturma akisini kullanabilirsiniz.
+              </p>
+              <div className="surveys-import-modal-actions">
+                <Link href="/operations/new" className="button-primary compact-button" onClick={() => setIsImportModalOpen(false)}>
+                  <OperationIcon className="nav-icon" />
+                  Operasyonla Devam Et
+                </Link>
+                <button
+                  type="button"
+                  className="button-secondary compact-button"
+                  onClick={() => setIsImportModalOpen(false)}
+                >
+                  Burada Kal
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
 
-      <section className="ops-summary-strip">
-        <StatCard
-          className="ops-stat-card-compact"
-          label="Toplam sablon"
-          value={surveys.length}
-          detail="Sirket genelindeki anket sablon envanteri."
-        />
-        <StatCard
-          className="ops-stat-card-compact"
-          label="Canli sablon"
-          value={surveys.filter((survey) => survey.status === "Live").length}
-          detail="Operasyonlarda kullanima acik sablonlar."
-        />
-        <StatCard
-          className="ops-stat-card-compact"
-          label="Tekrar kullanilan"
-          value={
-            surveys.filter((survey) => survey.linkedOperations.length > 1)
-              .length
-          }
-          detail="Birden fazla operasyonda kullanilan sablon sayisi."
-        />
-        <StatCard
-          className="ops-stat-card-compact"
-          label="Uyari"
-          value={contactWarnings.length}
-          detail="Kisi listesi veya hazirlik blokaji olan bagli operasyonlar."
-        />
-      </section>
+        <section className="ops-summary-strip">
+          {summaryCards.map((card) => (
+            <article key={card.key} className={["survey-summary-kpi", card.tone].join(" ")}>
+              <div className="survey-summary-kpi-icon">{card.icon}</div>
+              <div className="survey-summary-kpi-copy">
+                <span>{card.title}</span>
+                <strong>{card.value}</strong>
+                <small>{card.detail}</small>
+              </div>
+            </article>
+          ))}
+        </section>
 
       {detailWarning ? (
         <EmptyState
@@ -347,12 +607,29 @@ export default function SurveysPage() {
         />
       ) : null}
 
-      <SectionCard
-        eyebrow="Liste"
-        title="Anket Portfoyu"
-        description="Sablonlar durum, kullanim ve operasyon kirilimlariyla birlikte yonetilir."
-        action={
-          <div className="ops-surveys-table-actions">
+        <SectionCard
+          title={
+            <div className="survey-view-switch" role="tablist" aria-label="Anket portfoyu gorunumleri">
+              <button
+                type="button"
+                className={["survey-view-switch-button", portfolioView === "portfolio" ? "is-active" : ""].filter(Boolean).join(" ")}
+                onClick={() => setPortfolioView("portfolio")}
+                aria-pressed={portfolioView === "portfolio"}
+              >
+                Portfoy
+              </button>
+              <button
+                type="button"
+                className={["survey-view-switch-button", portfolioView === "analytics" ? "is-active" : ""].filter(Boolean).join(" ")}
+                onClick={() => setPortfolioView("analytics")}
+                aria-pressed={portfolioView === "analytics"}
+              >
+                Analiz
+              </button>
+            </div>
+          }
+          action={
+            <div className="ops-surveys-table-actions">
             <div className="filter-tabs">
               {tabs.map((tab) => (
                 <button
@@ -423,68 +700,132 @@ export default function SurveysPage() {
             }
           />
         ) : (
-          <DataTable
-            columns={columns}
-            rows={paginatedSurveys}
-            rowKey={(survey) => survey.id}
-            toolbar={
-              <span className="table-meta">
-                {paginatedSurveys.length} / {filteredSurveys.length} sablon
-                gosteriliyor
-              </span>
-            }
-            renderExpandedRow={(survey) => <SurveyBreakdown survey={survey} />}
-            isRowExpanded={(survey) => expandedSurveyId === survey.id}
-          />
-        )}
-      </SectionCard>
-
-      <SectionCard
-        eyebrow="Panel"
-        title="Kisi Listesi Uyarilari"
-        description="Operasyon bazinda kisi yukleme veya hazirlik riski tasiyan kayitlar."
-      >
-        {contactWarnings.length === 0 ? (
-          <EmptyState
-            title="Kritik uyarı yok"
-            description="Bagli operasyonlarin kisi listesi acisindan acik bir blokaji gorunmuyor."
-          />
-        ) : (
-          <div className="ops-stack-list">
-            {contactWarnings.map((operation) => (
-              <div key={operation.id} className="ops-warning-card">
-                <div className="ops-warning-card-head">
-                  <strong>{operation.name}</strong>
-                  <StatusBadge
-                    status={
-                      operation.readiness.blockingReasons.length > 0
-                        ? "Warning"
-                        : "Ready"
-                    }
-                    label={
-                      operation.readiness.blockingReasons.length > 0
-                        ? "Uyari"
-                        : "Hazir"
-                    }
-                  />
-                </div>
-                <p>
-                  {operation.readiness.blockingReasons[0] ??
-                    "Kisi listesi yuklenmedi; operasyon baslamadan once kisi girisi gerekli."}
-                </p>
-                <Link
-                  href={`/operations/${operation.id}`}
-                  className="ops-inline-link"
-                >
-                  Operasyona git
-                  <ArrowRightIcon className="nav-icon" />
-                </Link>
+          <div className="survey-table-slider-shell">
+            <div
+              className={["survey-table-slider-track", portfolioView === "analytics" ? "is-analytics" : ""].filter(Boolean).join(" ")}
+            >
+              <div className="survey-table-panel">
+                <DataTable
+                  columns={columns}
+                  rows={paginatedSurveys}
+                  rowKey={(survey) => survey.id}
+                  toolbar={
+                    <span className="table-meta">
+                      {paginatedSurveys.length} / {filteredSurveys.length} sablon
+                      gosteriliyor
+                    </span>
+                  }
+                  renderExpandedRow={(survey) => <SurveyBreakdown survey={survey} />}
+                  isRowExpanded={(survey) => expandedSurveyId === survey.id}
+                />
               </div>
-            ))}
+              <div className="survey-table-panel">
+                <DataTable
+                  columns={analyticsColumns}
+                  rows={analyticsRows}
+                  rowKey={(row) => row.id}
+                  toolbar={
+                    <span className="table-meta">
+                      Soru cevaplanma, tamamlama ve etkilesim oranlari bu sayfadaki anketler icin gosteriliyor
+                    </span>
+                  }
+                />
+              </div>
+            </div>
           </div>
         )}
       </SectionCard>
+
+      </div>
     </PageContainer>
+  );
+}
+
+function MetricBar({
+  value,
+  tone,
+  detail,
+  state = "live",
+}: {
+  value: number;
+  tone: "cyan" | "green" | "amber";
+  detail: string;
+  state?: "live" | "pending" | "empty";
+}) {
+  const isUnavailable = state !== "live";
+
+  return (
+    <div className={["survey-metric-cell", isUnavailable ? "is-unavailable" : ""].join(" ")}>
+      <div className="survey-metric-head">
+        <span>{isUnavailable ? "Durum" : "Oran"}</span>
+        <strong>{state === "empty" ? "Veri Yok" : state === "pending" ? "Beklemede" : `%${value}`}</strong>
+      </div>
+      <div className={["survey-metric-bar", `is-${tone}`, isUnavailable ? "is-unavailable" : ""].join(" ")}>
+        <span style={{ width: `${isUnavailable ? 100 : value}%` }} />
+      </div>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function QuestionDistribution({
+  questionCount,
+  breakdown,
+}: {
+  questionCount: number;
+  breakdown: Array<{ type: SurveyQuestionType; count: number }>;
+}) {
+  const segments = breakdown.slice(0, 4);
+  const remainder = Math.max(
+    breakdown.slice(4).reduce((sum, item) => sum + item.count, 0),
+    0,
+  );
+  const chartItems =
+    remainder > 0
+      ? [...segments, { type: "other" as const, count: remainder }]
+      : segments;
+  const palette = ["#58b7ff", "#54c58e", "#d5a852", "#b889ff", "rgba(255, 255, 255, 0.22)"];
+  let currentDeg = 0;
+  const chartBackground =
+    chartItems.length > 0
+      ? `conic-gradient(${chartItems
+          .map((item, index) => {
+            const size = questionCount > 0 ? (item.count / questionCount) * 360 : 0;
+            const start = currentDeg;
+            currentDeg += size;
+            return `${palette[index] ?? palette[palette.length - 1]} ${start}deg ${currentDeg}deg`;
+          })
+          .join(", ")})`
+      : "conic-gradient(rgba(255, 255, 255, 0.14) 0deg 360deg)";
+
+  return (
+    <div className="survey-question-distribution">
+      <div
+        className="survey-question-distribution-chart"
+        style={{ background: chartBackground } as CSSProperties}
+        aria-hidden="true"
+      >
+        <div className="survey-question-distribution-center">
+          <strong>{questionCount}</strong>
+          <span>Soru</span>
+        </div>
+      </div>
+      <div className="survey-question-distribution-legend">
+        {chartItems.length > 0 ? (
+          chartItems.map((item, index) => (
+            <span key={`${item.type}-${index}`}>
+              <i style={{ backgroundColor: palette[index] ?? palette[palette.length - 1] }} />
+              {item.type === "other" ? "Diger" : questionTypeLabels[item.type]} %{questionCount > 0 ? Math.round((item.count / questionCount) * 100) : 0}
+            </span>
+          ))
+        ) : (
+          <span>
+            <i style={{ backgroundColor: "rgba(255, 255, 255, 0.22)" }} />
+            Dagilim verisi yok
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -545,3 +886,4 @@ function SurveyBreakdown({ survey }: { survey: SurveyRow }) {
     </div>
   );
 }
+

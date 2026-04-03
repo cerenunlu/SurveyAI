@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 
 type StatCardProps = {
   label: string;
-  value: string | number;
-  detail: string;
+  value: ReactNode;
+  detail: ReactNode;
   delta?: string;
   tone?: "positive" | "warning" | "danger" | "neutral";
   icon?: ReactNode;
@@ -32,8 +32,9 @@ export function StatCard({
           {icon ? <span className="stat-card-icon">{icon}</span> : null}
         </div>
       </div>
-      <h3 className="stat-value">{value}</h3>
+      <div className="stat-value">{value}</div>
       <p className="muted">{detail}</p>
     </article>
   );
 }
+

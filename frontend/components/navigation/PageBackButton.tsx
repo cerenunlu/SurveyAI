@@ -1,11 +1,16 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { ArrowLeftIcon } from "@/components/ui/Icons";
 
 type FallbackTarget = {
   href: string;
   label: string;
 };
+
+export function shouldShowPageBackButton(pathname: string): boolean {
+  return pathname.startsWith("/surveys/") || pathname.startsWith("/operations/");
+}
 
 function resolveFallbackTarget(pathname: string): FallbackTarget {
   if (pathname.startsWith("/operations/") && pathname.includes("/contacts")) {
@@ -61,7 +66,7 @@ export function PageBackButton() {
   const router = useRouter();
   const pathname = usePathname();
 
-  if (!pathname) {
+  if (!pathname || !shouldShowPageBackButton(pathname)) {
     return null;
   }
 
@@ -77,8 +82,14 @@ export function PageBackButton() {
   }
 
   return (
-    <button type="button" className="button-secondary compact-button page-back-button" onClick={handleBack}>
-      {fallbackTarget.label}
+    <button
+      type="button"
+      className="button-secondary compact-button page-back-button"
+      onClick={handleBack}
+      aria-label={fallbackTarget.label}
+      title={fallbackTarget.label}
+    >
+      <ArrowLeftIcon className="nav-icon" />
     </button>
   );
 }

@@ -355,6 +355,8 @@ function mapApiSurveyToBuilder(
     name: survey.name,
     summary: survey.description ?? "",
     status: mapSurveyStatusToBuilder(survey.status),
+    createdAt: formatDateTime(survey.createdAt),
+    publishedAt: survey.status === "PUBLISHED" ? formatDateTime(survey.updatedAt) : null,
     updatedAt: formatDateTime(survey.updatedAt),
     questionCount: mappedQuestions.length,
     languageCode: survey.languageCode,
@@ -704,6 +706,7 @@ async function readApiError(response: Response): Promise<string> {
     return `Request failed (${response.status})`;
   }
 }
+
 
 
 

@@ -642,7 +642,9 @@ function buildDashboardTasks(operations: Operation[], surveys: Survey[]): Dashbo
           sparkline: [10, 9, 12, 11, 13, 14],
         }
       : null,
-  ].filter((item): item is DashboardTask => item !== null);
+  ]
+    .filter((item): item is DashboardTask => item !== null)
+    .slice(0, 3);
 }
 
 function buildActivities(surveys: Survey[], operations: Operation[], contacts: DashboardContact[]) {
@@ -662,7 +664,7 @@ function buildActivities(surveys: Survey[], operations: Operation[], contacts: D
       detail: `${contact.name} kisisi aktif kuyruga eklendi.`,
       time: contact.updatedAt,
     })),
-  ].slice(0, 4);
+  ].slice(0, 3);
 }
 
 function buildSystemHealth(

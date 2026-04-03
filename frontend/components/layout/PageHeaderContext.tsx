@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 type PageHeaderOverride = {
   title?: string;
   subtitle?: string;
+  action?: ReactNode;
 };
 
 type PageHeaderContextValue = {
@@ -42,9 +43,10 @@ export function usePageHeaderOverride(override: PageHeaderOverride | null) {
   const { setOverride } = context;
   const title = override?.title;
   const subtitle = override?.subtitle;
+  const action = override?.action;
 
   useEffect(() => {
-    if (!title && !subtitle) {
+    if (!title && !subtitle && !action) {
       setOverride(null);
       return;
     }
@@ -52,11 +54,12 @@ export function usePageHeaderOverride(override: PageHeaderOverride | null) {
     setOverride({
       title,
       subtitle,
+      action,
     });
 
     return () => {
       setOverride(null);
     };
-  }, [setOverride, subtitle, title]);
+  }, [action, setOverride, subtitle, title]);
 }
 

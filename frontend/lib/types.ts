@@ -75,6 +75,8 @@ export type SurveyBuilderSurvey = {
   name: string;
   summary: string;
   status: "Draft" | "Live" | "Archived";
+  createdAt: string;
+  publishedAt: string | null;
   updatedAt: string;
   questionCount: number;
   languageCode: string;
@@ -315,3 +317,5 @@ export type OperationAnalytics = {
   questionSummaries: OperationAnalyticsQuestionSummary[];
   responseTrend: OperationAnalyticsTrendPoint[];
 };
+
+
