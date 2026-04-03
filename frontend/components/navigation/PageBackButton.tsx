@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 type FallbackTarget = {
   href: string;
@@ -12,48 +12,48 @@ function resolveFallbackTarget(pathname: string): FallbackTarget {
     const operationPath = pathname.split("/contacts")[0];
     return {
       href: operationPath,
-      label: "Operasyona dön",
+      label: "Operasyona don",
     };
   }
 
   if (pathname.startsWith("/operations/")) {
     return {
       href: "/operations",
-      label: "Operasyonlara dön",
+      label: "Operasyonlara don",
     };
   }
 
   if (pathname.startsWith("/surveys/")) {
     return {
       href: "/surveys",
-      label: "Anketlere dön",
+      label: "Anketlere don",
     };
   }
 
   if (pathname.startsWith("/contacts")) {
     return {
       href: "/",
-      label: "Panele dön",
+      label: "Panele don",
     };
   }
 
   if (pathname.startsWith("/analytics")) {
     return {
       href: "/",
-      label: "Panele dön",
+      label: "Panele don",
     };
   }
 
   if (pathname.startsWith("/calling-ops")) {
     return {
       href: "/",
-      label: "Panele dön",
+      label: "Panele don",
     };
   }
 
   return {
     href: "/",
-    label: "Geri dön",
+    label: "Geri don",
   };
 }
 

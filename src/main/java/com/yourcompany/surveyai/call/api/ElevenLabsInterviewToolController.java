@@ -9,6 +9,8 @@ import com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfigurationResolver;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.common.exception.UnauthorizedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ElevenLabsInterviewToolController {
 
     private static final String TOOL_SECRET_HEADER = "X-SurveyAI-Tool-Secret";
+    private static final Logger log = LoggerFactory.getLogger(ElevenLabsInterviewToolController.class);
 
     private final CallInterviewOrchestrationService callInterviewOrchestrationService;
     private final VoiceProviderConfigurationResolver configurationResolver;
@@ -40,6 +43,11 @@ public class ElevenLabsInterviewToolController {
     ) {
         validateToolSecret(toolSecret);
         InterviewSessionRequest effectiveRequest = request == null ? new InterviewSessionRequest(null, null, null) : request;
+        log.info(
+                "ElevenLabs tool hit. endpoint=start callAttemptId={} providerCallId={}",
+                effectiveRequest.callAttemptId(),
+                effectiveRequest.providerCallId()
+        );
         return ResponseEntity.ok(callInterviewOrchestrationService.startInterview(effectiveRequest));
     }
 
@@ -50,6 +58,11 @@ public class ElevenLabsInterviewToolController {
     ) {
         validateToolSecret(toolSecret);
         InterviewSessionRequest effectiveRequest = request == null ? new InterviewSessionRequest(null, null, null) : request;
+        log.info(
+                "ElevenLabs tool hit. endpoint=current-question callAttemptId={} providerCallId={}",
+                effectiveRequest.callAttemptId(),
+                effectiveRequest.providerCallId()
+        );
         return ResponseEntity.ok(callInterviewOrchestrationService.getCurrentQuestion(effectiveRequest));
     }
 
@@ -59,6 +72,12 @@ public class ElevenLabsInterviewToolController {
             @RequestBody InterviewAnswerRequest request
     ) {
         validateToolSecret(toolSecret);
+        log.info(
+                "ElevenLabs tool hit. endpoint=answer callAttemptId={} providerCallId={} signal={}",
+                request.callAttemptId(),
+                request.providerCallId(),
+                request.signal()
+        );
         return ResponseEntity.ok(callInterviewOrchestrationService.submitAnswer(request));
     }
 
@@ -69,6 +88,12 @@ public class ElevenLabsInterviewToolController {
     ) {
         validateToolSecret(toolSecret);
         InterviewFinishRequest effectiveRequest = request == null ? new InterviewFinishRequest(null, null, null, null) : request;
+        log.info(
+                "ElevenLabs tool hit. endpoint=finish callAttemptId={} providerCallId={} requestedStatus={}",
+                effectiveRequest.callAttemptId(),
+                effectiveRequest.providerCallId(),
+                effectiveRequest.requestedStatus()
+        );
         return ResponseEntity.ok(callInterviewOrchestrationService.finishInterview(effectiveRequest));
     }
 

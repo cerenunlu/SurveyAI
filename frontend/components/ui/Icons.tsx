@@ -99,6 +99,15 @@ export function ArrowRightIcon({ className }: IconProps) {
   );
 }
 
+export function ArrowLeftIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path {...strokeProps} d="M19 12H5" />
+      <path {...strokeProps} d="m11 6-6 6 6 6" />
+    </svg>
+  );
+}
+
 export function SparkIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
@@ -119,6 +128,14 @@ export function PlusIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
       <path {...strokeProps} d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function PlayIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path {...strokeProps} d="m8 6 10 6-10 6Z" />
     </svg>
   );
 }

@@ -110,7 +110,8 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(response.question()).isNotNull();
         assertThat(response.question().conversationQuestionType()).isEqualTo("YES_NO");
         assertThat(response.question().options()).extracting("label").containsExactly("Evet", "Hayır");
-        assertThat(response.prompt()).contains("Begin with a short introduction");
+        assertThat(response.prompt()).contains("SurveyAI");
+        assertThat(response.prompt()).contains(fixture.operation.getName());
     }
 
     @Test

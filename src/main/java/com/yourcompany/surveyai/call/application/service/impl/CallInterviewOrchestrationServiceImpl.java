@@ -103,7 +103,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         SurveyResponse response = ensureSurveyResponse(context.callAttempt());
         response.setStatus(SurveyResponseStatus.PARTIAL);
         surveyResponseRepository.save(response);
-        return buildProgressResponse(context, response, "Begin with a short introduction, then ask this question.");
+        return buildProgressResponse(context, response, buildOpeningLeadIn(context));
     }
 
     @Override
@@ -667,6 +667,20 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return survey.getClosingPrompt().trim();
         }
         return "Thank you for your time. The survey is now complete. Goodbye.";
+    }
+
+    private String buildOpeningLeadIn(SessionContext context) {
+        String surveyIntro = trimToNull(context.survey().getIntroPrompt());
+        if (surveyIntro != null) {
+            return surveyIntro;
+        }
+
+        String contactName = buildContactName(context.callAttempt());
+        return "Hello " + contactName + ", this is SurveyAI calling on behalf of "
+                + context.callAttempt().getOperation().getName()
+                + ". We have a short survey called "
+                + context.survey().getName()
+                + ".";
     }
 
     private String buildContactName(CallAttempt callAttempt) {

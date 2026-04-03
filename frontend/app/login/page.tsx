@@ -30,32 +30,26 @@ export default function LoginPage() {
       });
       router.replace("/");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Şu anda giriş yapılamıyor.");
+      setErrorMessage(error instanceof Error ? error.message : "Su anda oturum acilamiyor.");
       setIsSubmitting(false);
     }
   }
 
   return (
-    <main className="auth-screen">
-      <section className="auth-layout">
-        <div className="auth-hero panel-card">
-          <span className="eyebrow">SurveyAI Erişimi</span>
-          <h1 className="hero-title auth-title">Giriş yapın ve uygulama aktif şirket bağlamını sizin için çözümlesin.</h1>
-          <p className="hero-text">
-            Bu MVP giriş akışı, kimlik doğrulamayı bilinçli olarak sade tutarken ürüne mevcut anket ve operasyon
-            iş akışlarının tamamı için gerçek bir güncel kullanıcı ve güncel şirket temeli kazandırır.
-          </p>
-          <div className="chip-row">
-            <span className="chip">Güncel şirket bağlamı</span>
-            <span className="chip">Çerez destekli oturum</span>
-            <span className="chip">MVP e-posta ve parola</span>
+    <main className="auth-screen auth-screen-minimal">
+      <section className="auth-layout auth-layout-minimal">
+        <section className="auth-card panel-card auth-card-minimal">
+          <div className="auth-system-meta">
+            <span className="eyebrow">Erisim</span>
+            <div className="auth-system-badges">
+              <span className="chip">Yerel oturum</span>
+              <span className="chip">Sirket baglamli</span>
+            </div>
           </div>
-        </div>
 
-        <section className="auth-card panel-card">
           <div className="section-copy">
-            <h2>Giriş</h2>
-            <p>Kontrol merkezine devam etmek için iş e-posta adresinizi ve parolanızı kullanın.</p>
+            <h2>Oturum ac</h2>
+            <p>Calisma alanini acmak icin test hesabi ile kimlik dogrulayin.</p>
           </div>
 
           <form className="auth-form" onSubmit={handleSubmit}>
@@ -72,7 +66,7 @@ export default function LoginPage() {
             </label>
 
             <label className="builder-field">
-              <span>Password</span>
+              <span>Sifre</span>
               <input
                 type="password"
                 autoComplete="current-password"
@@ -85,19 +79,19 @@ export default function LoginPage() {
 
             {errorMessage ? (
               <div className="operation-inline-message is-danger compact">
-                <strong>Giriş başarısız</strong>
+                <strong>Oturum acilamadi</strong>
                 <span>{errorMessage}</span>
               </div>
             ) : null}
 
             <button type="submit" className="button-primary auth-submit" disabled={isSubmitting || status === "loading"}>
-              {isSubmitting ? "Giriş yapılıyor..." : "Giriş yap"}
+              {isSubmitting ? "Oturum aciliyor..." : "Calisma alanini ac"}
             </button>
           </form>
 
-          <div className="auth-helper">
-            <strong>Yerel başlangıç hesabı</strong>
-            <p>Varsayılan yerel bilgiler: owner@acme-research.test / change-me-123</p>
+          <div className="auth-helper auth-helper-minimal">
+            <strong>Yerel onizleme hesabi</strong>
+            <p>owner@acme-research.test / change-me-123</p>
           </div>
         </section>
       </section>

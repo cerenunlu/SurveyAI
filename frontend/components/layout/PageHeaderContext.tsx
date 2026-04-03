@@ -40,13 +40,23 @@ export function usePageHeaderOverride(override: PageHeaderOverride | null) {
   }
 
   const { setOverride } = context;
+  const title = override?.title;
+  const subtitle = override?.subtitle;
 
   useEffect(() => {
-    setOverride(override);
+    if (!title && !subtitle) {
+      setOverride(null);
+      return;
+    }
+
+    setOverride({
+      title,
+      subtitle,
+    });
 
     return () => {
       setOverride(null);
     };
-  }, [override, setOverride]);
+  }, [setOverride, subtitle, title]);
 }
 

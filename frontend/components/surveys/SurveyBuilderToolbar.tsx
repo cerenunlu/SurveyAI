@@ -2,11 +2,13 @@
 
 import { type ReactNode } from "react";
 import { PlusIcon } from "@/components/ui/Icons";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { BuilderSaveAction } from "@/lib/survey-builder-api";
 import type { SurveyBuilderSurvey } from "@/lib/types";
 
 type SurveyBuilderToolbarProps = {
   survey: SurveyBuilderSurvey;
+  mode: "create" | "edit";
   onAddQuestion: () => void;
   onPersist: (action: BuilderSaveAction) => void;
   activeAction: BuilderSaveAction | null;
@@ -18,6 +20,7 @@ type SurveyBuilderToolbarProps = {
 
 export function SurveyBuilderToolbar({
   survey,
+  mode,
   onAddQuestion,
   onPersist,
   activeAction,
@@ -29,25 +32,39 @@ export function SurveyBuilderToolbar({
   const isBusy = activeAction !== null;
   const isPublished = survey.status === "Live";
   const disableMutations = isBusy || readOnly;
+  const statusLabel = isPublished ? "Yayinda" : survey.status === "Draft" ? "Taslak" : survey.status;
 
   return (
-    <section className="builder-toolbar">
-      {leading ? <div className="builder-toolbar-leading">{leading}</div> : null}
+    <section className="builder-toolbar panel-card ops-builder-toolbar">
+      <div className="ops-builder-toolbar-main">
+        {leading ? <div className="builder-toolbar-leading">{leading}</div> : null}
 
-      <div className="builder-toolbar-context">
-        <div className="builder-toolbar-copy">
-          <strong>
-            {isPublished ? "Yayınlanmış anket görüntüleniyor" : survey.status === "Draft" ? "Taslak düzenleniyor" : "Anket düzenleniyor"}
-          </strong>
-        </div>
-        <div className="builder-toolbar-meta">
-          <span>{survey.questions.length} soru</span>
-          <span>{survey.updatedAt}</span>
-          {feedbackMessage ? <span>{feedbackTone === "error" ? `Hata: ${feedbackMessage}` : feedbackMessage}</span> : null}
+        <div className="builder-toolbar-context">
+          <div className="builder-toolbar-copy">
+            <span className="builder-panel-kicker">{mode === "create" ? "Calisma Alani" : "Duzenleme"}</span>
+            <strong>
+              {isPublished
+                ? "Yayinlanmis anket goruntuleniyor"
+                : mode === "create"
+                  ? "Yeni anket tasarimi uzerinde calisiyorsunuz"
+                  : "Anket akisi guncelleniyor"}
+            </strong>
+          </div>
+
+          <div className="builder-toolbar-meta ops-builder-toolbar-meta">
+            <StatusBadge status={survey.status} label={statusLabel} />
+            <span>{survey.questions.length} soru</span>
+            <span>{survey.updatedAt}</span>
+            {feedbackMessage ? (
+              <span className={["ops-builder-feedback-pill", feedbackTone === "error" ? "is-error" : "is-success"].join(" ")}>
+                {feedbackTone === "error" ? `Hata: ${feedbackMessage}` : feedbackMessage}
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      <div className="builder-toolbar-actions">
+      <div className="builder-toolbar-actions ops-builder-toolbar-actions">
         <button type="button" className="button-secondary compact-button" onClick={onAddQuestion} disabled={disableMutations}>
           <PlusIcon className="nav-icon" />
           Soru ekle
@@ -58,7 +75,7 @@ export function SurveyBuilderToolbar({
           onClick={() => onPersist("draft")}
           disabled={disableMutations}
         >
-          {activeAction === "draft" ? "Kaydediliyor..." : "Taslak olarak bırak"}
+          {activeAction === "draft" ? "Taslak kaydediliyor..." : "Taslak kaydet"}
         </button>
         <button
           type="button"
@@ -66,7 +83,7 @@ export function SurveyBuilderToolbar({
           onClick={() => onPersist("save")}
           disabled={disableMutations}
         >
-          {activeAction === "save" ? "Kaydediliyor..." : "Kaydet"}
+          {activeAction === "save" ? "Kaydediliyor..." : "Degisiklikleri kaydet"}
         </button>
         <button
           type="button"
@@ -74,15 +91,15 @@ export function SurveyBuilderToolbar({
           onClick={() => onPersist("publish")}
           disabled={isBusy || isPublished}
         >
-          {isPublished ? "Yayınlandı" : activeAction === "publish" ? "Yayınlanıyor..." : "Yayınla"}
+          {isPublished ? "Yayinda" : activeAction === "publish" ? "Yayinlaniyor..." : "Yayinla"}
         </button>
         <button
           type="button"
           className="button-secondary compact-button"
           disabled
-          title="Kopyalayarak yeni taslak oluşturma akışı yakında eklenecek."
+          title="Kopyalayarak yeni taslak olusturma akisi yakinda eklenecek."
         >
-          Bu anketi kopyala
+          Kopya yakinda
         </button>
       </div>
     </section>
