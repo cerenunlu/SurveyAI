@@ -42,7 +42,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
   const navigationItems = getNavigationItems(t);
   const isAuthRoute = pathname === "/login";
   const isDashboardHome = pathname === "/";
-  const isSurveysIndex = pathname === "/surveys";
+  const isSurveysRoute = pathname === "/surveys" || pathname.startsWith("/surveys/");
 
   useEffect(() => {
     setIsUserMenuOpen(false);
@@ -254,7 +254,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
             className={[
               "topbar",
               isDashboardHome ? "is-dashboard-topbar" : "",
-              isSurveysIndex ? "is-surveys-topbar" : "",
+              isSurveysRoute ? "is-surveys-topbar" : "",
             ]
               .filter(Boolean)
               .join(" ")}
@@ -270,7 +270,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                   "topbar-copy",
                   "topbar-copy-compact",
                   isDashboardHome ? "is-dashboard-copy" : "",
-                  isSurveysIndex ? "is-surveys-copy" : "",
+                  isSurveysRoute ? "is-surveys-copy" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -284,7 +284,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                       </span>
                     ))}
                   </div>
-                ) : !isSurveysIndex ? (
+                ) : !isSurveysRoute ? (
                   <span className="topbar-kicker">{currentUser.company.name}</span>
                 ) : null}
                 <h1>{currentMeta.title}</h1>

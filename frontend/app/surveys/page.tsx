@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -20,7 +21,7 @@ import {
 import { fetchCompanyOperations } from "@/lib/operations";
 import { fetchSurveyBuilderSurvey } from "@/lib/survey-builder-api";
 import { questionTypeLabels } from "@/lib/survey-builder";
-import { fetchCompanySurveys } from "@/lib/surveys";
+import { fetchCompanySurveys, importGoogleForm } from "@/lib/surveys";
 import type { Operation, Survey, SurveyQuestionType, TableColumn } from "@/lib/types";
 
 type SurveyTab = "Aktif" | "Taslak" | "Arsivlenmis" | "Tumu";
@@ -51,6 +52,7 @@ const tabs: SurveyTab[] = ["Aktif", "Taslak", "Arsivlenmis", "Tumu"];
 const surveyPageSize = 5;
 
 export default function SurveysPage() {
+  const router = useRouter();
   const [surveys, setSurveys] = useState<SurveyRow[]>([]);
   const [operations, setOperations] = useState<Operation[]>([]);
   const [activeTab, setActiveTab] = useState<SurveyTab>("Aktif");
@@ -60,7 +62,16 @@ export default function SurveysPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [detailWarning, setDetailWarning] = useState<string | null>(null);
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isContactImportModalOpen, setIsContactImportModalOpen] = useState(false);
+  const [isGoogleImportModalOpen, setIsGoogleImportModalOpen] = useState(false);
+  const [googleFormUrl, setGoogleFormUrl] = useState("");
+  const [googleAccessToken, setGoogleAccessToken] = useState("");
+  const [googleLanguageCode, setGoogleLanguageCode] = useState("tr");
+  const [googleIntroPrompt, setGoogleIntroPrompt] = useState("");
+  const [googleClosingPrompt, setGoogleClosingPrompt] = useState("");
+  const [googleRetryCount, setGoogleRetryCount] = useState("2");
+  const [googleImportError, setGoogleImportError] = useState<string | null>(null);
+  const [isGoogleImporting, setIsGoogleImporting] = useState(false);
   const headerAction = useMemo(
     () => (
       <div className="surveys-header-actions">
@@ -71,7 +82,15 @@ export default function SurveysPage() {
         <button
           type="button"
           className="button-secondary compact-button"
-          onClick={() => setIsImportModalOpen(true)}
+          onClick={() => setIsGoogleImportModalOpen(true)}
+        >
+          <SurveyIcon className="nav-icon" />
+          Google Forms&apos;tan Al
+        </button>
+        <button
+          type="button"
+          className="button-secondary compact-button"
+          onClick={() => setIsContactImportModalOpen(true)}
         >
           <ContactIcon className="nav-icon" />
           Kisi Ice Aktar
@@ -195,6 +214,96 @@ export default function SurveysPage() {
       isMounted = false;
     };
   }, []);
+
+  async function reloadPage() {
+    setIsLoading(true);
+    setErrorMessage(null);
+    setDetailWarning(null);
+
+    const [surveyResult, operationsResult] = await Promise.allSettled([
+      fetchCompanySurveys(),
+      fetchCompanyOperations(),
+    ]);
+
+    const baseSurveys = surveyResult.status === "fulfilled" ? surveyResult.value : [];
+    const nextOperations = operationsResult.status === "fulfilled" ? operationsResult.value : [];
+
+    if (surveyResult.status === "rejected" && operationsResult.status === "rejected") {
+      throw new Error("Anket ve operasyon verileri getirilemedi.");
+    }
+
+    const detailResults = baseSurveys.length
+      ? await Promise.allSettled(baseSurveys.map((survey) => fetchSurveyBuilderSurvey(survey.id)))
+      : [];
+
+    const questionCounts = new Map<string, number>();
+    const questionTypeBreakdowns = new Map<string, Array<{ type: SurveyQuestionType; count: number }>>();
+    detailResults.forEach((result, index) => {
+      const survey = baseSurveys[index];
+      if (!survey) {
+        return;
+      }
+
+      if (result.status === "fulfilled") {
+        questionCounts.set(survey.id, result.value.questionCount);
+        const breakdownMap = new Map<SurveyQuestionType, number>();
+        result.value.questions.forEach((question) => {
+          breakdownMap.set(question.type, (breakdownMap.get(question.type) ?? 0) + 1);
+        });
+        questionTypeBreakdowns.set(
+          survey.id,
+          Array.from(breakdownMap.entries())
+            .map(([type, count]) => ({ type, count }))
+            .sort((left, right) => right.count - left.count),
+        );
+      }
+    });
+
+    if (detailResults.some((result) => result.status === "rejected")) {
+      setDetailWarning("Bazi anketlerde soru sayisi alinmadi; eksik alanlar tahmini olarak gosteriliyor.");
+    }
+
+    const rows = baseSurveys.map((survey) => ({
+      ...survey,
+      questionCount: questionCounts.get(survey.id) ?? survey.questions,
+      questionTypeBreakdown: questionTypeBreakdowns.get(survey.id) ?? [],
+      linkedOperations: nextOperations.filter((operation) => operation.surveyId === survey.id),
+    }));
+
+    setSurveys(rows);
+    setOperations(nextOperations);
+    setIsLoading(false);
+  }
+
+  async function handleGoogleImport() {
+    try {
+      setIsGoogleImporting(true);
+      setGoogleImportError(null);
+
+      const retryCount = Number.parseInt(googleRetryCount, 10);
+      const result = await importGoogleForm({
+        formUrl: googleFormUrl,
+        accessToken: googleAccessToken,
+        languageCode: googleLanguageCode,
+        introPrompt: googleIntroPrompt,
+        closingPrompt: googleClosingPrompt,
+        maxRetryPerQuestion: Number.isFinite(retryCount) ? retryCount : 2,
+      });
+
+      setIsGoogleImportModalOpen(false);
+      setGoogleFormUrl("");
+      setGoogleAccessToken("");
+      setGoogleIntroPrompt("");
+      setGoogleClosingPrompt("");
+      setGoogleRetryCount("2");
+      await reloadPage();
+      router.push(`/surveys/${result.surveyId}`);
+    } catch (error) {
+      setGoogleImportError(error instanceof Error ? error.message : "Google Forms importu basarisiz oldu.");
+    } finally {
+      setIsGoogleImporting(false);
+    }
+  }
 
   const filteredSurveys = useMemo(() => {
     switch (activeTab) {
@@ -536,8 +645,134 @@ export default function SurveysPage() {
   return (
     <PageContainer hideBackRow>
       <div className="surveys-page-tight">
-        {isImportModalOpen ? (
-          <div className="surveys-import-modal-backdrop" role="presentation" onClick={() => setIsImportModalOpen(false)}>
+        {isGoogleImportModalOpen ? (
+          <div className="surveys-import-modal-backdrop" role="presentation" onClick={() => setIsGoogleImportModalOpen(false)}>
+            <section
+              className="surveys-import-modal surveys-google-import-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="surveys-google-import-modal-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="surveys-import-modal-head">
+                <div>
+                  <span className="section-eyebrow">Google Forms Import</span>
+                  <h2 id="surveys-google-import-modal-title">Hazir formu taslak ankete cevir</h2>
+                </div>
+                <button
+                  type="button"
+                  className="button-secondary compact-button"
+                  onClick={() => setIsGoogleImportModalOpen(false)}
+                  disabled={isGoogleImporting}
+                >
+                  Kapat
+                </button>
+              </div>
+              <p>
+                Bu akis Google Forms API uzerinden formu okuyup SurveyAI icinde yeni bir taslak anket olarak kaydeder.
+                Tokenin `forms.body.readonly` yetkisine sahip olmasi gerekir.
+              </p>
+
+              <div className="surveys-google-import-grid">
+                <label className="builder-field surveys-google-import-field surveys-google-import-field-full">
+                  <strong>Google Forms URL</strong>
+                  <input
+                    value={googleFormUrl}
+                    onChange={(event) => setGoogleFormUrl(event.target.value)}
+                    placeholder="https://docs.google.com/forms/d/..."
+                    disabled={isGoogleImporting}
+                  />
+                  <span>Form linkini yapistirin. Edit veya view URL olabilir.</span>
+                </label>
+
+                <label className="builder-field surveys-google-import-field surveys-google-import-field-full">
+                  <strong>Access token</strong>
+                  <textarea
+                    rows={4}
+                    value={googleAccessToken}
+                    onChange={(event) => setGoogleAccessToken(event.target.value)}
+                    placeholder="ya29...."
+                    disabled={isGoogleImporting}
+                  />
+                  <span>Google Forms API icin gecici OAuth access token kullanilir.</span>
+                </label>
+
+                <label className="builder-field surveys-google-import-field">
+                  <strong>Dil kodu</strong>
+                  <input
+                    value={googleLanguageCode}
+                    onChange={(event) => setGoogleLanguageCode(event.target.value)}
+                    placeholder="tr"
+                    disabled={isGoogleImporting}
+                  />
+                  <span>Import edilen anketin gorusme dili.</span>
+                </label>
+
+                <label className="builder-field surveys-google-import-field">
+                  <strong>Soru basi tekrar</strong>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={googleRetryCount}
+                    onChange={(event) => setGoogleRetryCount(event.target.value)}
+                    disabled={isGoogleImporting}
+                  />
+                  <span>Voice akista tekrar deneme sayisi.</span>
+                </label>
+
+                <label className="builder-field surveys-google-import-field">
+                  <strong>Acilis metni</strong>
+                  <textarea
+                    rows={4}
+                    value={googleIntroPrompt}
+                    onChange={(event) => setGoogleIntroPrompt(event.target.value)}
+                    placeholder="Merhaba, kisa bir arastirma gorusmesi icin sizi ariyoruz..."
+                    disabled={isGoogleImporting}
+                  />
+                  <span>Google Forms&apos;ta olmayan voice acilis metni burada eklenir.</span>
+                </label>
+
+                <label className="builder-field surveys-google-import-field">
+                  <strong>Kapanis metni</strong>
+                  <textarea
+                    rows={4}
+                    value={googleClosingPrompt}
+                    onChange={(event) => setGoogleClosingPrompt(event.target.value)}
+                    placeholder="Zaman ayirdiginiz icin tesekkur ederiz..."
+                    disabled={isGoogleImporting}
+                  />
+                  <span>Voice kapanis cumlesi import sirasinda atanir.</span>
+                </label>
+              </div>
+
+              {googleImportError ? <div className="surveys-google-import-error">{googleImportError}</div> : null}
+
+              <div className="surveys-import-modal-actions">
+                <button
+                  type="button"
+                  className="button-primary compact-button"
+                  onClick={() => void handleGoogleImport()}
+                  disabled={isGoogleImporting}
+                >
+                  <SurveyIcon className="nav-icon" />
+                  {isGoogleImporting ? "Ice Aktariliyor" : "Google Forms'tan Ice Aktar"}
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary compact-button"
+                  onClick={() => setIsGoogleImportModalOpen(false)}
+                  disabled={isGoogleImporting}
+                >
+                  Vazgec
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {isContactImportModalOpen ? (
+          <div className="surveys-import-modal-backdrop" role="presentation" onClick={() => setIsContactImportModalOpen(false)}>
             <section
               className="surveys-import-modal"
               role="dialog"
@@ -553,7 +788,7 @@ export default function SurveysPage() {
                 <button
                   type="button"
                   className="button-secondary compact-button"
-                  onClick={() => setIsImportModalOpen(false)}
+                  onClick={() => setIsContactImportModalOpen(false)}
                 >
                   Kapat
                 </button>
@@ -563,14 +798,14 @@ export default function SurveysPage() {
                 aktariyor. Kisi importunu guvenli sekilde baslatmak icin operasyon olusturma akisini kullanabilirsiniz.
               </p>
               <div className="surveys-import-modal-actions">
-                <Link href="/operations/new" className="button-primary compact-button" onClick={() => setIsImportModalOpen(false)}>
+                <Link href="/operations/new" className="button-primary compact-button" onClick={() => setIsContactImportModalOpen(false)}>
                   <OperationIcon className="nav-icon" />
                   Operasyonla Devam Et
                 </Link>
                 <button
                   type="button"
                   className="button-secondary compact-button"
-                  onClick={() => setIsImportModalOpen(false)}
+                  onClick={() => setIsContactImportModalOpen(false)}
                 >
                   Burada Kal
                 </button>

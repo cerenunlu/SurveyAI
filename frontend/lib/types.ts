@@ -57,6 +57,13 @@ export type SurveyQuestionOption = {
   value?: string;
 };
 
+export type SurveyImportSource = {
+  provider: "GOOGLE_FORMS" | "FILE_UPLOAD";
+  externalId?: string;
+  fileName?: string;
+  payloadJson?: string;
+};
+
 export type SurveyBuilderQuestion = {
   id: string;
   code: string;
@@ -67,6 +74,8 @@ export type SurveyBuilderQuestion = {
   retryPrompt?: string;
   branchConditionJson?: string;
   settingsJson?: string;
+  sourceExternalId?: string;
+  sourcePayloadJson?: string;
   options?: SurveyQuestionOption[];
 };
 
@@ -83,6 +92,7 @@ export type SurveyBuilderSurvey = {
   introPrompt: string;
   closingPrompt: string;
   maxRetryPerQuestion: number;
+  source?: SurveyImportSource;
   questions: SurveyBuilderQuestion[];
 };
 

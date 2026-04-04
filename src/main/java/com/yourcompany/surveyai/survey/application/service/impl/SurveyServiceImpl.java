@@ -189,6 +189,10 @@ public class SurveyServiceImpl implements SurveyService {
         survey.setIntroPrompt(trimToNull(request.getIntroPrompt()));
         survey.setClosingPrompt(trimToNull(request.getClosingPrompt()));
         survey.setMaxRetryPerQuestion(request.getMaxRetryPerQuestion() != null ? request.getMaxRetryPerQuestion() : 2);
+        survey.setSourceProvider(trimToNull(request.getSourceProvider()));
+        survey.setSourceExternalId(trimToNull(request.getSourceExternalId()));
+        survey.setSourceFileName(trimToNull(request.getSourceFileName()));
+        survey.setSourcePayloadJson(trimToNull(request.getSourcePayloadJson()));
     }
 
     private void applyUpdateFields(Survey survey, UpdateSurveyRequest request) {
@@ -199,6 +203,10 @@ public class SurveyServiceImpl implements SurveyService {
         survey.setClosingPrompt(trimToNull(request.getClosingPrompt()));
         survey.setMaxRetryPerQuestion(request.getMaxRetryPerQuestion());
         survey.setStatus(request.getStatus());
+        survey.setSourceProvider(trimToNull(request.getSourceProvider()));
+        survey.setSourceExternalId(trimToNull(request.getSourceExternalId()));
+        survey.setSourceFileName(trimToNull(request.getSourceFileName()));
+        survey.setSourcePayloadJson(trimToNull(request.getSourcePayloadJson()));
     }
 
     private void validateSurveyUpdateRules(Survey survey, UpdateSurveyRequest request) {
@@ -218,7 +226,11 @@ public class SurveyServiceImpl implements SurveyService {
                     || !trimmedEquals(survey.getLanguageCode(), request.getLanguageCode())
                     || !trimmedEquals(survey.getIntroPrompt(), request.getIntroPrompt())
                     || !trimmedEquals(survey.getClosingPrompt(), request.getClosingPrompt())
-                    || !survey.getMaxRetryPerQuestion().equals(request.getMaxRetryPerQuestion())) {
+                    || !survey.getMaxRetryPerQuestion().equals(request.getMaxRetryPerQuestion())
+                    || !trimmedEquals(survey.getSourceProvider(), request.getSourceProvider())
+                    || !trimmedEquals(survey.getSourceExternalId(), request.getSourceExternalId())
+                    || !trimmedEquals(survey.getSourceFileName(), request.getSourceFileName())
+                    || !trimmedEquals(survey.getSourcePayloadJson(), request.getSourcePayloadJson())) {
                 throw new ValidationException("Published surveys cannot change content or retry settings");
             }
         }
@@ -259,6 +271,10 @@ public class SurveyServiceImpl implements SurveyService {
                 survey.getIntroPrompt(),
                 survey.getClosingPrompt(),
                 survey.getMaxRetryPerQuestion(),
+                survey.getSourceProvider(),
+                survey.getSourceExternalId(),
+                survey.getSourceFileName(),
+                survey.getSourcePayloadJson(),
                 survey.getCreatedBy() != null ? survey.getCreatedBy().getId() : null,
                 survey.getCreatedAt(),
                 survey.getUpdatedAt()

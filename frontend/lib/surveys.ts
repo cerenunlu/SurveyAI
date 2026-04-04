@@ -17,6 +17,20 @@ type SurveyApiResponse = {
   updatedAt: string;
 };
 
+type ImportGoogleFormRequest = {
+  formUrl: string;
+  accessToken: string;
+  languageCode?: string;
+  introPrompt?: string;
+  closingPrompt?: string;
+  maxRetryPerQuestion?: number;
+};
+
+type ImportGoogleFormResponse = {
+  survey: SurveyApiResponse;
+  importedQuestionCount: number;
+};
+
 export async function fetchCompanySurveys(
   companyId?: string,
   init?: RequestInit,
@@ -36,6 +50,31 @@ export async function fetchCompanySurveys(
 
   const data = (await response.json()) as SurveyApiResponse[];
   return data.map(mapSurveyDtoToSurvey);
+}
+
+export async function importGoogleForm(
+  request: ImportGoogleFormRequest,
+  companyId?: string,
+): Promise<{ surveyId: string; importedQuestionCount: number }> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const response = await apiFetch(`${API_BASE_URL}/api/v1/companies/${resolvedCompanyId}/surveys/imports/google-forms`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response));
+  }
+
+  const data = (await response.json()) as ImportGoogleFormResponse;
+  return {
+    surveyId: data.survey.id,
+    importedQuestionCount: data.importedQuestionCount,
+  };
 }
 
 function mapSurveyDtoToSurvey(dto: SurveyApiResponse): Survey {
@@ -77,4 +116,15 @@ function formatUpdatedAt(value: string): string {
     day: "numeric",
     year: "numeric",
   }).format(date);
+}
+
+async function readApiError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { message?: string; details?: string[] };
+    const message = payload.message?.trim() || `Request failed (${response.status})`;
+    const details = payload.details?.filter(Boolean) ?? [];
+    return details.length > 0 ? `${message}: ${details.join(" ")}` : message;
+  } catch {
+    return `Request failed (${response.status})`;
+  }
 }

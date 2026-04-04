@@ -34,6 +34,18 @@ public class UpdateSurveyRequest {
     @NotNull
     private SurveyStatus status;
 
+    @Size(max = 50)
+    private String sourceProvider;
+
+    @Size(max = 255)
+    private String sourceExternalId;
+
+    @Size(max = 255)
+    private String sourceFileName;
+
+    @Size(max = 50000)
+    private String sourcePayloadJson;
+
     public String getName() {
         return name;
     }
@@ -88,5 +100,37 @@ public class UpdateSurveyRequest {
 
     public void setStatus(SurveyStatus status) {
         this.status = status;
+    }
+
+    public String getSourceProvider() {
+        return sourceProvider;
+    }
+
+    public void setSourceProvider(String sourceProvider) {
+        this.sourceProvider = sourceProvider;
+    }
+
+    public String getSourceExternalId() {
+        return sourceExternalId;
+    }
+
+    public void setSourceExternalId(String sourceExternalId) {
+        this.sourceExternalId = sourceExternalId;
+    }
+
+    public String getSourceFileName() {
+        return sourceFileName;
+    }
+
+    public void setSourceFileName(String sourceFileName) {
+        this.sourceFileName = sourceFileName;
+    }
+
+    public String getSourcePayloadJson() {
+        return sourcePayloadJson;
+    }
+
+    public void setSourcePayloadJson(String sourcePayloadJson) {
+        this.sourcePayloadJson = sourcePayloadJson;
     }
 }

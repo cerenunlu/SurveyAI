@@ -15,6 +15,8 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "survey")
@@ -41,6 +43,19 @@ public class Survey extends CompanyScopedEntity {
 
     @Column(name = "max_retry_per_question", nullable = false)
     private Integer maxRetryPerQuestion;
+
+    @Column(name = "source_provider", length = 50)
+    private String sourceProvider;
+
+    @Column(name = "source_external_id", length = 255)
+    private String sourceExternalId;
+
+    @Column(name = "source_file_name", length = 255)
+    private String sourceFileName;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "source_payload_json", columnDefinition = "jsonb")
+    private String sourcePayloadJson;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
@@ -114,5 +129,37 @@ public class Survey extends CompanyScopedEntity {
 
     public void setCreatedBy(AppUser createdBy) {
         this.createdBy = createdBy;
+    }
+
+    public String getSourceProvider() {
+        return sourceProvider;
+    }
+
+    public void setSourceProvider(String sourceProvider) {
+        this.sourceProvider = sourceProvider;
+    }
+
+    public String getSourceExternalId() {
+        return sourceExternalId;
+    }
+
+    public void setSourceExternalId(String sourceExternalId) {
+        this.sourceExternalId = sourceExternalId;
+    }
+
+    public String getSourceFileName() {
+        return sourceFileName;
+    }
+
+    public void setSourceFileName(String sourceFileName) {
+        this.sourceFileName = sourceFileName;
+    }
+
+    public String getSourcePayloadJson() {
+        return sourcePayloadJson;
+    }
+
+    public void setSourcePayloadJson(String sourcePayloadJson) {
+        this.sourcePayloadJson = sourcePayloadJson;
     }
 }

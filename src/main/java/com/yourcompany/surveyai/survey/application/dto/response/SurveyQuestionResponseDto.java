@@ -18,6 +18,8 @@ public record SurveyQuestionResponseDto(
         String retryPrompt,
         String branchConditionJson,
         String settingsJson,
+        String sourceExternalId,
+        String sourcePayloadJson,
         List<SurveyQuestionOptionResponseDto> options,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt

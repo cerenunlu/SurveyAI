@@ -55,6 +55,13 @@ public class SurveyQuestion extends CompanyScopedEntity {
     @Column(name = "settings_json", nullable = false, columnDefinition = "jsonb")
     private String settingsJson;
 
+    @Column(name = "source_external_id", length = 255)
+    private String sourceExternalId;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "source_payload_json", columnDefinition = "jsonb")
+    private String sourcePayloadJson;
+
     @OneToMany(mappedBy = "surveyQuestion")
     private Set<SurveyQuestionOption> options = new LinkedHashSet<>();
 
@@ -139,5 +146,21 @@ public class SurveyQuestion extends CompanyScopedEntity {
 
     public void setSettingsJson(String settingsJson) {
         this.settingsJson = settingsJson;
+    }
+
+    public String getSourceExternalId() {
+        return sourceExternalId;
+    }
+
+    public void setSourceExternalId(String sourceExternalId) {
+        this.sourceExternalId = sourceExternalId;
+    }
+
+    public String getSourcePayloadJson() {
+        return sourcePayloadJson;
+    }
+
+    public void setSourcePayloadJson(String sourcePayloadJson) {
+        this.sourcePayloadJson = sourcePayloadJson;
     }
 }

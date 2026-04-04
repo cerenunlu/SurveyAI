@@ -214,6 +214,8 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
         question.setRetryPrompt(trimToNull(request.getRetryPrompt()));
         question.setBranchConditionJson(normalizeJson(request.getBranchConditionJson()));
         question.setSettingsJson(normalizeJson(request.getSettingsJson()));
+        question.setSourceExternalId(trimToNull(request.getSourceExternalId()));
+        question.setSourcePayloadJson(trimToNull(request.getSourcePayloadJson()));
     }
 
     private void applyQuestionFields(SurveyQuestion question, UpdateSurveyQuestionRequest request) {
@@ -226,6 +228,8 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
         question.setRetryPrompt(trimToNull(request.getRetryPrompt()));
         question.setBranchConditionJson(normalizeJson(request.getBranchConditionJson()));
         question.setSettingsJson(normalizeJson(request.getSettingsJson()));
+        question.setSourceExternalId(trimToNull(request.getSourceExternalId()));
+        question.setSourcePayloadJson(trimToNull(request.getSourcePayloadJson()));
     }
 
     private SurveyQuestionResponseDto toDto(SurveyQuestion question) {
@@ -248,6 +252,8 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
                 question.getRetryPrompt(),
                 question.getBranchConditionJson(),
                 question.getSettingsJson(),
+                question.getSourceExternalId(),
+                question.getSourcePayloadJson(),
                 options,
                 question.getCreatedAt(),
                 question.getUpdatedAt()

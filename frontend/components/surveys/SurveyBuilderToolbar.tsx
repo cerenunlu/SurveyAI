@@ -33,6 +33,14 @@ export function SurveyBuilderToolbar({
   const isPublished = survey.status === "Live";
   const disableMutations = isBusy || readOnly;
   const statusLabel = isPublished ? "Yayinda" : survey.status === "Draft" ? "Taslak" : survey.status;
+  const contextLabel = readOnly ? "Onizleme" : mode === "create" ? "Calisma Alani" : "Duzenleme";
+  const title = readOnly
+    ? "Anketin salt-okunur onizlemesi"
+    : isPublished
+      ? "Yayinlanmis anket goruntuleniyor"
+      : mode === "create"
+        ? "Yeni anket tasarimi uzerinde calisiyorsunuz"
+        : "Anket akisi guncelleniyor";
 
   return (
     <section className="builder-toolbar panel-card ops-builder-toolbar">
@@ -41,14 +49,8 @@ export function SurveyBuilderToolbar({
 
         <div className="builder-toolbar-context">
           <div className="builder-toolbar-copy">
-            <span className="builder-panel-kicker">{mode === "create" ? "Calisma Alani" : "Duzenleme"}</span>
-            <strong>
-              {isPublished
-                ? "Yayinlanmis anket goruntuleniyor"
-                : mode === "create"
-                  ? "Yeni anket tasarimi uzerinde calisiyorsunuz"
-                  : "Anket akisi guncelleniyor"}
-            </strong>
+            <span className="builder-panel-kicker">{contextLabel}</span>
+            <strong>{title}</strong>
           </div>
 
           <div className="builder-toolbar-meta ops-builder-toolbar-meta">
@@ -64,44 +66,46 @@ export function SurveyBuilderToolbar({
         </div>
       </div>
 
-      <div className="builder-toolbar-actions ops-builder-toolbar-actions">
-        <button type="button" className="button-secondary compact-button" onClick={onAddQuestion} disabled={disableMutations}>
-          <PlusIcon className="nav-icon" />
-          Soru ekle
-        </button>
-        <button
-          type="button"
-          className="button-secondary compact-button"
-          onClick={() => onPersist("draft")}
-          disabled={disableMutations}
-        >
-          {activeAction === "draft" ? "Taslak kaydediliyor..." : "Taslak kaydet"}
-        </button>
-        <button
-          type="button"
-          className="button-secondary compact-button"
-          onClick={() => onPersist("save")}
-          disabled={disableMutations}
-        >
-          {activeAction === "save" ? "Kaydediliyor..." : "Degisiklikleri kaydet"}
-        </button>
-        <button
-          type="button"
-          className="button-primary compact-button"
-          onClick={() => onPersist("publish")}
-          disabled={isBusy || isPublished}
-        >
-          {isPublished ? "Yayinda" : activeAction === "publish" ? "Yayinlaniyor..." : "Yayinla"}
-        </button>
-        <button
-          type="button"
-          className="button-secondary compact-button"
-          disabled
-          title="Kopyalayarak yeni taslak olusturma akisi yakinda eklenecek."
-        >
-          Kopya yakinda
-        </button>
-      </div>
+      {readOnly ? null : (
+        <div className="builder-toolbar-actions ops-builder-toolbar-actions">
+          <button type="button" className="button-secondary compact-button" onClick={onAddQuestion} disabled={disableMutations}>
+            <PlusIcon className="nav-icon" />
+            Soru ekle
+          </button>
+          <button
+            type="button"
+            className="button-secondary compact-button"
+            onClick={() => onPersist("draft")}
+            disabled={disableMutations}
+          >
+            {activeAction === "draft" ? "Taslak kaydediliyor..." : "Taslak kaydet"}
+          </button>
+          <button
+            type="button"
+            className="button-secondary compact-button"
+            onClick={() => onPersist("save")}
+            disabled={disableMutations}
+          >
+            {activeAction === "save" ? "Kaydediliyor..." : "Degisiklikleri kaydet"}
+          </button>
+          <button
+            type="button"
+            className="button-primary compact-button"
+            onClick={() => onPersist("publish")}
+            disabled={isBusy || isPublished}
+          >
+            {isPublished ? "Yayinda" : activeAction === "publish" ? "Yayinlaniyor..." : "Yayinla"}
+          </button>
+          <button
+            type="button"
+            className="button-secondary compact-button"
+            disabled
+            title="Kopyalayarak yeni taslak olusturma akisi yakinda eklenecek."
+          >
+            Kopya yakinda
+          </button>
+        </div>
+      )}
     </section>
   );
 }
