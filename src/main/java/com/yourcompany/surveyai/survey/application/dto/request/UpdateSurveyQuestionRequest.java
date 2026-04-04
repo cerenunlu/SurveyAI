@@ -37,6 +37,12 @@ public class UpdateSurveyQuestionRequest {
     @Size(max = 20000)
     private String settingsJson;
 
+    @Size(max = 255)
+    private String sourceExternalId;
+
+    @Size(max = 50000)
+    private String sourcePayloadJson;
+
     public String getCode() {
         return code;
     }
@@ -107,5 +113,21 @@ public class UpdateSurveyQuestionRequest {
 
     public void setSettingsJson(String settingsJson) {
         this.settingsJson = settingsJson;
+    }
+
+    public String getSourceExternalId() {
+        return sourceExternalId;
+    }
+
+    public void setSourceExternalId(String sourceExternalId) {
+        this.sourceExternalId = sourceExternalId;
+    }
+
+    public String getSourcePayloadJson() {
+        return sourcePayloadJson;
+    }
+
+    public void setSourcePayloadJson(String sourcePayloadJson) {
+        this.sourcePayloadJson = sourcePayloadJson;
     }
 }

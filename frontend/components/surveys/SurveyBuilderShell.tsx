@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
 import { PageBackButton } from "@/components/navigation/PageBackButton";
 import { EmptyBuilderState } from "@/components/surveys/EmptyBuilderState";
@@ -26,32 +28,37 @@ type ReadinessRow = {
 export function SurveyBuilderShell({
   initialSurvey,
   mode,
+  showSummaryStrip = true,
+  showToolbar = true,
+  showTopRow = true,
+  showPreviewPanel = true,
+  showQuestionList = true,
+  readOnly = false,
 }: {
   initialSurvey: SurveyBuilderSurvey;
   mode: "create" | "edit";
+  showSummaryStrip?: boolean;
+  showToolbar?: boolean;
+  showTopRow?: boolean;
+  showPreviewPanel?: boolean;
+  showQuestionList?: boolean;
+  readOnly?: boolean;
 }) {
+  const router = useRouter();
   const [survey, setSurvey] = useState<SurveyBuilderSurvey>(initialSurvey);
   const [activeAction, setActiveAction] = useState<BuilderSaveAction | null>(null);
+  const [isCreatingDraftCopy, setIsCreatingDraftCopy] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [feedbackTone, setFeedbackTone] = useState<"success" | "error" | null>(null);
   const isPublished = survey.status === "Live";
+  const isReadOnly = readOnly || isPublished;
 
   const questionStats = useMemo(() => buildQuestionStats(survey), [survey]);
 
   const readiness = useMemo(() => buildReadinessRows(survey, questionStats, isPublished), [isPublished, questionStats, survey]);
 
-  usePageHeaderOverride({
-    title: mode === "create" ? "Yeni Anket Tasarimi" : survey.name.trim() || "Anket Tasarimi",
-    subtitle:
-      mode === "create"
-        ? "Sorulari, gorusme metinlerini ve yayin hazirligini tek calisma alaninda yonetin."
-        : isPublished
-          ? "Yayinlanmis anket izleme modunda acildi; yapisal degisiklikler kilitli."
-          : "Anket yapisini ve operasyon baglamini ayni akista guncelleyin.",
-  });
-
   function updateQuestion(nextQuestion: SurveyBuilderQuestion) {
-    if (isPublished) {
+    if (isReadOnly) {
       return;
     }
 
@@ -65,7 +72,7 @@ export function SurveyBuilderShell({
   }
 
   function addQuestion(type: SurveyQuestionType = "short_text") {
-    if (isPublished) {
+    if (isReadOnly) {
       return;
     }
 
@@ -84,7 +91,7 @@ export function SurveyBuilderShell({
   }
 
   function addQuestionAfter(afterId: string, type: SurveyQuestionType = "short_text") {
-    if (isPublished) {
+    if (isReadOnly) {
       return;
     }
 
@@ -109,7 +116,7 @@ export function SurveyBuilderShell({
   }
 
   function reorderQuestion(id: string, direction: -1 | 1) {
-    if (isPublished) {
+    if (isReadOnly) {
       return;
     }
 
@@ -136,7 +143,7 @@ export function SurveyBuilderShell({
   }
 
   function removeQuestion(id: string) {
-    if (isPublished) {
+    if (isReadOnly) {
       return;
     }
 
@@ -158,7 +165,7 @@ export function SurveyBuilderShell({
   }
 
   async function handlePersist(action: BuilderSaveAction) {
-    if (isPublished) {
+    if (isReadOnly) {
       return;
     }
 
@@ -179,248 +186,194 @@ export function SurveyBuilderShell({
     }
   }
 
+  const handleCreateDraftCopy = useCallback(async () => {
+    try {
+      setIsCreatingDraftCopy(true);
+      setFeedbackMessage(null);
+      setFeedbackTone(null);
+
+      const copiedSurvey = buildDraftCopySurvey(survey);
+      const result = await saveSurveyBuilderSurvey(copiedSurvey, "draft");
+
+      router.push(`/surveys/${result.survey.id}`);
+    } catch (error) {
+      setFeedbackMessage(error instanceof Error ? error.message : "Taslak kopya olusturulamadi.");
+      setFeedbackTone("error");
+    } finally {
+      setIsCreatingDraftCopy(false);
+    }
+  }, [router, survey]);
+
+  const headerAction = useMemo(
+    () => mode === "edit" && isPublished && !readOnly ? (
+      <div className="survey-header-action-cluster">
+      <div className="survey-header-action-buttons">
+        <Link href="/surveys/new" className="button-secondary compact-button survey-header-button is-new">
+          <PlusIcon className="nav-icon" />
+          Yeni anket
+        </Link>
+        <button
+          type="button"
+          className="button-secondary compact-button survey-header-button is-copy"
+          onClick={() => void handleCreateDraftCopy()}
+          disabled={isCreatingDraftCopy}
+        >
+          <SurveyIcon className="nav-icon" />
+          {isCreatingDraftCopy ? "Kopya hazirlaniyor..." : "Taslak Kopya Olustur"}
+        </button>
+      </div>
+        <div className="survey-header-notice" role="note" aria-label="Yayin uyarisi">
+          <SurveyIcon className="nav-icon" />
+          <div>
+            <strong>Yayinlandi</strong>
+            <span>Yayinlanmis anketlerde degisiklik yapilamaz. Devam etmek icin bu anketin taslak bir kopyasi uzerinden ilerleyebilirsiniz.</span>
+          </div>
+        </div>
+      </div>
+    ) : null,
+    [handleCreateDraftCopy, isCreatingDraftCopy, isPublished, mode, readOnly],
+  );
+
+  usePageHeaderOverride({
+    title: mode === "create" ? "Yeni Anket Tasarimi" : survey.name.trim() || "Anket Tasarimi",
+    subtitle:
+      mode === "create"
+        ? "Sorulari, gorusme metinlerini ve yayin hazirligini tek calisma alaninda yonetin."
+        : survey.summary.trim()
+          ? survey.summary.trim()
+          : "Anket yapisini ve operasyon baglamini ayni akista guncelleyin.",
+    action: showTopRow ? headerAction : null,
+  });
+
   return (
     <div className="page-container survey-builder-page ops-builder-shell">
-      <div className="ops-create-top-row ops-builder-top-row">
-        <PageBackButton />
-        <StatusBadge status={readiness.status} label={readiness.label} />
-      </div>
+      {showTopRow ? (
+        <div className="ops-create-top-row ops-builder-top-row">
+          <PageBackButton />
+          <StatusBadge status={readiness.status} label={readiness.label} />
+        </div>
+      ) : null}
 
-      <section className="ops-summary-strip ops-builder-summary-strip">
-        <StatCard
-          label="Anket durumu"
-          value={resolveStatusLabel(survey.status)}
-          detail={mode === "create" ? "Yeni tasarim akisi taslak olarak baslar." : "Mevcut anketin yasam durumu."}
-          icon={<SurveyIcon className="nav-icon" />}
-        />
-        <StatCard
-          label="Soru mimarisi"
-          value={questionStats.total}
-          detail={
-            questionStats.total > 0
-              ? `${questionStats.distinctTypes} farkli tip, ${questionStats.required} zorunlu soru`
-              : "Ilk soruyu ekleyerek akis mimarisini baslatin."
-          }
-          icon={<AnalyticsIcon className="nav-icon" />}
-        />
-        <StatCard
-          label="Dil ve tekrar"
-          value={`${(survey.languageCode || "tr").toUpperCase()} / ${survey.maxRetryPerQuestion}`}
-          detail="Soru basi tekrar sayisi sesli gorusmedeki ikinci deneme sayisini belirler."
-          icon={<PlayIcon className="nav-icon" />}
-        />
-        <StatCard
-          label="Onizleme hazirligi"
-          value={survey.introPrompt.trim() && survey.closingPrompt.trim() ? "Hazir" : "Eksik"}
-          detail="Acilis ve kapanis mesajlari canli gorusme ritmini belirler."
-          icon={<EyeIcon className="nav-icon" />}
-        />
-      </section>
+      {showSummaryStrip ? (
+        <section className="ops-summary-strip ops-builder-summary-strip">
+          <StatCard
+            label="Anket durumu"
+            value={resolveStatusLabel(survey.status)}
+            detail={mode === "create" ? "Yeni tasarim akisi taslak olarak baslar." : "Mevcut anketin yasam durumu."}
+            icon={<SurveyIcon className="nav-icon" />}
+          />
+          <StatCard
+            label="Soru mimarisi"
+            value={questionStats.total}
+            detail={
+              questionStats.total > 0
+                ? `${questionStats.distinctTypes} farkli tip, ${questionStats.required} zorunlu soru`
+                : "Ilk soruyu ekleyerek akis mimarisini baslatin."
+            }
+            icon={<AnalyticsIcon className="nav-icon" />}
+          />
+          <StatCard
+            label="Dil ve tekrar"
+            value={`${(survey.languageCode || "tr").toUpperCase()} / ${survey.maxRetryPerQuestion}`}
+            detail="Soru basi tekrar sayisi sesli gorusmedeki ikinci deneme sayisini belirler."
+            icon={<PlayIcon className="nav-icon" />}
+          />
+          <StatCard
+            label="Onizleme hazirligi"
+            value={survey.introPrompt.trim() && survey.closingPrompt.trim() ? "Hazir" : "Eksik"}
+            detail="Acilis ve kapanis mesajlari canli gorusme ritmini belirler."
+            icon={<EyeIcon className="nav-icon" />}
+          />
+        </section>
+      ) : null}
 
       <div className="ops-two-column-layout ops-builder-workspace">
         <div className="ops-builder-main">
-          <SectionCard
-            eyebrow="Brif"
-            title="Anket Brifi"
-            description="Anketin ismini, kapsam notunu ve uygulama parametrelerini karar odakli bir formatta tanimlayin."
-          >
-            <div className="survey-form-fields ops-builder-brief-grid">
-              <label className="builder-field ops-builder-field-full survey-title-field">
-                <strong>Anket adi</strong>
-                <input
-                  value={survey.name}
-                  onChange={(event) => setSurvey((current) => ({ ...current, name: event.target.value }))}
-                  placeholder="Orn. Nisan 2026 musteri memnuniyeti takip anketi"
-                  disabled={isPublished}
-                />
-                <span>Isim, operasyon ekiplerinin ayni anketi farkli kampanyalarda kolayca tanimasini saglamalidir.</span>
-              </label>
-
-              <label className="builder-field ops-builder-field-full">
-                <strong>Anket ozeti</strong>
-                <textarea
-                  rows={4}
-                  value={survey.summary}
-                  onChange={(event) => setSurvey((current) => ({ ...current, summary: event.target.value }))}
-                  placeholder="Hangi is kararini destekledigini ve bu anketin nerede kullanilacagini yazin."
-                  disabled={isPublished}
-                />
-                <span>Kisa ama operasyonel bir ozet, ayni sablonun farkli operasyonlarda yeniden kullanimini kolaylastirir.</span>
-              </label>
-
-              <label className="builder-field">
-                <strong>Dil kodu</strong>
-                <input
-                  type="text"
-                  value={survey.languageCode}
-                  onChange={(event) => setSurvey((current) => ({ ...current, languageCode: event.target.value }))}
-                  placeholder="tr"
-                  disabled={isPublished}
-                />
-                <span>Su anda arayuz ana dil olarak Turkceyi kullanir; burada gorusme dilini isaretlersiniz.</span>
-              </label>
-
-              <label className="builder-field">
-                <strong>Soru basi tekrar</strong>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={survey.maxRetryPerQuestion}
-                  onChange={(event) =>
-                    setSurvey((current) => ({
-                      ...current,
-                      maxRetryPerQuestion: clampRetryCount(event.target.value),
-                    }))
-                  }
-                  disabled={isPublished}
-                />
-                <span>Sesli gorusmede anlasilmayan yanitlar icin uygulanacak en yuksek tekrar sayisi.</span>
-              </label>
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            eyebrow="Metin"
-            title="Acilis ve Kapanis Mesajlari"
-            description="Gorusmenin operasyonel tonu burada belirlenir. Acilis metni baglam verir, kapanis metni kaydi guvenle kapatir."
-          >
-            <div className="survey-form-fields ops-builder-script-grid">
-              <label className="builder-field">
-                <strong>Acilis metni</strong>
-                <textarea
-                  rows={6}
-                  value={survey.introPrompt}
-                  onChange={(event) => setSurvey((current) => ({ ...current, introPrompt: event.target.value }))}
-                  placeholder="Merhaba, kisa bir arastirma gorusmesi icin sizi ariyoruz..."
-                  disabled={isPublished}
-                />
-                <span>Ilk 1-2 cumlede amaci ve beklentiyi netlestirin.</span>
-              </label>
-
-              <label className="builder-field">
-                <strong>Kapanis metni</strong>
-                <textarea
-                  rows={6}
-                  value={survey.closingPrompt}
-                  onChange={(event) => setSurvey((current) => ({ ...current, closingPrompt: event.target.value }))}
-                  placeholder="Zaman ayirdiginiz icin tesekkur ederiz..."
-                  disabled={isPublished}
-                />
-                <span>Kapanis metni tesekkur, gerekirse bilgi notu ve sonraki adimi icerebilir.</span>
-              </label>
-            </div>
-          </SectionCard>
-
           <div className="ops-builder-question-area">
-            <SurveyBuilderToolbar
-              survey={survey}
-              mode={mode}
-              onAddQuestion={() => addQuestion()}
-              onPersist={handlePersist}
-              activeAction={activeAction}
-              feedbackMessage={feedbackMessage}
-              feedbackTone={feedbackTone}
-              readOnly={isPublished}
-            />
-
-            {isPublished ? (
-              <section className="builder-readonly-banner panel-card ops-builder-readonly-banner" aria-live="polite">
-                <div className="builder-readonly-banner-copy">
-                  <span className="builder-panel-kicker">Yayin durumu</span>
-                  <strong>Bu anket yayinlanmis durumda.</strong>
-                  <p>Yayinlanmis anketlerde soru yapisi, secenekler ve akis metinleri kilitlenir.</p>
-                  <p>Yeni bir varyasyon gerektiginde bu sablonun kopya akisi uzerinden ilerlemek daha guvenli olur.</p>
-                </div>
-                <div className="builder-readonly-banner-actions">
-                  <button
-                    type="button"
-                    className="button-secondary compact-button"
-                    disabled
-                    title="Kopyalayarak yeni taslak olusturma akisi yakinda eklenecek."
-                  >
-                    Yeni taslak yakinda
-                  </button>
-                  <span className="builder-readonly-banner-note">Yalnizca izleme modundasiniz.</span>
-                </div>
-              </section>
+            {showToolbar ? (
+              <SurveyBuilderToolbar
+                survey={survey}
+                mode={mode}
+                onAddQuestion={() => addQuestion()}
+                onPersist={handlePersist}
+                activeAction={activeAction}
+                feedbackMessage={feedbackMessage}
+                feedbackTone={feedbackTone}
+                readOnly={isReadOnly}
+              />
             ) : null}
 
-            <section className="builder-canvas-shell panel-card ops-builder-canvas-shell">
-              <div className="builder-canvas-header ops-builder-canvas-head">
-                <div>
-                  <span className="builder-panel-kicker">Soru mimarisi</span>
-                  <h2>Gorusme karar noktalarini duzenleyin</h2>
-                  <p>Her kart, operasyon akisinda okunacak nihai soru adimini temsil eder.</p>
+            {showQuestionList ? (
+              <section className="builder-canvas-shell panel-card ops-builder-canvas-shell">
+                <div className="builder-canvas-header ops-builder-canvas-head">
+                  {!isReadOnly ? (
+                    <div className="builder-quick-add">
+                      {([
+                        "short_text",
+                        "single_choice",
+                        "multi_choice",
+                        "dropdown",
+                        "rating_1_5",
+                        "date",
+                      ] as SurveyQuestionType[]).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          className="builder-quick-chip"
+                          onClick={() => addQuestion(type)}
+                          disabled={activeAction !== null}
+                        >
+                          <PlusIcon className="nav-icon" />
+                          {questionTypeLabels[type]}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
-                {!isPublished ? (
-                  <div className="builder-quick-add">
-                    {([
-                      "short_text",
-                      "single_choice",
-                      "multi_choice",
-                      "dropdown",
-                      "rating_1_5",
-                      "date",
-                    ] as SurveyQuestionType[]).map((type) => (
-                      <button
-                        key={type}
-                        type="button"
-                        className="builder-quick-chip"
-                        onClick={() => addQuestion(type)}
-                        disabled={activeAction !== null}
-                      >
-                        <PlusIcon className="nav-icon" />
-                        {questionTypeLabels[type]}
-                      </button>
+                {survey.questions.length > 0 ? (
+                  <div className="builder-question-list">
+                    {survey.questions.map((question, index) => (
+                      <QuestionCard
+                        key={question.id}
+                        index={index}
+                        question={question}
+                        isFirst={index === 0}
+                        isLast={index === survey.questions.length - 1}
+                        canRemove={survey.questions.length > 1}
+                        readOnly={isReadOnly}
+                        onUpdate={updateQuestion}
+                        onMoveUp={() => reorderQuestion(question.id, -1)}
+                        onMoveDown={() => reorderQuestion(question.id, 1)}
+                        onRemove={() => removeQuestion(question.id)}
+                        onAddBelow={() => addQuestionAfter(question.id)}
+                      />
                     ))}
                   </div>
+                ) : (
+                  <EmptyBuilderState onAdd={() => addQuestion()} disabled={isReadOnly || activeAction !== null} />
+                )}
+
+                {!isReadOnly ? (
+                  <div className="builder-bottom-actions ops-builder-bottom-actions">
+                    <button
+                      type="button"
+                      className="button-secondary compact-button"
+                      onClick={() => addQuestion()}
+                      disabled={activeAction !== null}
+                    >
+                      <PlusIcon className="nav-icon" />
+                      Yeni soru ekle
+                    </button>
+                  </div>
                 ) : null}
-              </div>
-
-              {survey.questions.length > 0 ? (
-                <div className="builder-question-list">
-                  {survey.questions.map((question, index) => (
-                    <QuestionCard
-                      key={question.id}
-                      index={index}
-                      question={question}
-                      isFirst={index === 0}
-                      isLast={index === survey.questions.length - 1}
-                      canRemove={survey.questions.length > 1}
-                      readOnly={isPublished}
-                      onUpdate={updateQuestion}
-                      onMoveUp={() => reorderQuestion(question.id, -1)}
-                      onMoveDown={() => reorderQuestion(question.id, 1)}
-                      onRemove={() => removeQuestion(question.id)}
-                      onAddBelow={() => addQuestionAfter(question.id)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptyBuilderState onAdd={() => addQuestion()} disabled={isPublished || activeAction !== null} />
-              )}
-
-              {!isPublished ? (
-                <div className="builder-bottom-actions ops-builder-bottom-actions">
-                  <button
-                    type="button"
-                    className="button-secondary compact-button"
-                    onClick={() => addQuestion()}
-                    disabled={activeAction !== null}
-                  >
-                    <PlusIcon className="nav-icon" />
-                    Yeni soru ekle
-                  </button>
-                </div>
-              ) : null}
-            </section>
+              </section>
+            ) : null}
           </div>
         </div>
 
         <aside className="ops-builder-side">
-          <SurveyPreviewPanel survey={survey} />
+          {showPreviewPanel ? <SurveyPreviewPanel survey={survey} /> : null}
 
           <SectionCard
             eyebrow="Kontrol"
@@ -591,12 +544,23 @@ function resolvePersistMessage(action: BuilderSaveAction, status: SurveyBuilderS
   return "Degisiklikler kaydedildi.";
 }
 
-function clampRetryCount(value: string) {
-  const parsed = Number(value);
-
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(10, Math.round(parsed)));
+function buildDraftCopySurvey(survey: SurveyBuilderSurvey): SurveyBuilderSurvey {
+  return {
+    ...survey,
+    id: `draft-copy-${globalThis.crypto.randomUUID()}`,
+    name: `${survey.name.trim() || "Anket"} - Taslak Kopya`,
+    status: "Draft",
+    createdAt: "Henuz olusmadi",
+    publishedAt: null,
+    updatedAt: "Bugun",
+    questions: survey.questions.map((question, questionIndex) => ({
+      ...question,
+      id: `draft-question-${globalThis.crypto.randomUUID()}`,
+      options: question.options?.map((option, optionIndex) => ({
+        ...option,
+        id: `draft-option-${questionIndex + 1}-${optionIndex + 1}-${globalThis.crypto.randomUUID()}`,
+      })),
+    })),
+    questionCount: survey.questions.length,
+  };
 }

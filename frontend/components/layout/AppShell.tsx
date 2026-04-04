@@ -42,6 +42,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
   const navigationItems = getNavigationItems(t);
   const isAuthRoute = pathname === "/login";
   const isDashboardHome = pathname === "/";
+  const isSurveysRoute = pathname === "/surveys" || pathname.startsWith("/surveys/");
 
   useEffect(() => {
     setIsUserMenuOpen(false);
@@ -93,6 +94,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
       subtitle: pageHeaderOverride?.subtitle ?? baseMeta.subtitle,
     };
   })();
+  const breadcrumbs = buildBreadcrumbs(pathname, currentMeta.title, navigationItems, t);
 
   async function handleLogout() {
     await logout();
@@ -123,14 +125,33 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                 <p className="brand-subtitle">Arastirma Operasyonlari</p>
               </div>
             ) : null}
+            <button
+              className="sidebar-toggle desktop-only"
+              aria-label={isSidebarCollapsed ? t("shell.sidebar.expand") : t("shell.sidebar.collapse")}
+              onClick={() => setIsSidebarCollapsed((value) => !value)}
+            >
+              <CollapseIcon className="nav-icon" />
+            </button>
           </div>
 
-          <button className="sidebar-toggle desktop-only" onClick={() => setIsSidebarCollapsed((value) => !value)}>
-            <span>{isSidebarCollapsed ? t("shell.sidebar.expand") : t("shell.sidebar.collapse")}</span>
-            <CollapseIcon className="nav-icon" />
-          </button>
+          <label
+            className={["search-field", "sidebar-search", isSidebarCollapsed ? "is-collapsed" : ""].filter(Boolean).join(" ")}
+            aria-label="Genel arama"
+          >
+            <SearchIcon className="nav-icon" />
+            {!isSidebarCollapsed ? (
+              <>
+                <input
+                  type="search"
+                  placeholder="Ara"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+                <span className="topbar-search-shortcut">35K</span>
+              </>
+            ) : null}
+          </label>
 
-          {!isSidebarCollapsed ? <div className="sidebar-group-label">{t("shell.sidebar.navigation")}</div> : null}
           <nav className="nav-list">
             {navigationItems.map((item) => {
               const isActive = item.href === "/" ? pathname === item.href : pathname.startsWith(item.href);
@@ -154,92 +175,129 @@ function AppShellFrame({ children }: { children: ReactNode }) {
             })}
           </nav>
 
-          {!isSidebarCollapsed ? (
-            <div className="sidebar-footer sidebar-footer-compact">
-              <strong>Operasyon ozeti</strong>
-              <p>Bugunku akis icin anketleri, operasyonlari ve kisi listelerini ayni ritimde yonetin.</p>
-            </div>
-          ) : null}
-        </div>
-      </aside>
-
-      <main className="app-main">
-        <div className="main-frame">
-          <header className={["topbar", isDashboardHome ? "is-dashboard-topbar" : ""].filter(Boolean).join(" ")}>
-            <div className="header-cluster topbar-context">
-              <button className="mobile-menu-button mobile-only" onClick={() => setIsMobileNavOpen(true)}>
-                <MenuIcon className="nav-icon" />
-                Gezinme
-              </button>
-              <div className={["topbar-copy", "topbar-copy-compact", isDashboardHome ? "is-dashboard-copy" : ""].filter(Boolean).join(" ")}>
-                <span className="topbar-kicker">{currentUser.company.name}</span>
-                <h1>{currentMeta.title}</h1>
-                <p>{currentMeta.subtitle}</p>
-              </div>
-            </div>
-
-            <div className="topbar-actions">
-              <label className="search-field topbar-search" aria-label="Genel arama">
-                <SearchIcon className="nav-icon" />
-                <input
-                  type="search"
-                  placeholder="Anket, operasyon veya kisi ara"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                />
-                <span className="topbar-search-shortcut">35K</span>
-              </label>
-
-              <div className="language-switcher" role="group" aria-label={t("shell.topbar.languageLabel")}>
-                <LanguageButton current={language} code="tr" label={t("shell.topbar.tr")} onSelect={setLanguage} />
-                <LanguageButton current={language} code="en" label={t("shell.topbar.en")} onSelect={setLanguage} />
-              </div>
-
-              <button type="button" className="icon-button notification-button" aria-label="Bildirimler">
-                <BellIcon className="nav-icon" />
-                <span className="notification-indicator" />
-              </button>
-
-              <div className="topbar-account-menu">
-                <button
-                  type="button"
-                  className="topbar-account"
-                  aria-expanded={isUserMenuOpen}
-                  onClick={() => setIsUserMenuOpen((value) => !value)}
-                >
-                  <span className="topbar-account-avatar">{currentUser.user.fullName.slice(0, 1).toUpperCase()}</span>
+          <div className="sidebar-bottom">
+            <div className="topbar-account-menu sidebar-account-menu">
+              <button
+                type="button"
+                className="topbar-account sidebar-account"
+                aria-expanded={isUserMenuOpen}
+                onClick={() => setIsUserMenuOpen((value) => !value)}
+              >
+                <span className="topbar-account-avatar">{currentUser.user.fullName.slice(0, 1).toUpperCase()}</span>
+                {!isSidebarCollapsed ? (
                   <div className="topbar-account-copy">
                     <span className="topbar-account-label">Sirket</span>
                     <strong>{currentUser.company.name}</strong>
                     <span>{currentUser.user.fullName}</span>
                   </div>
-                </button>
+                ) : null}
+              </button>
 
-                <div className={["topbar-account-panel", isUserMenuOpen ? "is-open" : ""].filter(Boolean).join(" ")}>
-                  <div className="topbar-account-panel-copy">
-                    <strong>{currentUser.user.fullName}</strong>
-                    <span>{currentUser.user.email}</span>
-                  </div>
-                  <div className="topbar-account-panel-copy">
-                    <strong>{currentUser.company.name}</strong>
-                    <span>Mevcut calisma alani</span>
-                  </div>
-                  <Link href="/surveys/new" className="button-secondary compact-button" onClick={() => setIsUserMenuOpen(false)}>
-                    Yeni Anket
-                  </Link>
-                  <button
-                    type="button"
-                    className="button-secondary compact-button"
-                    onClick={() => {
-                      setIsUserMenuOpen(false);
-                      void handleLogout();
-                    }}
-                  >
-                    Cikis Yap
-                  </button>
+              <div
+                className={[
+                  "topbar-account-panel",
+                  "sidebar-account-panel",
+                  isUserMenuOpen ? "is-open" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <div className="topbar-account-panel-copy">
+                  <strong>{currentUser.user.fullName}</strong>
+                  <span>{currentUser.user.email}</span>
                 </div>
+                <div className="topbar-account-panel-copy">
+                  <strong>{currentUser.company.name}</strong>
+                  <span>Mevcut calisma alani</span>
+                </div>
+                <button type="button" className="button-secondary compact-button topbar-account-notification">
+                  <span className="topbar-account-notification-copy">
+                    <BellIcon className="nav-icon" />
+                    <span>Bildirimler</span>
+                  </span>
+                  <span className="notification-indicator" />
+                </button>
+                <button
+                  type="button"
+                  className="button-secondary compact-button"
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    void handleLogout();
+                  }}
+                >
+                  Cikis Yap
+                </button>
               </div>
             </div>
+
+            <div
+              className={[
+                "language-switcher",
+                "sidebar-language-switcher",
+                isSidebarCollapsed ? "is-collapsed" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              role="group"
+              aria-label={t("shell.topbar.languageLabel")}
+            >
+              <LanguageButton current={language} code="tr" label={t("shell.topbar.tr")} onSelect={setLanguage} />
+              <LanguageButton current={language} code="en" label={t("shell.topbar.en")} onSelect={setLanguage} />
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main className="app-main">
+        <div className="main-frame">
+          <header
+            className={[
+              "topbar",
+              isDashboardHome ? "is-dashboard-topbar" : "",
+              isSurveysRoute ? "is-surveys-topbar" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            <div className="header-cluster topbar-context">
+              <button className="mobile-menu-button mobile-only" onClick={() => setIsMobileNavOpen(true)}>
+                <MenuIcon className="nav-icon" />
+                Gezinme
+              </button>
+              <div className="brand-mark header-brand-mark" aria-hidden="true" />
+              <div
+                className={[
+                  "topbar-copy",
+                  "topbar-copy-compact",
+                  isDashboardHome ? "is-dashboard-copy" : "",
+                  isSurveysRoute ? "is-surveys-copy" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                {breadcrumbs.length > 0 ? (
+                  <div className="topbar-breadcrumbs" aria-label="Sayfa yolu">
+                    {breadcrumbs.map((crumb, index) => (
+                      <span key={`${crumb}-${index}`} className="topbar-breadcrumb-item">
+                        {index > 0 ? <span className="topbar-breadcrumb-separator">/</span> : null}
+                        <span>{crumb}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : !isSurveysRoute ? (
+                  <span className="topbar-kicker">{currentUser.company.name}</span>
+                ) : null}
+                <h1>{currentMeta.title}</h1>
+                {currentMeta.subtitle ? <p>{currentMeta.subtitle}</p> : null}
+              </div>
+            </div>
+
+            {pageHeaderOverride?.action ? (
+              <div className="topbar-actions page-header-actions">
+                {pageHeaderOverride.action}
+              </div>
+            ) : null}
+
           </header>
 
           {children}
@@ -247,6 +305,45 @@ function AppShellFrame({ children }: { children: ReactNode }) {
       </main>
     </div>
   );
+}
+
+function buildBreadcrumbs(
+  pathname: string,
+  currentTitle: string,
+  navigationItems: ReturnType<typeof getNavigationItems>,
+  t: (path: string) => string,
+) {
+  if (pathname === "/") {
+    return [currentTitle];
+  }
+
+  const findNavLabel = (href: string) => navigationItems.find((item) => item.href === href)?.label;
+
+  if (pathname === "/surveys") {
+    return [findNavLabel("/surveys") ?? currentTitle];
+  }
+
+  if (pathname === "/surveys/new") {
+    return [findNavLabel("/surveys") ?? t("shell.pageMeta.surveys.title"), currentTitle];
+  }
+
+  if (pathname.startsWith("/surveys/")) {
+    return [findNavLabel("/surveys") ?? t("shell.pageMeta.surveys.title"), currentTitle];
+  }
+
+  if (pathname === "/operations") {
+    return [findNavLabel("/operations") ?? currentTitle];
+  }
+
+  if (pathname === "/operations/new") {
+    return [findNavLabel("/operations") ?? t("shell.pageMeta.operations.title"), currentTitle];
+  }
+
+  if (pathname.startsWith("/operations/")) {
+    return [findNavLabel("/operations") ?? t("shell.pageMeta.operations.title"), currentTitle];
+  }
+
+  return [currentTitle];
 }
 
 function LanguageButton({

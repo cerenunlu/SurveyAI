@@ -21,6 +21,10 @@ type SurveyApiResponse = {
   introPrompt: string | null;
   closingPrompt: string | null;
   maxRetryPerQuestion: number | null;
+  sourceProvider: "GOOGLE_FORMS" | "FILE_UPLOAD" | null;
+  sourceExternalId: string | null;
+  sourceFileName: string | null;
+  sourcePayloadJson: string | null;
   createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -52,6 +56,8 @@ type SurveyQuestionApiResponse = {
   retryPrompt: string | null;
   branchConditionJson: string | null;
   settingsJson: string | null;
+  sourceExternalId: string | null;
+  sourcePayloadJson: string | null;
   options: SurveyQuestionOptionApiResponse[];
   createdAt: string;
   updatedAt: string;
@@ -65,6 +71,10 @@ type CreateSurveyRequest = {
   closingPrompt: string | null;
   maxRetryPerQuestion: number;
   createdByUserId: string;
+  sourceProvider?: string | null;
+  sourceExternalId?: string | null;
+  sourceFileName?: string | null;
+  sourcePayloadJson?: string | null;
 };
 
 type UpdateSurveyRequest = Omit<CreateSurveyRequest, "createdByUserId"> & {
@@ -81,6 +91,8 @@ type UpsertSurveyQuestionRequest = {
   retryPrompt: string | null;
   branchConditionJson: string;
   settingsJson: string;
+  sourceExternalId?: string | null;
+  sourcePayloadJson?: string | null;
 };
 
 type UpsertSurveyQuestionOptionRequest = {
@@ -287,6 +299,10 @@ function buildSurveyCreateRequest(survey: SurveyBuilderSurvey): CreateSurveyRequ
     closingPrompt: toNullableText(survey.closingPrompt),
     maxRetryPerQuestion: normalizeRetryCount(survey.maxRetryPerQuestion),
     createdByUserId: requireCurrentUserId(),
+    sourceProvider: survey.source?.provider,
+    sourceExternalId: toNullableText(survey.source?.externalId),
+    sourceFileName: toNullableText(survey.source?.fileName),
+    sourcePayloadJson: toNullableText(survey.source?.payloadJson),
   };
 }
 
@@ -298,6 +314,10 @@ function buildSurveyUpdateRequest(survey: SurveyBuilderSurvey, action: BuilderSa
     introPrompt: toNullableText(survey.introPrompt),
     closingPrompt: toNullableText(survey.closingPrompt),
     maxRetryPerQuestion: normalizeRetryCount(survey.maxRetryPerQuestion),
+    sourceProvider: survey.source?.provider,
+    sourceExternalId: toNullableText(survey.source?.externalId),
+    sourceFileName: toNullableText(survey.source?.fileName),
+    sourcePayloadJson: toNullableText(survey.source?.payloadJson),
     status: resolveTargetSurveyStatus(survey, action),
   };
 }
@@ -326,6 +346,8 @@ function buildQuestionRequest(question: SurveyBuilderQuestion, questionOrder: nu
     retryPrompt: toNullableText(question.retryPrompt),
     branchConditionJson: normalizeJsonString(question.branchConditionJson),
     settingsJson: JSON.stringify(mergedSettings),
+    sourceExternalId: toNullableText(question.sourceExternalId),
+    sourcePayloadJson: toNullableText(question.sourcePayloadJson),
   };
 }
 
@@ -355,12 +377,22 @@ function mapApiSurveyToBuilder(
     name: survey.name,
     summary: survey.description ?? "",
     status: mapSurveyStatusToBuilder(survey.status),
+    createdAt: formatDateTime(survey.createdAt),
+    publishedAt: survey.status === "PUBLISHED" ? formatDateTime(survey.updatedAt) : null,
     updatedAt: formatDateTime(survey.updatedAt),
     questionCount: mappedQuestions.length,
     languageCode: survey.languageCode,
     introPrompt: survey.introPrompt ?? "",
     closingPrompt: survey.closingPrompt ?? "",
     maxRetryPerQuestion: survey.maxRetryPerQuestion ?? 2,
+    source: survey.sourceProvider
+      ? {
+          provider: survey.sourceProvider,
+          externalId: survey.sourceExternalId ?? undefined,
+          fileName: survey.sourceFileName ?? undefined,
+          payloadJson: survey.sourcePayloadJson ?? undefined,
+        }
+      : undefined,
     questions: mappedQuestions,
   };
 }
@@ -379,6 +411,8 @@ function mapApiQuestionToBuilder(question: SurveyQuestionApiResponse): SurveyBui
     retryPrompt: question.retryPrompt ?? "",
     branchConditionJson: normalizeJsonString(question.branchConditionJson),
     settingsJson: normalizeJsonString(question.settingsJson),
+    sourceExternalId: question.sourceExternalId ?? undefined,
+    sourcePayloadJson: question.sourcePayloadJson ?? undefined,
     options: mapQuestionOptions(question.options),
   };
 }
@@ -704,6 +738,7 @@ async function readApiError(response: Response): Promise<string> {
     return `Request failed (${response.status})`;
   }
 }
+
 
 
 

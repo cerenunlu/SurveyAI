@@ -38,6 +38,8 @@ export function createEmptySurveyDraft(): SurveyBuilderSurvey {
     name: "",
     summary: "",
     status: "Draft",
+    createdAt: "Henuz olusmadi",
+    publishedAt: null,
     updatedAt: "Bugun",
     questionCount: questions.length,
     languageCode: "tr",
@@ -55,6 +57,8 @@ export function getMockSurveyBuilder(id: string): SurveyBuilderSurvey {
       name: "Marka Sagligi Nabzi Q1",
       summary: "Kurumsal musteri algisi, destek deneyimi ve fiyat degisikligi sonrasi guven sinyalini olcen ana anket.",
       status: "Live",
+      createdAt: "10 Oca 2026 09:10",
+      publishedAt: "14 Oca 2026 11:30",
       updatedAt: "Bugun, 09:40",
       languageCode: "tr",
       introPrompt: "",
@@ -107,6 +111,8 @@ export function getMockSurveyBuilder(id: string): SurveyBuilderSurvey {
       name: "Deneme Donusum Incelemesi",
       summary: "Deneme kullanicilarinin ucretli plana gecisindeki surtunme noktalarini anlamaya yonelik taslak.",
       status: "Draft",
+      createdAt: "28 Mar 2026 15:45",
+      publishedAt: null,
       updatedAt: "Dun, 18:10",
       languageCode: "tr",
       introPrompt: "",
@@ -244,3 +250,5 @@ export function withChoiceOptions(question: SurveyBuilderQuestion, type: SurveyQ
       : undefined,
   };
 }
+
+

@@ -1,8 +1,11 @@
 package com.yourcompany.surveyai.survey.api;
 
 import com.yourcompany.surveyai.survey.application.dto.request.CreateSurveyRequest;
+import com.yourcompany.surveyai.survey.application.dto.request.ImportGoogleFormRequest;
 import com.yourcompany.surveyai.survey.application.dto.request.UpdateSurveyRequest;
+import com.yourcompany.surveyai.survey.application.dto.response.ImportGoogleFormResponseDto;
 import com.yourcompany.surveyai.survey.application.dto.response.SurveyResponseDto;
+import com.yourcompany.surveyai.survey.application.service.GoogleFormsImportService;
 import com.yourcompany.surveyai.survey.application.service.SurveyService;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -24,9 +27,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class SurveyController {
 
     private final SurveyService surveyService;
+    private final GoogleFormsImportService googleFormsImportService;
 
-    public SurveyController(SurveyService surveyService) {
+    public SurveyController(
+            SurveyService surveyService,
+            GoogleFormsImportService googleFormsImportService
+    ) {
         this.surveyService = surveyService;
+        this.googleFormsImportService = googleFormsImportService;
     }
 
     @PostMapping
@@ -38,6 +46,15 @@ public class SurveyController {
 
         return ResponseEntity.created(URI.create("/api/v1/companies/" + companyId + "/surveys/" + response.id()))
                 .body(response);
+    }
+
+    @PostMapping("/imports/google-forms")
+    public ResponseEntity<ImportGoogleFormResponseDto> importGoogleForm(
+            @PathVariable UUID companyId,
+            @Valid @RequestBody ImportGoogleFormRequest request
+    ) {
+        ImportGoogleFormResponseDto response = googleFormsImportService.importForm(companyId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/{surveyId}")

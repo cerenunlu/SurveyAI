@@ -14,6 +14,10 @@ public record SurveyResponseDto(
         String introPrompt,
         String closingPrompt,
         Integer maxRetryPerQuestion,
+        String sourceProvider,
+        String sourceExternalId,
+        String sourceFileName,
+        String sourcePayloadJson,
         UUID createdByUserId,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
