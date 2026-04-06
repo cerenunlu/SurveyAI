@@ -2,6 +2,7 @@ package com.yourcompany.surveyai.operation.domain.entity;
 
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
+import com.yourcompany.surveyai.operation.domain.enums.OperationSourceType;
 import com.yourcompany.surveyai.operation.domain.enums.OperationStatus;
 import com.yourcompany.surveyai.common.domain.entity.AppUser;
 import com.yourcompany.surveyai.common.domain.entity.CompanyScopedEntity;
@@ -19,6 +20,8 @@ import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "operation")
@@ -43,6 +46,14 @@ public class Operation extends CompanyScopedEntity {
 
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type", nullable = false, length = 40)
+    private OperationSourceType sourceType;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "source_payload_json", columnDefinition = "jsonb")
+    private String sourcePayloadJson;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
@@ -106,6 +117,22 @@ public class Operation extends CompanyScopedEntity {
 
     public void setCompletedAt(OffsetDateTime completedAt) {
         this.completedAt = completedAt;
+    }
+
+    public OperationSourceType getSourceType() {
+        return sourceType;
+    }
+
+    public void setSourceType(OperationSourceType sourceType) {
+        this.sourceType = sourceType;
+    }
+
+    public String getSourcePayloadJson() {
+        return sourcePayloadJson;
+    }
+
+    public void setSourcePayloadJson(String sourcePayloadJson) {
+        this.sourcePayloadJson = sourcePayloadJson;
     }
 
     public AppUser getCreatedBy() {

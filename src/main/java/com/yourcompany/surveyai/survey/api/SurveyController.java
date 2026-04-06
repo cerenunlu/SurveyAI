@@ -5,6 +5,8 @@ import com.yourcompany.surveyai.survey.application.dto.request.ImportGoogleFormR
 import com.yourcompany.surveyai.survey.application.dto.request.UpdateSurveyRequest;
 import com.yourcompany.surveyai.survey.application.dto.response.ImportGoogleFormResponseDto;
 import com.yourcompany.surveyai.survey.application.dto.response.SurveyResponseDto;
+import com.yourcompany.surveyai.operation.application.dto.response.ImportedSurveyOperationResponseDto;
+import com.yourcompany.surveyai.operation.application.service.ImportedSurveyOperationService;
 import com.yourcompany.surveyai.survey.application.service.GoogleFormsImportService;
 import com.yourcompany.surveyai.survey.application.service.SurveyService;
 import jakarta.validation.Valid;
@@ -12,6 +14,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +24,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/companies/{companyId}/surveys")
@@ -28,13 +33,16 @@ public class SurveyController {
 
     private final SurveyService surveyService;
     private final GoogleFormsImportService googleFormsImportService;
+    private final ImportedSurveyOperationService importedSurveyOperationService;
 
     public SurveyController(
             SurveyService surveyService,
-            GoogleFormsImportService googleFormsImportService
+            GoogleFormsImportService googleFormsImportService,
+            ImportedSurveyOperationService importedSurveyOperationService
     ) {
         this.surveyService = surveyService;
         this.googleFormsImportService = googleFormsImportService;
+        this.importedSurveyOperationService = importedSurveyOperationService;
     }
 
     @PostMapping
@@ -54,6 +62,18 @@ public class SurveyController {
             @Valid @RequestBody ImportGoogleFormRequest request
     ) {
         ImportGoogleFormResponseDto response = googleFormsImportService.importForm(companyId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping(value = "/{surveyId}/imports/completed-results", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ImportedSurveyOperationResponseDto> importCompletedResults(
+            @PathVariable UUID companyId,
+            @PathVariable UUID surveyId,
+            @RequestParam MultipartFile file,
+            @RequestParam(required = false) String operationName
+    ) {
+        ImportedSurveyOperationResponseDto response =
+                importedSurveyOperationService.importCompletedSurvey(companyId, surveyId, file, operationName);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

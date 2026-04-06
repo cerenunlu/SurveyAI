@@ -110,6 +110,16 @@ type BuilderSettings = {
 
 export type BuilderSaveAction = "save" | "draft" | "publish";
 
+export type ImportedSurveyDataResult = {
+  surveyId: string;
+  operationId: string;
+  surveyName: string;
+  operationName: string;
+  questionCount: number;
+  importedResponseCount: number;
+  warnings: string[];
+};
+
 export type BuilderSaveResult = {
   survey: SurveyBuilderSurvey;
   message: string;
@@ -304,6 +314,36 @@ function buildSurveyCreateRequest(survey: SurveyBuilderSurvey): CreateSurveyRequ
     sourceFileName: toNullableText(survey.source?.fileName),
     sourcePayloadJson: toNullableText(survey.source?.payloadJson),
   };
+}
+
+export async function importSurveyBuilderData(
+  surveyId: string,
+  file: File,
+  options?: {
+    companyId?: string;
+    operationName?: string;
+  },
+): Promise<ImportedSurveyDataResult> {
+  const companyId = requireCompanyId(options?.companyId);
+  const formData = new FormData();
+  formData.set("file", file);
+  if (options?.operationName?.trim()) {
+    formData.set("operationName", options.operationName.trim());
+  }
+
+  const response = await apiFetch(
+    `${API_BASE_URL}/api/v1/companies/${companyId}/surveys/${surveyId}/imports/completed-results`,
+    {
+      method: "POST",
+      body: formData,
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await readApiError(response));
+  }
+
+  return (await response.json()) as ImportedSurveyDataResult;
 }
 
 function buildSurveyUpdateRequest(survey: SurveyBuilderSurvey, action: BuilderSaveAction): UpdateSurveyRequest {

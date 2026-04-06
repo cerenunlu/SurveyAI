@@ -281,8 +281,13 @@ export default function OperationDetailPage() {
   const completedCallJobRate = operation && operation.executionSummary.totalCallJobs > 0
     ? Math.round((operation.executionSummary.completedCallJobs / operation.executionSummary.totalCallJobs) * 100)
     : 0;
+  const importedOperationMessage = operation?.sourceType === "IMPORTED_SURVEY_RESULTS"
+    ? "Operasyon Import edilmistir. Bu kayit tamamlanmis bir dis operasyon analizini gostermek icin olusturulmustur."
+    : null;
   const currentStatusSummary = !operation
     ? "Operasyon yuklenirken guncel statu hazirlaniyor."
+    : importedOperationMessage
+      ? importedOperationMessage
     : operation.executionSummary.totalCallJobs > 0
       ? `Call job yurutmesi aktif. Basariyla tamamlanan aramalar toplam isin %${completedCallJobRate} seviyesinde.`
       : isOperationRunning
@@ -501,6 +506,13 @@ export default function OperationDetailPage() {
                 <strong>{operation?.summary?.trim() || currentStatusSummary}</strong>
               </div>
             </div>
+
+            {importedOperationMessage ? (
+              <div className="operation-inline-message compact">
+                <strong>Operasyon Import Edilmistir</strong>
+                <span>{importedOperationMessage}</span>
+              </div>
+            ) : null}
 
             <div className="operation-execution-summary-grid operation-execution-summary-grid-expanded">
               <div className="operation-contact-status-card">

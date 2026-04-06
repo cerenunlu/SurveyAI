@@ -19,6 +19,7 @@ import com.yourcompany.surveyai.operation.application.dto.response.OperationResp
 import com.yourcompany.surveyai.operation.application.service.OperationService;
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
+import com.yourcompany.surveyai.operation.domain.enums.OperationSourceType;
 import com.yourcompany.surveyai.operation.domain.enums.OperationStatus;
 import com.yourcompany.surveyai.operation.repository.OperationContactRepository;
 import com.yourcompany.surveyai.operation.repository.OperationRepository;
@@ -153,6 +154,8 @@ public class OperationServiceImpl implements OperationService {
         operation.setSurvey(survey);
         operation.setName(request.getName().trim());
         operation.setStatus(OperationStatus.DRAFT);
+        operation.setSourceType(OperationSourceType.STANDARD);
+        operation.setSourcePayloadJson(null);
         operation.setScheduledAt(request.getScheduledAt());
         operation.setCreatedBy(createdBy);
 
@@ -504,6 +507,8 @@ public class OperationServiceImpl implements OperationService {
                 operation.getSurvey().getId(),
                 operation.getName(),
                 operation.getStatus(),
+                operation.getSourceType(),
+                operation.getSourcePayloadJson(),
                 operation.getScheduledAt(),
                 operation.getStartedAt(),
                 operation.getCompletedAt(),

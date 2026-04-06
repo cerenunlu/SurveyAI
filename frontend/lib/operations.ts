@@ -26,6 +26,8 @@ type OperationApiResponse = {
   surveyId: string;
   name: string;
   status: OperationApiStatus;
+  sourceType: Operation["sourceType"];
+  sourcePayloadJson: string | null;
   scheduledAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -654,6 +656,8 @@ function mapOperationDtoToOperation(dto: OperationApiResponse, surveys: SurveyRe
     id: dto.id,
     name: dto.name,
     status: mapOperationStatus(dto.status),
+    sourceType: dto.sourceType,
+    sourcePayloadJson: dto.sourcePayloadJson,
     surveyId: dto.surveyId,
     survey: survey?.name ?? formatSurveyFallback(dto.surveyId),
     surveyStatus: survey?.status ?? null,

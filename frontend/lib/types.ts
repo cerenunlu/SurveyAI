@@ -100,6 +100,8 @@ export type Operation = {
   id: string;
   name: string;
   status: "Draft" | "Ready" | "Running" | "Completed" | "Failed" | "Scheduled" | "Paused" | "Cancelled";
+  sourceType: "STANDARD" | "IMPORTED_SURVEY_RESULTS";
+  sourcePayloadJson: string | null;
   surveyId: string;
   survey: string;
   surveyStatus: Survey["status"] | null;
