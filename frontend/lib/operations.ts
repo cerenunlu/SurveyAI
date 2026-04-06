@@ -1,7 +1,7 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import { CallJob, CallJobAttempt, CallJobDetail, CallJobSurveyResponse, Operation, OperationAnalytics, OperationAnalyticsBreakdownItem, OperationAnalyticsInsightItem, OperationAnalyticsQuestionSummary, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
+import { CallJob, CallJobAttempt, CallJobDetail, CallJobSurveyResponse, Operation, OperationAnalytics, OperationAnalyticsAudienceBreakdown, OperationAnalyticsBreakdownItem, OperationAnalyticsInsightItem, OperationAnalyticsQuestionSummary, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
 
 type ApiErrorResponse = {
   code?: string;
@@ -26,6 +26,8 @@ type OperationApiResponse = {
   surveyId: string;
   name: string;
   status: OperationApiStatus;
+  sourceType: Operation["sourceType"];
+  sourcePayloadJson: string | null;
   scheduledAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -183,8 +185,11 @@ type OperationAnalyticsQuestionSummaryApiResponse = {
   questionTitle: string;
   questionType: OperationAnalyticsQuestionSummary["questionType"];
   chartKind: OperationAnalyticsQuestionSummary["chartKind"];
+  respondedContactCount: number;
   answeredCount: number;
   responseRate: number;
+  dropOffCount: number;
+  dropOffRate: number;
   averageRating: number | null;
   emptyStateMessage: string | null;
   breakdown: OperationAnalyticsBreakdownItemApiResponse[];
@@ -203,6 +208,15 @@ type OperationAnalyticsTrendPointApiResponse = {
   count: number;
 };
 
+type OperationAnalyticsAudienceBreakdownApiResponse = {
+  key: string;
+  label: string;
+  questionCode: string;
+  questionTitle: string;
+  answeredCount: number;
+  breakdown: OperationAnalyticsBreakdownItemApiResponse[];
+};
+
 type OperationAnalyticsApiResponse = {
   operationId: string;
   totalContacts: number;
@@ -216,6 +230,7 @@ type OperationAnalyticsApiResponse = {
   failedCallJobs: number;
   skippedCallJobs: number;
   totalResponses: number;
+  respondedContacts: number;
   completedResponses: number;
   partialResponses: number;
   abandonedResponses: number;
@@ -229,6 +244,7 @@ type OperationAnalyticsApiResponse = {
   insightSummary: string | null;
   insightItems: OperationAnalyticsInsightItemApiResponse[];
   outcomeBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
+  audienceBreakdowns: OperationAnalyticsAudienceBreakdownApiResponse[];
   questionSummaries: OperationAnalyticsQuestionSummaryApiResponse[];
   responseTrend: OperationAnalyticsTrendPointApiResponse[];
 };
@@ -346,6 +362,20 @@ export async function fetchOperationAnalytics(
     "operation analytics",
   );
 
+  const respondedContacts =
+    response.respondedContacts
+    ?? response.totalResponses
+    ?? ((response.completedResponses ?? 0) + (response.partialResponses ?? 0));
+
+  if (response.respondedContacts === undefined) {
+    console.warn("analytics contract incomplete: respondedContacts missing", {
+      operationId,
+      totalResponses: response.totalResponses,
+      completedResponses: response.completedResponses,
+      partialResponses: response.partialResponses,
+    });
+  }
+
   return {
     operationId: response.operationId,
     totalContacts: response.totalContacts,
@@ -359,6 +389,7 @@ export async function fetchOperationAnalytics(
     failedCallJobs: response.failedCallJobs,
     skippedCallJobs: response.skippedCallJobs,
     totalResponses: response.totalResponses,
+    respondedContacts,
     completedResponses: response.completedResponses,
     partialResponses: response.partialResponses,
     abandonedResponses: response.abandonedResponses,
@@ -377,6 +408,14 @@ export async function fetchOperationAnalytics(
       tone: item.tone,
     })),
     outcomeBreakdown: (response.outcomeBreakdown ?? []).map(mapAnalyticsBreakdown),
+    audienceBreakdowns: (response.audienceBreakdowns ?? []).map((item): OperationAnalyticsAudienceBreakdown => ({
+      key: item.key,
+      label: item.label,
+      questionCode: item.questionCode,
+      questionTitle: item.questionTitle,
+      answeredCount: item.answeredCount,
+      breakdown: (item.breakdown ?? []).map(mapAnalyticsBreakdown),
+    })),
     questionSummaries: (response.questionSummaries ?? []).map((item) => ({
       questionId: item.questionId,
       questionCode: item.questionCode,
@@ -384,8 +423,11 @@ export async function fetchOperationAnalytics(
       questionTitle: item.questionTitle,
       questionType: item.questionType,
       chartKind: item.chartKind,
+      respondedContactCount: item.respondedContactCount ?? respondedContacts,
       answeredCount: item.answeredCount,
       responseRate: item.responseRate,
+      dropOffCount: item.dropOffCount ?? 0,
+      dropOffRate: item.dropOffRate ?? 0,
       averageRating: item.averageRating,
       emptyStateMessage: item.emptyStateMessage,
       breakdown: (item.breakdown ?? []).map(mapAnalyticsBreakdown),
@@ -654,6 +696,8 @@ function mapOperationDtoToOperation(dto: OperationApiResponse, surveys: SurveyRe
     id: dto.id,
     name: dto.name,
     status: mapOperationStatus(dto.status),
+    sourceType: dto.sourceType,
+    sourcePayloadJson: dto.sourcePayloadJson,
     surveyId: dto.surveyId,
     survey: survey?.name ?? formatSurveyFallback(dto.surveyId),
     surveyStatus: survey?.status ?? null,

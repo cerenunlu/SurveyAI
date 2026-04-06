@@ -1096,7 +1096,11 @@ function SurveyBreakdown({ survey }: { survey: SurveyRow }) {
           <div key={operation.id} className="ops-nested-row">
             <div className="ops-nested-primary">
               <strong>{operation.name}</strong>
-              <span>{operation.updatedAt}</span>
+              <span>
+                {operation.sourceType === "IMPORTED_SURVEY_RESULTS"
+                  ? "Operasyon import edilmistir"
+                  : operation.updatedAt}
+              </span>
             </div>
             <StatusBadge status={operation.status} />
             <div className="ops-nested-progress">

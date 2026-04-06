@@ -9,7 +9,7 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { EyeIcon, PlayIcon, PlusIcon, SurveyIcon } from "@/components/ui/Icons";
 import { fetchCompanyOperations, fetchOperationAnalytics } from "@/lib/operations";
 import { questionTypeLabels } from "@/lib/survey-builder";
-import { fetchSurveyBuilderSurvey, saveSurveyBuilderSurvey } from "@/lib/survey-builder-api";
+import { fetchSurveyBuilderSurvey, importSurveyBuilderData, saveSurveyBuilderSurvey } from "@/lib/survey-builder-api";
 import type { Operation, OperationAnalytics, SurveyBuilderSurvey, SurveyQuestionType } from "@/lib/types";
 
 type QuestionResponseTone = "strong" | "steady" | "fragile" | "empty";
@@ -40,6 +40,12 @@ export default function SurveyDetailPage() {
   const [isMissing, setIsMissing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCreatingDraftCopy, setIsCreatingDraftCopy] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importOperationName, setImportOperationName] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [isImportingData, setIsImportingData] = useState(false);
 
   const surveyStats = useMemo(() => {
     if (!survey) {
@@ -352,51 +358,54 @@ export default function SurveyDetailPage() {
     [assignedPeopleCount, completedOperationsCount, completedPeopleCount, linkedOperations.length, ongoingOperationsCount, survey, surveyStats?.readinessLabel],
   );
 
+  const loadSurveyDetail = useCallback(async (signal?: AbortSignal) => {
+    if (!surveyId) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setErrorMessage(null);
+      setIsMissing(false);
+      const [surveyResult, operationsResult] = await Promise.allSettled([
+        fetchSurveyBuilderSurvey(surveyId, undefined, signal ? { signal } : undefined),
+        fetchCompanyOperations(undefined, signal ? { signal } : undefined),
+      ]);
+
+      if (surveyResult.status === "rejected") {
+        throw surveyResult.reason;
+      }
+
+      setSurvey(surveyResult.value);
+      setOperations(operationsResult.status === "fulfilled" ? operationsResult.value : []);
+    } catch (error) {
+      if (signal?.aborted) {
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : "Anket detayi yuklenemedi.";
+      if (message.includes("(404)")) {
+        setIsMissing(true);
+        return;
+      }
+
+      setErrorMessage(message);
+    } finally {
+      if (!signal?.aborted) {
+        setIsLoading(false);
+      }
+    }
+  }, [surveyId]);
+
   useEffect(() => {
     if (!surveyId) {
       return;
     }
 
     const controller = new AbortController();
-
-    async function loadSurvey() {
-      try {
-        setIsLoading(true);
-        setErrorMessage(null);
-        setIsMissing(false);
-        const [surveyResult, operationsResult] = await Promise.allSettled([
-          fetchSurveyBuilderSurvey(surveyId, undefined, { signal: controller.signal }),
-          fetchCompanyOperations(undefined, { signal: controller.signal }),
-        ]);
-
-        if (surveyResult.status === "rejected") {
-          throw surveyResult.reason;
-        }
-
-        setSurvey(surveyResult.value);
-        setOperations(operationsResult.status === "fulfilled" ? operationsResult.value : []);
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        const message = error instanceof Error ? error.message : "Anket detayi yuklenemedi.";
-        if (message.includes("(404)")) {
-          setIsMissing(true);
-          return;
-        }
-
-        setErrorMessage(message);
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void loadSurvey();
+    void loadSurveyDetail(controller.signal);
     return () => controller.abort();
-  }, [surveyId]);
+  }, [loadSurveyDetail, surveyId]);
 
   useEffect(() => {
     if (linkedOperations.length === 0) {
@@ -443,34 +452,89 @@ export default function SurveyDetailPage() {
     }
   }, [router, survey]);
 
+  const handleImportData = useCallback(async () => {
+    if (!survey) {
+      return;
+    }
+    if (!importFile) {
+      setImportError("Lutfen import edilecek dosyayi secin.");
+      return;
+    }
+
+    try {
+      setIsImportingData(true);
+      setImportError(null);
+      setImportWarnings([]);
+      const result = await importSurveyBuilderData(survey.id, importFile, {
+        operationName: importOperationName,
+      });
+      if (result.warnings.length > 0) {
+        setImportWarnings(result.warnings);
+      }
+      setIsImportModalOpen(false);
+      setImportFile(null);
+      setImportOperationName("");
+      await loadSurveyDetail();
+      router.push(`/operations/${result.operationId}`);
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Veri importu basarisiz oldu.");
+    } finally {
+      setIsImportingData(false);
+    }
+  }, [importFile, importOperationName, loadSurveyDetail, router, survey]);
+
   const headerAction = useMemo(
-    () => survey?.status === "Live" ? (
+    () => survey && survey.status !== "Archived" ? (
       <div className="survey-header-action-cluster">
         <div className="survey-header-action-buttons">
+          <button
+            type="button"
+            className="button-primary compact-button survey-header-button"
+            onClick={() => {
+              setImportError(null);
+              setImportWarnings([]);
+              setIsImportModalOpen(true);
+            }}
+          >
+            <PlusIcon className="nav-icon" />
+            Data Ekle
+          </button>
           <Link href="/surveys/new" className="button-secondary compact-button survey-header-button is-new">
             <PlusIcon className="nav-icon" />
             Yeni anket
           </Link>
-          <button
-            type="button"
-            className="button-secondary compact-button survey-header-button is-copy"
-            onClick={() => void handleCreateDraftCopy()}
-            disabled={isCreatingDraftCopy}
-          >
+          {survey.status === "Live" ? (
+            <button
+              type="button"
+              className="button-secondary compact-button survey-header-button is-copy"
+              onClick={() => void handleCreateDraftCopy()}
+              disabled={isCreatingDraftCopy}
+            >
+              <SurveyIcon className="nav-icon" />
+              {isCreatingDraftCopy ? "Kopya hazirlaniyor..." : "Taslak Kopya Olustur"}
+            </button>
+          ) : null}
+        </div>
+        {survey.status === "Live" ? (
+          <div className="survey-header-notice" role="note" aria-label="Yayin uyarisi">
             <SurveyIcon className="nav-icon" />
-            {isCreatingDraftCopy ? "Kopya hazirlaniyor..." : "Taslak Kopya Olustur"}
-          </button>
-        </div>
-        <div className="survey-header-notice" role="note" aria-label="Yayin uyarisi">
-          <SurveyIcon className="nav-icon" />
-          <div>
-            <strong>Yayinlandi</strong>
-            <span>Yayinlanmis anketlerde degisiklik yapilamaz. Devam etmek icin bu anketin taslak bir kopyasi uzerinden ilerleyebilirsiniz.</span>
+            <div>
+              <strong>Yayinlandi</strong>
+              <span>Yayinlanmis anketlerde degisiklik yapilamaz. Veri ekleme islemi analize yeni operasyon verisi olarak yansir; soru setini degistirmek icin taslak kopya kullanin.</span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="survey-header-notice" role="note" aria-label="Veri import uyarisi">
+            <SurveyIcon className="nav-icon" />
+            <div>
+              <strong>Saha verisi eklenebilir</strong>
+              <span>Bu anketin mevcut soru seti korunur. Yukleyeceginiz Excel veya CSV cevaplari ayni ankete bagli yeni bir import operasyonu olarak analizlere eklenir.</span>
+            </div>
+          </div>
+        )}
       </div>
     ) : null,
-    [handleCreateDraftCopy, isCreatingDraftCopy, survey?.status],
+    [handleCreateDraftCopy, isCreatingDraftCopy, survey, setImportError, setImportWarnings],
   );
 
   usePageHeaderOverride({
@@ -494,6 +558,86 @@ export default function SurveyDetailPage() {
             <span>{errorMessage}</span>
           </div>
         </section>
+      ) : null}
+
+      {isImportModalOpen ? (
+        <div className="surveys-import-modal-backdrop" role="presentation" onClick={() => !isImportingData && setIsImportModalOpen(false)}>
+          <section
+            className="surveys-import-modal surveys-google-import-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="survey-data-import-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="surveys-import-modal-head">
+              <div>
+                <span className="section-eyebrow">Data Ekle</span>
+                <h2 id="survey-data-import-modal-title">Mevcut ankete saha verisi ekle</h2>
+              </div>
+              <button
+                type="button"
+                className="button-secondary compact-button"
+                onClick={() => setIsImportModalOpen(false)}
+                disabled={isImportingData}
+              >
+                Kapat
+              </button>
+            </div>
+            <p>
+              Ilk satiri soru kolonlari olacak sekilde hazirlanmis Excel veya CSV dosyasini yukleyin. Eslesen kolonlar bu ankete
+              bagli yeni bir import operasyonu olarak eklenir ve analizlere mevcut operasyonlarla birlikte yansir.
+            </p>
+
+            <div className="surveys-google-import-grid">
+              <label className="builder-field surveys-google-import-field surveys-google-import-field-full">
+                <strong>Dosya</strong>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+                  disabled={isImportingData}
+                />
+                <span>{importFile ? `Secilen dosya: ${importFile.name}` : "Desteklenen formatlar: .xlsx, .xls, .csv"}</span>
+              </label>
+
+              <label className="builder-field surveys-google-import-field surveys-google-import-field-full">
+                <strong>Operasyon adi</strong>
+                <input
+                  value={importOperationName}
+                  onChange={(event) => setImportOperationName(event.target.value)}
+                  placeholder="Opsiyonel saha import operasyon adi"
+                  disabled={isImportingData}
+                />
+                <span>Bos birakilirsa anket adina gore anlamli bir operasyon adi uretilir.</span>
+              </label>
+            </div>
+
+            {importError ? <div className="surveys-google-import-error">{importError}</div> : null}
+            {importWarnings.length > 0 ? (
+              <div className="surveys-google-import-error">{importWarnings.join(" ")}</div>
+            ) : null}
+
+            <div className="surveys-import-modal-actions">
+              <button
+                type="button"
+                className="button-primary compact-button"
+                onClick={() => void handleImportData()}
+                disabled={isImportingData}
+              >
+                <PlusIcon className="nav-icon" />
+                {isImportingData ? "Data ekleniyor" : "Datayi Ankete Ekle"}
+              </button>
+              <button
+                type="button"
+                className="button-secondary compact-button"
+                onClick={() => setIsImportModalOpen(false)}
+                disabled={isImportingData}
+              >
+                Vazgec
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {isLoading || !survey ? (

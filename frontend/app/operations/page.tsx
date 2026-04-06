@@ -1,33 +1,36 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
+import { DataTable } from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ArrowLeftIcon, ArrowRightIcon, PlusIcon } from "@/components/ui/Icons";
-import { fetchCompanyOperations } from "@/lib/operations";
-import type { Operation } from "@/lib/types";
+import { fetchCompanyOperations, fetchOperationAnalytics } from "@/lib/operations";
+import type { Operation, OperationAnalytics, TableColumn } from "@/lib/types";
 
-type ReadinessItem = {
-  key: string;
-  title: string;
-  label: string;
-  status: string;
-  actionLabel: string;
-  href: string;
-};
+type OperationTab = "Aktif" | "Taslak" | "Tamamlandi" | "Tumu";
+type PortfolioView = "portfolio" | "analytics";
+const operationTabs: OperationTab[] = ["Aktif", "Taslak", "Tamamlandi", "Tumu"];
 
-type ActivityRow = {
+type OperationAnalyticsRow = {
   id: string;
-  time: string;
-  actor: string;
-  event: string;
-  area: string;
-  result: string;
-  href: string;
+  name: string;
+  survey: string;
+  totalJobs: number;
+  completedJobs: number;
+  pendingJobs: number;
+  responseRate: number;
+  participationRate: number;
+  completionRate: number;
+  rejectionRate: number;
+  metricState: "live" | "pending" | "empty";
+  metricNote: string;
+  engagementDetail: string;
+  rejectionDetail: string;
 };
 
 export default function OperationsPage() {
@@ -35,10 +38,25 @@ export default function OperationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [priorityPage, setPriorityPage] = useState(0);
+  const [activeTab, setActiveTab] = useState<OperationTab>("Aktif");
+  const [portfolioView, setPortfolioView] = useState<PortfolioView>("portfolio");
+  const [analyticsByOperationId, setAnalyticsByOperationId] = useState<Record<string, OperationAnalytics | null>>({});
+  const headerAction = useMemo(
+    () => (
+      <div className="surveys-header-actions">
+        <Link href="/operations/new" className="button-primary compact-button">
+          <PlusIcon className="nav-icon" />
+          Yeni Operasyon
+        </Link>
+      </div>
+    ),
+    [],
+  );
 
   usePageHeaderOverride({
     title: "Operasyon Kontrol Paneli",
     subtitle: "Hazirlik, canli akis ve son operasyon hareketleri tek panelde toplanir.",
+    action: headerAction,
   });
 
   useEffect(() => {
@@ -68,384 +86,675 @@ export default function OperationsPage() {
   }, []);
 
   const summary = useMemo(() => buildSummary(operations), [operations]);
-  const readinessItems = useMemo(() => buildReadinessItems(operations), [operations]);
-  const liveMetrics = useMemo(() => buildLiveMetrics(operations), [operations]);
-  const recentOperations = useMemo(() => operations.slice(0, 4), [operations]);
-  const activityRows = useMemo(() => buildActivityRows(operations), [operations]);
+  const activeContactFlow = useMemo(() => buildActiveContactFlow(operations, analyticsByOperationId), [analyticsByOperationId, operations]);
   const priorityPageSize = 5;
-  const priorityPageCount = Math.max(Math.ceil(operations.length / priorityPageSize), 1);
+  const filteredOperations = useMemo(() => {
+    switch (activeTab) {
+      case "Aktif":
+        return operations.filter((operation) => operation.status === "Running" || operation.status === "Ready");
+      case "Taslak":
+        return operations.filter(
+          (operation) => operation.status === "Draft" || operation.status === "Scheduled" || operation.status === "Paused",
+        );
+      case "Tamamlandi":
+        return operations.filter(
+          (operation) => operation.status === "Completed" || operation.status === "Cancelled" || operation.status === "Failed",
+        );
+      case "Tumu":
+      default:
+        return operations;
+    }
+  }, [activeTab, operations]);
+  const priorityPageCount = Math.max(Math.ceil(filteredOperations.length / priorityPageSize), 1);
   const paginatedPriorityOperations = useMemo(
-    () => operations.slice(priorityPage * priorityPageSize, priorityPage * priorityPageSize + priorityPageSize),
-    [operations, priorityPage],
+    () => filteredOperations.slice(priorityPage * priorityPageSize, priorityPage * priorityPageSize + priorityPageSize),
+    [filteredOperations, priorityPage],
   );
 
   useEffect(() => {
     setPriorityPage((current) => Math.min(current, Math.max(priorityPageCount - 1, 0)));
   }, [priorityPageCount]);
 
+  useEffect(() => {
+    setPriorityPage(0);
+  }, [activeTab]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const analyticsTargets = [...paginatedPriorityOperations, ...operations.filter((operation) => operation.status === "Running" || operation.status === "Ready")];
+    const visibleOperations = analyticsTargets.filter(
+      (operation, index, items) => items.findIndex((candidate) => candidate.id === operation.id) === index && !(operation.id in analyticsByOperationId),
+    );
+
+    if (visibleOperations.length === 0) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    async function loadVisibleAnalytics() {
+      const results = await Promise.allSettled(
+        visibleOperations.map(async (operation) => ({
+          operationId: operation.id,
+          analytics: await fetchOperationAnalytics(operation.id),
+        })),
+      );
+
+      if (!isMounted) {
+        return;
+      }
+
+      setAnalyticsByOperationId((current) => {
+        const next = { ...current };
+
+        results.forEach((result, index) => {
+          const operationId = visibleOperations[index]?.id;
+
+          if (!operationId) {
+            return;
+          }
+
+          next[operationId] = result.status === "fulfilled" ? result.value.analytics : null;
+        });
+
+        return next;
+      });
+    }
+
+    void loadVisibleAnalytics();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [analyticsByOperationId, operations, paginatedPriorityOperations]);
+
+  const portfolioColumns = useMemo<TableColumn<Operation>[]>(
+    () => [
+      {
+        key: "operation",
+        label: "Operasyon",
+        render: (operation) => (
+          <div className="table-title-block survey-name-cell">
+            <div className="survey-hover-preview">
+              <div className="table-title survey-hover-preview-text">{operation.name}</div>
+              <div className="survey-hover-preview-bubble">{operation.name}</div>
+            </div>
+            <div className="survey-hover-preview">
+              <div className="table-subtitle survey-hover-preview-text">{operation.summary}</div>
+              <div className="survey-hover-preview-bubble">{operation.summary}</div>
+            </div>
+          </div>
+        ),
+      },
+      {
+        key: "status",
+        label: "Durum",
+        render: (operation) => <StatusBadge status={resolveLifecycleStatus(operation)} label={resolveLifecycleLabel(operation)} />,
+      },
+      {
+        key: "survey",
+        label: "Bagli Anket",
+        render: (operation) =>
+          operation.surveyId ? (
+            <Link href={`/surveys/${operation.surveyId}`} className="table-link-block ops-table-stack ops-table-stack-questions">
+              <strong>{operation.survey}</strong>
+              <span>{operation.owner}</span>
+            </Link>
+          ) : (
+            <div className="ops-table-stack ops-table-stack-questions">
+              <strong>{operation.survey}</strong>
+              <span>{operation.owner}</span>
+            </div>
+          ),
+      },
+      {
+        key: "jobs",
+        label: "Cagri YukÃ¼",
+        render: (operation) => (
+          <div className="ops-inline-badges">
+            <span className="ops-inline-badge is-total">Toplam: {operation.executionSummary.totalCallJobs}</span>
+            <span className="ops-inline-badge is-draft">Bekleyen: {operation.executionSummary.pendingCallJobs}</span>
+            <span className="ops-inline-badge is-active">Tamam: {operation.executionSummary.completedCallJobs}</span>
+          </div>
+        ),
+      },
+      {
+        key: "progress",
+        label: "Progress",
+        render: (operation) => {
+          const progress = resolveOperationProgress(operation);
+
+          return (
+            <div className="ops-control-progress-cell">
+              <div className="ops-control-progress-track">
+                <span style={{ width: `${progress}%` }} />
+              </div>
+              <small>%{progress}</small>
+            </div>
+          );
+        },
+      },
+      {
+        key: "action",
+        label: "Aksiyon",
+        render: (operation) => (
+          <div className="ops-table-action-group">
+            <Link href={`/operations/${operation.id}`} className="button-secondary compact-button">
+              Detaya Git
+            </Link>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const analyticsRows = useMemo<OperationAnalyticsRow[]>(
+    () =>
+      paginatedPriorityOperations.map((operation) => {
+        const analytics = analyticsByOperationId[operation.id];
+        const totalJobs = operation.executionSummary.totalCallJobs;
+        const completedJobs = operation.executionSummary.completedCallJobs;
+        const pendingJobs = operation.executionSummary.pendingCallJobs;
+        const completionRate = totalJobs > 0 ? Math.round((completedJobs / totalJobs) * 100) : 0;
+        const responseRate = analytics?.responseRate ? Math.round(analytics.responseRate) : 0;
+        const participationRate = analytics?.participationRate ? Math.round(analytics.participationRate) : 0;
+        const rejectedCalls = (analytics?.failedCallJobs ?? 0) + (analytics?.skippedCallJobs ?? 0);
+        const attemptedCalls = analytics?.totalCallsAttempted ?? 0;
+        const rejectionRate = attemptedCalls > 0 ? Math.min(100, Math.round((rejectedCalls / attemptedCalls) * 100)) : 0;
+        const metricState: OperationAnalyticsRow["metricState"] =
+          totalJobs === 0 ? "empty" : analytics ? "live" : "pending";
+        const metricNote =
+          metricState === "empty"
+            ? "Cagri isi henuz olusmadi"
+            : metricState === "pending"
+              ? "Analitik veri hazirlaniyor"
+              : `${completedJobs} / ${totalJobs} cagri tamamlandi`;
+        const engagementDetail =
+          metricState === "empty"
+            ? "Yanit veya katilim verisi yok"
+            : metricState === "pending"
+              ? "Oranlar hazirlaniyor"
+              : `%${responseRate} yanit / %${participationRate} katilim`;
+        const rejectionDetail =
+          metricState === "empty"
+            ? "Red hesabi icin islenmis cagri yok"
+            : metricState === "pending"
+              ? "Red verisi yukleniyor"
+              : `${analytics?.failedCallJobs ?? 0} basarisiz + ${analytics?.skippedCallJobs ?? 0} atlanan cagri`;
+
+        return {
+          id: operation.id,
+          name: operation.name,
+          survey: operation.survey,
+          totalJobs,
+          completedJobs,
+          pendingJobs,
+          responseRate,
+          participationRate,
+          completionRate,
+          rejectionRate,
+          metricState,
+          metricNote,
+          engagementDetail,
+          rejectionDetail,
+        };
+      }),
+    [analyticsByOperationId, paginatedPriorityOperations],
+  );
+
+  const analyticsColumns = useMemo<TableColumn<OperationAnalyticsRow>[]>(
+    () => [
+      {
+        key: "operation",
+        label: "Operasyon",
+        render: (row) => (
+          <div className="survey-analytics-name">
+            <strong>{row.name}</strong>
+            <span>{row.metricState === "live" ? `${row.survey} anketi aktif akis uzerinde` : row.metricNote}</span>
+          </div>
+        ),
+      },
+      {
+        key: "engagement",
+        label: "Yanit / Katilim",
+        render: (row) => (
+          <DualMetricBar
+            primaryLabel="Yanit"
+            primaryValue={row.responseRate}
+            secondaryLabel="Katilim"
+            secondaryValue={row.participationRate}
+            detail={row.engagementDetail}
+            state={row.metricState}
+          />
+        ),
+      },
+      {
+        key: "rejection",
+        label: "Cagri Red Orani",
+        render: (row) => (
+          <MetricBar
+            value={row.rejectionRate}
+            tone="amber"
+            detail={row.rejectionDetail}
+            state={row.metricState}
+          />
+        ),
+      },
+      {
+        key: "completion",
+        label: "Tamamlanma",
+        render: (row) => (
+          <MetricBar
+            value={row.completionRate}
+            tone="green"
+            detail={row.metricNote}
+            state={row.metricState}
+          />
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <PageContainer hideBackRow>
-      <div className="ops-control-top-actions">
-        <Link href="/operations/new" className="button-primary compact-button">
-          <PlusIcon className="nav-icon" />
-          Yeni Operasyon
-        </Link>
-      </div>
+      <div className="ops-control-page-tight">
+        {errorMessage ? <EmptyState title="Operasyon verileri yuklenemedi" description={errorMessage} tone="danger" /> : null}
 
-      {errorMessage ? <EmptyState title="Operasyon verileri yuklenemedi" description={errorMessage} tone="danger" /> : null}
-
-      <section className="ops-control-summary-grid">
-        <article className="panel-card ops-control-highlight">
-          <div className="ops-control-highlight-icon is-warning" />
-          <div className="ops-control-highlight-copy">
-            <span>Hazirlik Durumu</span>
-            <strong>{summary.readinessLabel}</strong>
-            <small>{summary.readinessDetail}</small>
-          </div>
-        </article>
-
-        <article className="panel-card ops-control-stat">
-          <div className="ops-control-stat-icon is-success" />
-          <div>
-            <span>Bugun Aktif Operasyon</span>
-            <strong>{summary.activeToday}</strong>
-          </div>
-        </article>
-
-        <article className="panel-card ops-control-stat">
-          <div className="ops-control-stat-icon is-warning" />
-          <div>
-            <span>Bekleyen Kisi</span>
-            <strong>{summary.pendingPeople.toLocaleString("tr-TR")}</strong>
-          </div>
-        </article>
-
-        <article className="panel-card ops-control-stat">
-          <div className="ops-control-stat-icon is-info" />
-          <div>
-            <span>Tamamlanan Gorus.</span>
-            <strong>{summary.completedCalls.toLocaleString("tr-TR")}</strong>
-          </div>
-        </article>
-
-        <article className="panel-card ops-control-stat is-danger">
-          <div className="ops-control-stat-icon is-danger" />
-          <div>
-            <span>Kritik Uyarilar</span>
-            <strong>{summary.blockedCount} Blokaj</strong>
-          </div>
-        </article>
-      </section>
-
-      {isLoading ? (
-        <EmptyState title="Operasyon paneli hazirlaniyor" description="Hazirlik, aksiyon ve canli durum verileri getiriliyor." />
-      ) : (
-        <>
-          <SectionCard
-            title="Mevcut Operasyonlar"
-            action={
-              <div className="ops-control-pagination">
-                <button
-                  type="button"
-                  className="button-secondary compact-button ops-control-pagination-button"
-                  disabled={priorityPage === 0}
-                  onClick={() => setPriorityPage((current) => Math.max(current - 1, 0))}
-                  aria-label="Onceki operasyonlar"
-                >
-                  <ArrowLeftIcon className="nav-icon" />
-                </button>
-                <span className="ops-control-pagination-meta">
-                  {priorityPage + 1} / {priorityPageCount}
-                </span>
-                <button
-                  type="button"
-                  className="button-secondary compact-button ops-control-pagination-button"
-                  disabled={priorityPage >= priorityPageCount - 1}
-                  onClick={() => setPriorityPage((current) => Math.min(current + 1, priorityPageCount - 1))}
-                  aria-label="Sonraki operasyonlar"
-                >
-                  <ArrowRightIcon className="nav-icon" />
-                </button>
-              </div>
-            }
-          >
-            {paginatedPriorityOperations.length === 0 ? (
-              <EmptyState title="Listelenecek operasyon yok" description="Yeni operasyon eklendiginde bu alanda siralanacak." />
-            ) : (
-              <div className="ops-control-action-list">
-                {paginatedPriorityOperations.map((operation) => (
-                  <div key={operation.id} className="ops-control-action-row is-operation-row">
-                    <div className={`ops-control-row-icon is-${resolvePriorityTone(operation)}`} />
-                    <div className="ops-control-row-copy">
-                      <strong>{operation.name}</strong>
-                      <span>{operation.survey}</span>
-                    </div>
-                    <div className="ops-control-operation-meta">
-                      <span>{operation.executionSummary.totalCallJobs.toLocaleString("tr-TR")} kisi</span>
-                      <span>{operation.executionSummary.pendingCallJobs} bekleyen</span>
-                    </div>
-                    <StatusBadge status={operation.status} label={resolveOperationBadge(operation)} />
-                    <Link href={`/operations/${operation.id}`} className="button-secondary compact-button">
-                      Ac
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
-
-          <div className="ops-control-layout">
-            <div className="ops-control-main">
-              <SectionCard title="Hazirlik ve Blokajlar" description="Operasyona gecmek icin gerekli adimlar">
-                <div className="ops-control-readiness-list">
-                  {readinessItems.map((item) => (
-                    <div key={item.key} className="ops-control-readiness-row">
-                      <div className={`ops-control-row-icon is-${item.status.toLowerCase()}`} />
-                      <div className="ops-control-row-copy">
-                        <strong>{item.title}</strong>
-                      </div>
-                      <StatusBadge status={item.status} label={item.label} />
-                      <Link href={item.href} className="button-secondary compact-button">
-                        {item.actionLabel}
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              </SectionCard>
-
-              <SectionCard title="Son Operasyonlar" description="En son guncellenen operasyon kayitlari">
-                {recentOperations.length === 0 ? (
-                  <EmptyState title="Operasyon kaydi yok" description="Yeni operasyon olusturuldugunda burada listelenecek." />
-                ) : (
-                  <div className="ops-control-table">
-                    <div className="ops-control-table-head ops-control-table-head-operations">
-                      <span>Operasyon</span>
-                      <span>Kisi Sayisi</span>
-                      <span>Durum</span>
-                      <span>Ilerleme</span>
-                    </div>
-                    {recentOperations.map((operation) => {
-                      const progress = resolveProgress(operation);
-
-                      return (
-                        <div key={operation.id} className="ops-control-table-row ops-control-table-head-operations">
-                          <div className="ops-control-table-primary">
-                            <strong>{operation.name}</strong>
-                            <span>{operation.survey}</span>
-                          </div>
-                          <span>{operation.executionSummary.totalCallJobs.toLocaleString("tr-TR")} Kisi</span>
-                          <StatusBadge status={operation.status} label={resolveOperationBadge(operation)} />
-                          <div className="ops-control-progress-cell">
-                            <div className="ops-control-progress-track">
-                              <span style={{ width: `${progress}%` }} />
-                            </div>
-                            <small>%{progress}</small>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </SectionCard>
+        <section className="ops-summary-strip ops-control-summary-grid">
+          <article className={["survey-summary-kpi", summary.activeToday > 0 ? "is-success" : "is-neutral"].join(" ")}>
+            <div className="survey-summary-kpi-icon">
+              <div className="ops-control-stat-icon is-success" />
             </div>
+            <div className="survey-summary-kpi-copy">
+              <span>Aktif Operasyon</span>
+              <strong>{summary.activeToday}</strong>
+              <small>Hazir veya yuruyen operasyon adedi</small>
+            </div>
+          </article>
 
-            <div className="ops-control-side">
-              <SectionCard
-                title="Canli Operasyon Durumu"
-                description="Canli operasyon akisindaki anlik hacim dagilimi"
-                action={<button className="button-secondary compact-button">...</button>}
-              >
-                {liveMetrics.hasLiveData ? (
-                  <>
-                    <div className="ops-control-live-summary">
-                      <div className="ops-control-live-pill">
-                        <span>Kuyrukta</span>
-                        <strong>{liveMetrics.queued.toLocaleString("tr-TR")}</strong>
-                      </div>
-                      <div className="ops-control-live-pill">
-                        <span>Su an araniyor</span>
-                        <strong>{liveMetrics.inProgress.toLocaleString("tr-TR")}</strong>
-                      </div>
-                      <div className="ops-control-live-pill">
-                        <span>Gorusme tamamlandi</span>
-                        <strong>{liveMetrics.completed.toLocaleString("tr-TR")}</strong>
-                      </div>
-                    </div>
+          <article className="survey-summary-kpi is-success">
+            <div className="survey-summary-kpi-icon">
+              <div className="ops-control-stat-icon is-success" />
+            </div>
+            <div className="survey-summary-kpi-copy">
+              <span>Hazir Baslatilabilir</span>
+              <strong>{summary.readyCount}</strong>
+              <small>Readiness kontrollerini gecmis operasyon sayisi</small>
+            </div>
+          </article>
 
-                    <div className="ops-control-funnel">
-                      {liveMetrics.funnel.map((item, index) => (
-                        <div key={item.label} className="ops-control-funnel-row">
-                          <div
-                            className={`ops-control-funnel-shape is-level-${index + 1}`}
-                            style={{ width: `${item.width}%` }}
-                          >
-                            <strong>{item.value}</strong>
-                          </div>
-                          <div className="ops-control-funnel-meta">
-                            <span>{item.label}</span>
-                            <div className="ops-control-progress-track">
-                              <span style={{ width: `${item.width}%` }} />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <EmptyState
-                    title="Canli operasyon yok"
-                    description="Aktif veya hazir durumdaki operasyonlar geldiginde anlik akis burada gosterilecek."
-                  />
-                )}
-              </SectionCard>
+          <article className="survey-summary-kpi is-warning">
+            <div className="survey-summary-kpi-icon">
+              <div className="ops-control-stat-icon is-warning" />
+            </div>
+            <div className="survey-summary-kpi-copy">
+              <span>Blokajli Operasyon</span>
+              <strong>{summary.blockedCount}</strong>
+              <small>Mudahale gerektiren operasyon sayisi</small>
+            </div>
+          </article>
 
-              <SectionCard
-                title="Son Aktiviteler / Olay Akrsi"
-                description="Son operasyon hareketleri ve ciktilar"
-                action={<Link href="/operations" className="button-secondary compact-button">Tumunu gor</Link>}
-              >
-                {activityRows.length === 0 ? (
-                  <EmptyState title="Aktivite bulunmuyor" description="Operasyon guncellemeleri burada listelenecek." />
-                ) : (
-                  <div className="ops-control-table">
-                    <div className="ops-control-table-head ops-control-table-head-activity">
-                      <span>Saat</span>
-                      <span>Kullanici / Sistem</span>
-                      <span>Olay</span>
-                      <span>Ilgili Neyne</span>
-                      <span>Sonuc</span>
-                      <span>Aksiyon</span>
-                    </div>
-                    {activityRows.map((row) => (
-                      <div key={row.id} className="ops-control-table-row ops-control-table-head-activity">
-                        <span>{row.time}</span>
-                        <strong>{row.actor}</strong>
-                        <span>{row.event}</span>
-                        <span>{row.area}</span>
-                        <span>{row.result}</span>
-                        <Link href={row.href} className="ops-control-inline-action">
-                          Yonet
-                          <ArrowRightIcon className="nav-icon" />
-                        </Link>
-                      </div>
+          <article className="survey-summary-kpi is-info">
+            <div className="survey-summary-kpi-icon">
+              <div className="ops-control-stat-icon is-info" />
+            </div>
+            <div className="survey-summary-kpi-copy">
+              <span>Tamamlanma Orani</span>
+              <strong>%{summary.completionRate}</strong>
+              <small>{summary.completedCalls.toLocaleString("tr-TR")} / {summary.totalJobs.toLocaleString("tr-TR")} cagri tamamlandi</small>
+            </div>
+          </article>
+
+          <article className="survey-summary-kpi is-neutral">
+            <div className="survey-summary-kpi-icon">
+              <div className="ops-control-stat-icon is-info" />
+            </div>
+            <div className="survey-summary-kpi-copy">
+              <span>Tamamlanan Operasyon Orani</span>
+              <strong>%{summary.completedOperationRate}</strong>
+              <small>{summary.completedOperationCount} / {summary.totalOperationCount} operasyon tamamlandi</small>
+            </div>
+          </article>
+        </section>
+
+        {isLoading ? (
+          <EmptyState title="Operasyon paneli hazirlaniyor" description="Hazirlik, aksiyon ve canli durum verileri getiriliyor." />
+        ) : (
+          <>
+            <SectionCard
+              title={
+                <div className="survey-view-switch" role="tablist" aria-label="Operasyon portfoyu gorunumleri">
+                  <button
+                    type="button"
+                    className={["survey-view-switch-button", portfolioView === "portfolio" ? "is-active" : ""].filter(Boolean).join(" ")}
+                    onClick={() => setPortfolioView("portfolio")}
+                    aria-pressed={portfolioView === "portfolio"}
+                  >
+                    Portfoy
+                  </button>
+                  <button
+                    type="button"
+                    className={["survey-view-switch-button", portfolioView === "analytics" ? "is-active" : ""].filter(Boolean).join(" ")}
+                    onClick={() => setPortfolioView("analytics")}
+                    aria-pressed={portfolioView === "analytics"}
+                  >
+                    Analiz
+                  </button>
+                </div>
+              }
+              action={
+                <div className="ops-surveys-table-actions">
+                  <div className="filter-tabs">
+                    {operationTabs.map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        className={["filter-tab", activeTab === tab ? "is-active" : ""].filter(Boolean).join(" ")}
+                        onClick={() => setActiveTab(tab)}
+                      >
+                        {tab}
+                      </button>
                     ))}
                   </div>
-                )}
-              </SectionCard>
+                  <button
+                    type="button"
+                    className="button-secondary compact-button ops-control-pagination-button"
+                    disabled={priorityPage === 0}
+                    onClick={() => setPriorityPage((current) => Math.max(current - 1, 0))}
+                    aria-label="Onceki operasyonlar"
+                  >
+                    <ArrowLeftIcon className="nav-icon" />
+                  </button>
+                  <span className="ops-control-pagination-meta">
+                    {priorityPage + 1} / {priorityPageCount}
+                  </span>
+                  <button
+                    type="button"
+                    className="button-secondary compact-button ops-control-pagination-button"
+                    disabled={priorityPage >= priorityPageCount - 1}
+                    onClick={() => setPriorityPage((current) => Math.min(current + 1, priorityPageCount - 1))}
+                    aria-label="Sonraki operasyonlar"
+                  >
+                    <ArrowRightIcon className="nav-icon" />
+                  </button>
+                </div>
+              }
+            >
+              {paginatedPriorityOperations.length === 0 ? (
+                <EmptyState title="Listelenecek operasyon yok" description="Filtreyi degistirin veya yeni operasyon ekleyin." />
+              ) : (
+                <div className="survey-table-slider-shell">
+                  <div
+                    className={["survey-table-slider-track", portfolioView === "analytics" ? "is-analytics" : ""].filter(Boolean).join(" ")}
+                  >
+                    <div className="survey-table-panel is-operations-portfolio">
+                      <DataTable
+                        columns={portfolioColumns}
+                        rows={paginatedPriorityOperations}
+                        rowKey={(operation) => operation.id}
+                        toolbar={<span className="table-meta">{paginatedPriorityOperations.length} / {filteredOperations.length} operasyon gosteriliyor</span>}
+                      />
+                    </div>
+                    <div className="survey-table-panel is-operations-analytics">
+                      <DataTable
+                        columns={analyticsColumns}
+                        rows={analyticsRows}
+                        rowKey={(row) => row.id}
+                        toolbar={<span className="table-meta">Yanit, katilim, red ve tamamlanma metrikleri secili operasyonlar icin gosteriliyor</span>}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+
+            <div className="ops-control-layout">
+              <div className="ops-active-flow-layout">
+                <SectionCard
+                  title="Aktif Operasyon Kisi Akisi"
+                  description="Toplam hedef kisiden yanit veren kisilere kadar mevcut arama akisini ozetler"
+                >
+                  {activeContactFlow.hasActiveOperations ? (
+                    <>
+                      <div className="ops-active-flow-split">
+                        <div className="ops-active-flow-summary">
+                          <div className="ops-active-flow-pill">
+                            <span>Aktif operasyon</span>
+                            <strong>{activeContactFlow.operationCount}</strong>
+                          </div>
+                          <div className="ops-active-flow-pill">
+                            <span>Degerlendirmeye Alinan</span>
+                            <strong>{activeContactFlow.totalTargets.toLocaleString("tr-TR")}</strong>
+                          </div>
+                          <div className="ops-active-flow-pill is-warning">
+                            <span>Temas edilmis ama katilmamis</span>
+                            <strong>{activeContactFlow.reachedButDidNotParticipateCount.toLocaleString("tr-TR")}</strong>
+                          </div>
+                          <div className="ops-active-flow-pill is-danger">
+                            <span>Temas edilemeyen</span>
+                            <strong>{activeContactFlow.unreachedCount.toLocaleString("tr-TR")}</strong>
+                          </div>
+                        </div>
+
+                        <div className="ops-active-flow-grid">
+                          {activeContactFlow.steps.filter((step) => step.key !== "targets").map((step) => (
+                            <div key={step.label} className="ops-active-flow-card">
+                              <div className="ops-active-flow-card-head">
+                                <span>{step.label}</span>
+                                <strong>{step.value.toLocaleString("tr-TR")}</strong>
+                              </div>
+                              <div className={["survey-metric-bar", step.tone].join(" ")}>
+                                <span style={{ width: `${step.width}%` }} />
+                              </div>
+                              <small>{step.detail}</small>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <p className="ops-active-flow-note">
+                        {activeContactFlow.pendingOperationCount > 0
+                          ? `${activeContactFlow.pendingOperationCount} aktif operasyonun analitigi henuz hazir degil; bu kart mevcut veriye gore hesaplanir.`
+                          : "Tum aktif operasyonlarin analitik verisi bu akis ozetine dahil edildi."}
+                      </p>
+                    </>
+                  ) : (
+                    <EmptyState
+                      title="Aktif operasyon akis verisi yok"
+                      description="Running veya Ready durumunda operasyon geldiginde kisi akis analizi burada gosterilecek."
+                    />
+                  )}
+                </SectionCard>
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </PageContainer>
   );
 }
 
 function buildSummary(operations: Operation[]) {
   const activeToday = operations.filter((operation) => operation.status === "Running" || operation.status === "Ready").length;
-  const pendingPeople = operations.reduce((sum, operation) => sum + operation.executionSummary.pendingCallJobs, 0);
   const completedCalls = operations.reduce((sum, operation) => sum + operation.executionSummary.completedCallJobs, 0);
+  const totalJobs = operations.reduce((sum, operation) => sum + operation.executionSummary.totalCallJobs, 0);
   const blockedCount = operations.filter((operation) => operation.readiness.blockingReasons.length > 0).length;
   const readyCount = operations.filter((operation) => operation.readiness.readyToStart).length;
+  const completionRate = totalJobs > 0 ? Math.round((completedCalls / totalJobs) * 100) : 0;
+  const completedOperationCount = operations.filter((operation) => operation.status === "Completed").length;
+  const totalOperationCount = operations.length;
+  const completedOperationRate = totalOperationCount > 0 ? Math.round((completedOperationCount / totalOperationCount) * 100) : 0;
 
   return {
     activeToday,
-    pendingPeople,
     completedCalls,
+    totalJobs,
     blockedCount,
-    readinessLabel: blockedCount > 0 ? "Kismen Hazir" : readyCount > 0 ? "Hazir" : "Hazirlikta",
-    readinessDetail:
-      blockedCount > 0
-        ? `${blockedCount} operasyon icin mudahale gerekiyor`
-        : `${readyCount} operasyon baslatma kosullarini sagliyor`,
+    readyCount,
+    completionRate,
+    completedOperationCount,
+    totalOperationCount,
+    completedOperationRate,
   };
 }
 
-function buildReadinessItems(operations: Operation[]): ReadinessItem[] {
-  const hasPublishedSurvey = operations.some((operation) => operation.surveyStatus === "Live");
-  const hasContactIssue = operations.some((operation) => !operation.readiness.contactsLoaded || operation.readiness.blockingReasons.length > 0);
-  const hasLinkedSurvey = operations.some((operation) => operation.readiness.surveyLinked);
-  const hasPoolIssue = operations.some((operation) => operation.status === "Failed" || operation.status === "Cancelled");
-  const hasConfigIssue = operations.some((operation) => operation.status === "Draft" || operation.status === "Scheduled");
+function buildActiveContactFlow(operations: Operation[], analyticsByOperationId: Record<string, OperationAnalytics | null>) {
+  const activeOperations = operations.filter((operation) => operation.status === "Running" || operation.status === "Ready");
+  const activeAnalytics = activeOperations
+    .map((operation) => analyticsByOperationId[operation.id])
+    .filter((analytics): analytics is OperationAnalytics => Boolean(analytics));
+  const totalTargets = activeAnalytics.reduce((sum, analytics) => sum + analytics.totalContacts, 0);
+  const totalCalled = activeAnalytics.reduce((sum, analytics) => sum + analytics.totalCallsAttempted, 0);
+  const totalReached = activeAnalytics.reduce(
+    (sum, analytics) => sum + Math.min(analytics.totalContacts, Math.round((analytics.totalContacts * analytics.contactReachRate) / 100)),
+    0,
+  );
+  const totalResponders = activeAnalytics.reduce((sum, analytics) => sum + analytics.totalResponses, 0);
+  const unreachedCount = Math.max(totalCalled - totalReached, 0);
+  const reachedButDidNotParticipateCount = Math.max(totalReached - totalResponders, 0);
+  const base = Math.max(totalTargets, totalCalled, totalReached, totalResponders, 1);
+  const coveredOperationCount = activeAnalytics.length;
+  const operationCount = activeOperations.length;
+  const pendingOperationCount = Math.max(operationCount - coveredOperationCount, 0);
+  const coverageRate = operationCount > 0 ? Math.round((coveredOperationCount / operationCount) * 100) : 0;
+  const buildStep = (
+    label: string,
+    value: number,
+    detail: string,
+    valueLabel: string,
+    previousValue: number | null,
+    tone: "is-cyan" | "is-amber" | "is-green",
+  ) => {
+    const overallRate = totalTargets > 0 ? Math.round((value / totalTargets) * 100) : 0;
+    const stageRate = previousValue && previousValue > 0 ? Math.round((value / previousValue) * 100) : 100;
 
-  return [
-    {
-      key: "survey-publish",
-      title: "Anket yayinda mi?",
-      label: hasPublishedSurvey ? "Hazir" : "Riskli",
-      status: hasPublishedSurvey ? "Ready" : "Warning",
-      actionLabel: hasPublishedSurvey ? "Ac" : "Incele",
-      href: "/surveys",
-    },
-    {
-      key: "contact-list",
-      title: "Kisi listesi uygun mu?",
-      label: hasContactIssue ? "Riskli" : "Hazir",
-      status: hasContactIssue ? "Warning" : "Ready",
-      actionLabel: "Incele",
-      href: "/contacts",
-    },
-    {
-      key: "operation-assign",
-      title: "Operasyon atamasi var mi?",
-      label: hasLinkedSurvey ? "Hazir" : "Riskli",
-      status: hasLinkedSurvey ? "Ready" : "Warning",
-      actionLabel: "Ac",
-      href: "/operations",
-    },
-    {
-      key: "pool-status",
-      title: "Numara havuzu uygun mu?",
-      label: hasPoolIssue ? "Duzelt" : "Hazir",
-      status: hasPoolIssue ? "Risk" : "Ready",
-      actionLabel: hasPoolIssue ? "Duzelt" : "Ac",
-      href: "/calling-ops",
-    },
-    {
-      key: "agent-config",
-      title: "Agent konfigurasyonu",
-      label: hasConfigIssue ? "Riskli" : "Hazir",
-      status: hasConfigIssue ? "Warning" : "Ready",
-      actionLabel: hasConfigIssue ? "Yayinla" : "Ac",
-      href: "/operations",
-    },
-  ];
-}
-
-function buildLiveMetrics(operations: Operation[]) {
-  const runningOperations = operations.filter((operation) => operation.status === "Running" || operation.status === "Ready");
-  const queued = runningOperations.reduce((sum, operation) => sum + operation.executionSummary.pendingCallJobs, 0);
-  const completed = runningOperations.reduce((sum, operation) => sum + operation.executionSummary.completedCallJobs, 0);
-  const inProgress = Math.max(Math.round(queued * 0.22), runningOperations.length * 8);
-  const reviewed = Math.max(Math.round(completed * 0.61), 0);
-  const max = Math.max(queued, inProgress, completed, reviewed, 0);
+    return {
+      label,
+      value,
+      width: Math.max(Math.round((value / base) * 100), value > 0 ? 24 : 0),
+      detail,
+      valueLabel,
+      tone,
+      overallRate,
+      stageRateLabel: previousValue === null ? "Baz adim" : `Onceki asamadan gecis %${stageRate}`,
+    };
+  };
 
   return {
-    hasLiveData: runningOperations.length > 0,
-    queued,
-    inProgress,
-    completed,
-    funnel: [
-      { label: "Kuyrukta", value: queued, width: max > 0 ? Math.max((queued / max) * 100, 24) : 0 },
-      { label: "Su an araniyor", value: inProgress, width: max > 0 ? Math.max((inProgress / max) * 100, 24) : 0 },
-      { label: "Gorusme tamamlandi", value: completed, width: max > 0 ? Math.max((completed / max) * 100, 24) : 0 },
-      { label: "Raporlandi", value: reviewed, width: max > 0 ? Math.max((reviewed / max) * 100, 24) : 0 },
-    ],
+    hasActiveOperations: operationCount > 0,
+    operationCount,
+    coveredOperationCount,
+    pendingOperationCount,
+    coverageRate,
+    totalTargets,
+    unreachedCount,
+    reachedButDidNotParticipateCount,
+    steps: [
+      { key: "targets", ...buildStep("Toplam hedef kisi", totalTargets, "Operasyon listelerine yuklenmis toplam kisi", "Hedef havuz", null, "is-cyan") },
+      buildStep(
+        "Aranan",
+        totalCalled,
+        totalTargets > 0 ? `%${Math.round((totalCalled / totalTargets) * 100)} hedefe temas denemesi` : "Arama denemesi henuz baslamadi",
+        "Temas denemesi",
+        totalTargets,
+        "is-amber",
+      ),
+      buildStep(
+        "Ulasilan",
+        totalReached,
+        totalTargets > 0 ? `%${Math.round((totalReached / totalTargets) * 100)} erisim kapsami` : "Erismeye dair veri yok",
+        "Cevaplanan arama",
+        totalCalled,
+        "is-green",
+      ),
+      buildStep(
+        "Yanit veren",
+        totalResponders,
+        totalReached > 0 ? `%${Math.round((totalResponders / totalReached) * 100)} erisilen kisiden yanit alindi` : "Yanit verisi henuz olusmadi",
+        "Ankete katilan",
+        totalReached,
+        "is-cyan",
+      ),
+    ].map((step, index) => ("key" in step ? step : { key: `step-${index}`, ...step })),
   };
 }
 
-function buildActivityRows(operations: Operation[]): ActivityRow[] {
-  return operations.slice(0, 4).map((operation, index) => ({
-    id: operation.id,
-    time: extractTime(operation.updatedAt),
-    actor: index % 2 === 0 ? "Seed Owner" : "Sistem",
-    event: index === 0 ? "Kisi yukleme" : index === 1 ? "Anket guncellendi" : index === 2 ? "Rapor tazelendi" : "Durum degisti",
-    area: operation.name,
-    result: resolveActivityResult(operation),
-    href: `/operations/${operation.id}`,
-  }));
+function MetricBar({
+  value,
+  tone,
+  detail,
+  state = "live",
+}: {
+  value: number;
+  tone: "cyan" | "green" | "amber";
+  detail: string;
+  state?: "live" | "pending" | "empty";
+}) {
+  const isUnavailable = state !== "live";
+
+  return (
+    <div className={["survey-metric-cell", isUnavailable ? "is-unavailable" : ""].join(" ")}>
+      <div className="survey-metric-head">
+        <span>{isUnavailable ? "Durum" : "Oran"}</span>
+        <strong>{state === "empty" ? "Veri Yok" : state === "pending" ? "Beklemede" : `%${value}`}</strong>
+      </div>
+      <div className={["survey-metric-bar", `is-${tone}`, isUnavailable ? "is-unavailable" : ""].join(" ")}>
+        <span style={{ width: `${isUnavailable ? 100 : value}%` }} />
+      </div>
+      <small>{detail}</small>
+    </div>
+  );
 }
 
-function resolveProgress(operation: Operation) {
+function DualMetricBar({
+  primaryLabel,
+  primaryValue,
+  secondaryLabel,
+  secondaryValue,
+  detail,
+  state = "live",
+}: {
+  primaryLabel: string;
+  primaryValue: number;
+  secondaryLabel: string;
+  secondaryValue: number;
+  detail: string;
+  state?: "live" | "pending" | "empty";
+}) {
+  const isUnavailable = state !== "live";
+  const safePrimary = isUnavailable ? 100 : primaryValue;
+  const safeSecondary = isUnavailable ? 100 : secondaryValue;
+
+  return (
+    <div className={["ops-dual-metric-cell", isUnavailable ? "is-unavailable" : ""].join(" ")}>
+      <div className="ops-dual-metric-row">
+        <div className="ops-dual-metric-head">
+          <span>{primaryLabel}</span>
+          <strong>{isUnavailable ? (state === "empty" ? "Veri Yok" : "Beklemede") : `%${primaryValue}`}</strong>
+        </div>
+        <div className={["survey-metric-bar", "is-cyan", isUnavailable ? "is-unavailable" : ""].join(" ")}>
+          <span style={{ width: `${safePrimary}%` }} />
+        </div>
+      </div>
+
+      <div className="ops-dual-metric-row">
+        <div className="ops-dual-metric-head">
+          <span>{secondaryLabel}</span>
+          <strong>{isUnavailable ? (state === "empty" ? "Veri Yok" : "Beklemede") : `%${secondaryValue}`}</strong>
+        </div>
+        <div className={["survey-metric-bar", "is-green", isUnavailable ? "is-unavailable" : ""].join(" ")}>
+          <span style={{ width: `${safeSecondary}%` }} />
+        </div>
+      </div>
+
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function resolveOperationProgress(operation: Operation) {
   const total = operation.executionSummary.totalCallJobs;
 
   if (total <= 0) {
@@ -455,55 +764,29 @@ function resolveProgress(operation: Operation) {
   return Math.max(0, Math.min(100, Math.round((operation.executionSummary.completedCallJobs / total) * 100)));
 }
 
-function resolveOperationBadge(operation: Operation) {
-  if (operation.status === "Running") {
+function resolveLifecycleStatus(operation: Operation) {
+  if (operation.status === "Running" || operation.status === "Ready") {
+    return "active";
+  }
+
+  if (operation.status === "Completed" || operation.status === "Cancelled" || operation.status === "Failed") {
+    return "completed";
+  }
+
+  return "draft";
+}
+
+function resolveLifecycleLabel(operation: Operation) {
+  if (operation.status === "Running" || operation.status === "Ready") {
     return "Aktif";
   }
 
-  if (operation.readiness.readyToStart) {
-    return "Hazir";
+  if (operation.status === "Completed" || operation.status === "Cancelled" || operation.status === "Failed") {
+    return "Tamamlandi";
   }
 
-  if (operation.readiness.blockingReasons.length > 0) {
-    return "Riskli";
-  }
-
-  return operation.updatedAt.includes("Nis") ? operation.updatedAt.split(" ").slice(0, 2).join(" ") : "Hazirlikta";
+  return "Taslak";
 }
 
-function resolvePriorityTone(operation: Operation) {
-  if (operation.readiness.blockingReasons.length > 0 || operation.status === "Failed" || operation.status === "Cancelled") {
-    return "risk";
-  }
 
-  if (operation.status === "Draft" || operation.status === "Scheduled" || operation.status === "Paused") {
-    return "warning";
-  }
 
-  if (operation.status === "Running" || operation.status === "Ready") {
-    return "ready";
-  }
-
-  return "neutral";
-}
-
-function resolveActivityResult(operation: Operation) {
-  if (operation.readiness.blockingReasons.length > 0) {
-    return operation.readiness.blockingReasons[0];
-  }
-
-  if (operation.status === "Running") {
-    return `${operation.executionSummary.completedCallJobs} gorusme tamamlandi`;
-  }
-
-  if (operation.status === "Completed") {
-    return "Operasyon tamamlandi";
-  }
-
-  return operation.summary;
-}
-
-function extractTime(value: string) {
-  const match = value.match(/(\d{2}:\d{2})/);
-  return match?.[1] ?? value;
-}

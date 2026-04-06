@@ -100,6 +100,8 @@ export type Operation = {
   id: string;
   name: string;
   status: "Draft" | "Ready" | "Running" | "Completed" | "Failed" | "Scheduled" | "Paused" | "Cancelled";
+  sourceType: "STANDARD" | "IMPORTED_SURVEY_RESULTS";
+  sourcePayloadJson: string | null;
   surveyId: string;
   survey: string;
   surveyStatus: Survey["status"] | null;
@@ -271,6 +273,15 @@ export type OperationAnalyticsBreakdownItem = {
   percentage: number;
 };
 
+export type OperationAnalyticsAudienceBreakdown = {
+  key: string;
+  label: string;
+  questionCode: string;
+  questionTitle: string;
+  answeredCount: number;
+  breakdown: OperationAnalyticsBreakdownItem[];
+};
+
 export type OperationAnalyticsQuestionSummary = {
   questionId: string;
   questionCode: string;
@@ -278,8 +289,11 @@ export type OperationAnalyticsQuestionSummary = {
   questionTitle: string;
   questionType: "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING";
   chartKind: "RATING" | "BINARY" | "CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED";
+  respondedContactCount: number;
   answeredCount: number;
   responseRate: number;
+  dropOffCount: number;
+  dropOffRate: number;
   averageRating: number | null;
   emptyStateMessage: string | null;
   breakdown: OperationAnalyticsBreakdownItem[];
@@ -311,6 +325,7 @@ export type OperationAnalytics = {
   failedCallJobs: number;
   skippedCallJobs: number;
   totalResponses: number;
+  respondedContacts: number;
   completedResponses: number;
   partialResponses: number;
   abandonedResponses: number;
@@ -324,6 +339,7 @@ export type OperationAnalytics = {
   insightSummary: string | null;
   insightItems: OperationAnalyticsInsightItem[];
   outcomeBreakdown: OperationAnalyticsBreakdownItem[];
+  audienceBreakdowns: OperationAnalyticsAudienceBreakdown[];
   questionSummaries: OperationAnalyticsQuestionSummary[];
   responseTrend: OperationAnalyticsTrendPoint[];
 };

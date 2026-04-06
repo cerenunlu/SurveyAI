@@ -43,6 +43,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
   const isAuthRoute = pathname === "/login";
   const isDashboardHome = pathname === "/";
   const isSurveysRoute = pathname === "/surveys" || pathname.startsWith("/surveys/");
+  const isOperationsIndexRoute = pathname === "/operations";
 
   useEffect(() => {
     setIsUserMenuOpen(false);
@@ -255,6 +256,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
               "topbar",
               isDashboardHome ? "is-dashboard-topbar" : "",
               isSurveysRoute ? "is-surveys-topbar" : "",
+              isOperationsIndexRoute ? "is-operations-topbar" : "",
             ]
               .filter(Boolean)
               .join(" ")}
@@ -271,6 +273,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                   "topbar-copy-compact",
                   isDashboardHome ? "is-dashboard-copy" : "",
                   isSurveysRoute ? "is-surveys-copy" : "",
+                  isOperationsIndexRoute ? "is-operations-copy" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -288,7 +291,9 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                   <span className="topbar-kicker">{currentUser.company.name}</span>
                 ) : null}
                 <h1>{currentMeta.title}</h1>
-                {currentMeta.subtitle ? <p>{currentMeta.subtitle}</p> : null}
+                {typeof currentMeta.subtitle === "string"
+                  ? (currentMeta.subtitle ? <p>{currentMeta.subtitle}</p> : null)
+                  : (currentMeta.subtitle ? <div className="topbar-subtitle-slot">{currentMeta.subtitle}</div> : null)}
               </div>
             </div>
 

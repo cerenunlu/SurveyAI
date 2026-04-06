@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class OperationController {
 
     private final OperationService operationService;
-
     public OperationController(OperationService operationService) {
         this.operationService = operationService;
     }
