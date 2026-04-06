@@ -224,6 +224,7 @@ class OperationServiceImplTest {
         assertThat(response.totalCompletedCalls()).isEqualTo(1);
         assertThat(response.failedCallJobs()).isEqualTo(1);
         assertThat(response.totalResponses()).isEqualTo(2);
+        assertThat(response.respondedContacts()).isEqualTo(2);
         assertThat(response.completedResponses()).isEqualTo(1);
         assertThat(response.partialResponses()).isEqualTo(1);
         assertThat(response.completionRate()).isEqualTo(50.0);
@@ -242,6 +243,9 @@ class OperationServiceImplTest {
         assertThat(response.questionSummaries())
                 .extracting(item -> item.questionTitle())
                 .containsExactly("Memnun musunuz?", "Deneyim puani", "Yorumunuz");
+        assertThat(response.questionSummaries())
+                .extracting(item -> item.respondedContactCount())
+                .containsExactly(2L, 2L, 2L);
         assertThat(response.questionSummaries().get(2).sampleResponses())
                 .containsExactly("Temsilci oldukca yardimciydi ve surec kolay ilerledi.");
     }
@@ -487,9 +491,13 @@ class OperationServiceImplTest {
         OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
 
         assertThat(response.totalResponses()).isEqualTo(1);
+        assertThat(response.respondedContacts()).isEqualTo(1);
         assertThat(response.completionRate()).isZero();
         assertThat(response.responseRate()).isEqualTo(100.0);
         assertThat(response.questionSummaries()).hasSize(3);
+        assertThat(response.questionSummaries())
+                .extracting(item -> item.respondedContactCount())
+                .containsExactly(1L, 1L, 1L);
         assertThat(response.questionSummaries().get(0).answeredCount()).isEqualTo(1);
         assertThat(response.questionSummaries().get(0).breakdown())
                 .extracting(item -> item.label() + ":" + item.count())

@@ -9,6 +9,7 @@ import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.operation.application.dto.request.CreateOperationRequest;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsBreakdownItemDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsAudienceBreakdownDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsInsightItemDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionSummaryDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsResponseDto;
@@ -275,6 +276,17 @@ public class OperationServiceImpl implements OperationService {
                         LinkedHashMap::new,
                         Collectors.toList()
                 ));
+        Set<UUID> usableResponseIds = answers.stream()
+                .filter(answer -> responsesById.containsKey(answer.getSurveyResponse().getId()))
+                .filter(this::hasUsableAnalyticsAnswer)
+                .map(answer -> answer.getSurveyResponse().getId())
+                .collect(Collectors.toSet());
+        Set<UUID> respondedContactIds = usableResponseIds.stream()
+                .map(responsesById::get)
+                .filter(Objects::nonNull)
+                .map(response -> response.getOperationContact().getId())
+                .collect(Collectors.toSet());
+        long respondedContacts = respondedContactIds.size();
 
         long queuedJobs = callJobs.stream().filter(job -> EnumSet.of(
                 CallJobStatus.PENDING,
@@ -290,17 +302,18 @@ public class OperationServiceImpl implements OperationService {
         long skippedCallJobs = callJobs.stream().filter(job -> job.getStatus() == CallJobStatus.CANCELLED).count();
         long totalCallsAttempted = callJobs.size() - queuedJobs;
 
-        long completedResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.COMPLETED).count();
-        long partialResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.PARTIAL).count();
-        long abandonedResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.ABANDONED).count();
-        long invalidResponses = responses.stream().filter(response -> response.getStatus() == SurveyResponseStatus.INVALID).count();
+        long completedResponses = countDistinctResponseContactsByStatus(responses, usableResponseIds, SurveyResponseStatus.COMPLETED);
+        long partialResponses = countDistinctResponseContactsByStatus(responses, usableResponseIds, SurveyResponseStatus.PARTIAL);
+        long abandonedResponses = countDistinctResponseContactsByStatus(responses, usableResponseIds, SurveyResponseStatus.ABANDONED);
+        long invalidResponses = countDistinctResponseContactsByStatus(responses, usableResponseIds, SurveyResponseStatus.INVALID);
 
-        double completionRate = percentage(completedResponses, responses.size());
-        double responseRate = percentage(responses.size(), totalContacts);
+        double completionRate = percentage(completedResponses, respondedContacts);
+        double responseRate = percentage(respondedContacts, totalContacts);
         double contactReachRate = percentage(totalCallsAttempted, totalContacts);
-        double participationRate = percentage(completedResponses + partialResponses, totalContacts);
+        double participationRate = percentage(respondedContacts, totalContacts);
         double averageCompletionPercent = round(
                 responses.stream()
+                        .filter(response -> usableResponseIds.contains(response.getId()))
                         .map(SurveyResponse::getCompletionPercent)
                         .filter(Objects::nonNull)
                         .mapToDouble(BigDecimal::doubleValue)
@@ -321,9 +334,17 @@ public class OperationServiceImpl implements OperationService {
                         question,
                         optionsByQuestionId.getOrDefault(question.getId(), List.of()),
                         answersByQuestionId.getOrDefault(question.getId(), List.of()),
-                        totalContacts
+                        respondedContacts
                 ))
                 .toList();
+        questionSummaries = enrichQuestionDropOffs(questionSummaries);
+
+        List<OperationAnalyticsAudienceBreakdownDto> audienceBreakdowns = buildAudienceBreakdowns(
+                questions,
+                optionsByQuestionId,
+                answersByQuestionId,
+                totalContacts
+        );
 
         Map<String, Long> trendMap = responses.stream()
                 .map(response -> response.getCompletedAt() != null ? response.getCompletedAt() : response.getStartedAt())
@@ -343,7 +364,7 @@ public class OperationServiceImpl implements OperationService {
                 || operation.getStatus() == OperationStatus.FAILED
                 || partialResponses > 0
                 || queuedJobs > 0
-                || totalContacts > responses.size();
+                || totalContacts > respondedContacts;
 
         List<OperationAnalyticsInsightItemDto> insightItems = buildInsightItems(
                 totalContacts,
@@ -379,6 +400,7 @@ public class OperationServiceImpl implements OperationService {
                 failedCallJobs,
                 skippedCallJobs,
                 responses.size(),
+                respondedContacts,
                 completedResponses,
                 partialResponses,
                 abandonedResponses,
@@ -392,6 +414,7 @@ public class OperationServiceImpl implements OperationService {
                 buildInsightSummary(operation, totalContacts, completedResponses, partialResponses, failedCallJobs, responseRate),
                 insightItems,
                 outcomeBreakdown,
+                audienceBreakdowns,
                 questionSummaries,
                 responseTrend
         );
@@ -520,11 +543,32 @@ public class OperationServiceImpl implements OperationService {
         );
     }
 
+    private long countDistinctResponseContactsByStatus(
+            List<SurveyResponse> responses,
+            Set<UUID> usableResponseIds,
+            SurveyResponseStatus status
+    ) {
+        return responses.stream()
+                .filter(response -> response.getStatus() == status)
+                .filter(response -> usableResponseIds.contains(response.getId()))
+                .map(response -> response.getOperationContact().getId())
+                .distinct()
+                .count();
+    }
+
+    private boolean hasUsableAnalyticsAnswer(SurveyAnswer answer) {
+        return hasUsableRatingAnswer(answer)
+                || hasUsableOpenEndedAnswer(answer)
+                || hasReadableChoiceFallback(answer)
+                || answer.getSelectedOption() != null
+                || hasStructuredChoiceFallback(answer.getAnswerJson());
+    }
+
     private OperationAnalyticsQuestionSummaryDto buildQuestionSummary(
             SurveyQuestion question,
             List<SurveyQuestionOption> options,
             List<SurveyAnswer> answers,
-            long totalContacts
+            long respondedContacts
     ) {
         if (question.getQuestionType() == QuestionType.RATING) {
             List<SurveyAnswer> ratingAnswers = answers.stream()
@@ -532,7 +576,7 @@ public class OperationServiceImpl implements OperationService {
                     .filter(this::hasUsableRatingAnswer)
                     .toList();
             long answeredCount = ratingAnswers.size();
-            double responseRate = percentage(answeredCount, totalContacts);
+            double responseRate = percentage(answeredCount, respondedContacts);
             Map<String, Long> ratings = new LinkedHashMap<>();
             for (SurveyAnswer answer : ratingAnswers) {
                 BigDecimal ratingValue = resolveRatingValue(answer);
@@ -555,8 +599,11 @@ public class OperationServiceImpl implements OperationService {
                     question.getTitle(),
                     question.getQuestionType(),
                     "RATING",
+                    respondedContacts,
                     answeredCount,
                     responseRate,
+                    0,
+                    0,
                     averageRating,
                     answeredCount == 0 ? "Puan dagilimi, gorusmelerden sayisal cevap geldikce gosterilir." : null,
                     toBreakdown(ratings, answeredCount),
@@ -571,7 +618,7 @@ public class OperationServiceImpl implements OperationService {
                     .filter(this::hasUsableOpenEndedAnswer)
                     .toList();
             long answeredCount = openEndedAnswers.size();
-            double responseRate = percentage(answeredCount, totalContacts);
+            double responseRate = percentage(answeredCount, respondedContacts);
             return new OperationAnalyticsQuestionSummaryDto(
                     question.getId(),
                     question.getCode(),
@@ -579,8 +626,11 @@ public class OperationServiceImpl implements OperationService {
                     question.getTitle(),
                     question.getQuestionType(),
                     "OPEN_ENDED",
+                    respondedContacts,
                     answeredCount,
                     responseRate,
+                    0,
+                    0,
                     null,
                     answeredCount == 0 ? "Acik uclu icgoruler, gecerli metin yanitlari geldikce olusur." : null,
                     buildOpenEndedBreakdown(openEndedAnswers, answeredCount),
@@ -591,7 +641,7 @@ public class OperationServiceImpl implements OperationService {
         List<List<String>> choiceSelections = resolveChoiceSelections(question.getQuestionType(), options, answers);
         Map<String, Long> distributions = buildChoiceDistribution(options, choiceSelections);
         long answeredCount = choiceSelections.size();
-        double responseRate = percentage(answeredCount, totalContacts);
+        double responseRate = percentage(answeredCount, respondedContacts);
         String chartKind = isBinaryQuestion(options) ? "BINARY" : question.getQuestionType() == QuestionType.MULTI_CHOICE
                 ? "MULTI_CHOICE"
                 : "CHOICE";
@@ -603,8 +653,11 @@ public class OperationServiceImpl implements OperationService {
                 question.getTitle(),
                 question.getQuestionType(),
                 chartKind,
+                respondedContacts,
                 answeredCount,
                 responseRate,
+                0,
+                0,
                 null,
                 answeredCount == 0 ? "Bu soru icin dagilim, cevaplar geldikce burada gosterilir." : null,
                 toBreakdown(distributions, answeredCount == 0 ? 1 : answeredCount),
@@ -621,6 +674,324 @@ public class OperationServiceImpl implements OperationService {
         }
 
         return counts;
+    }
+
+    private List<OperationAnalyticsQuestionSummaryDto> enrichQuestionDropOffs(
+            List<OperationAnalyticsQuestionSummaryDto> questionSummaries
+    ) {
+        List<OperationAnalyticsQuestionSummaryDto> items = new ArrayList<>(questionSummaries.size());
+
+        for (int index = 0; index < questionSummaries.size(); index++) {
+            OperationAnalyticsQuestionSummaryDto current = questionSummaries.get(index);
+            OperationAnalyticsQuestionSummaryDto next = index + 1 < questionSummaries.size()
+                    ? questionSummaries.get(index + 1)
+                    : null;
+
+            long dropOffCount = next == null
+                    ? 0
+                    : Math.max(current.answeredCount() - next.answeredCount(), 0);
+            double dropOffRate = percentage(dropOffCount, current.answeredCount());
+
+            items.add(new OperationAnalyticsQuestionSummaryDto(
+                    current.questionId(),
+                    current.questionCode(),
+                    current.questionOrder(),
+                    current.questionTitle(),
+                    current.questionType(),
+                    current.chartKind(),
+                    current.respondedContactCount(),
+                    current.answeredCount(),
+                    current.responseRate(),
+                    dropOffCount,
+                    dropOffRate,
+                    current.averageRating(),
+                    current.emptyStateMessage(),
+                    current.breakdown(),
+                    current.sampleResponses()
+            ));
+        }
+
+        return items;
+    }
+
+    private List<OperationAnalyticsAudienceBreakdownDto> buildAudienceBreakdowns(
+            List<SurveyQuestion> questions,
+            Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId,
+            Map<UUID, List<SurveyAnswer>> answersByQuestionId,
+            long totalContacts
+    ) {
+        List<OperationAnalyticsAudienceBreakdownDto> items = new ArrayList<>();
+
+        addAudienceBreakdown(items, "gender", "Cinsiyet", questions, optionsByQuestionId, answersByQuestionId, totalContacts);
+        addAudienceBreakdown(items, "city", "Sehir", questions, optionsByQuestionId, answersByQuestionId, totalContacts);
+        addAudienceBreakdown(items, "age", "Yas", questions, optionsByQuestionId, answersByQuestionId, totalContacts);
+
+        return items;
+    }
+
+    private void addAudienceBreakdown(
+            List<OperationAnalyticsAudienceBreakdownDto> items,
+            String dimension,
+            String label,
+            List<SurveyQuestion> questions,
+            Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId,
+            Map<UUID, List<SurveyAnswer>> answersByQuestionId,
+            long totalContacts
+    ) {
+        SurveyQuestion question = questions.stream()
+                .filter(item -> matchesAudienceDimension(item, dimension))
+                .findFirst()
+                .orElse(null);
+        if (question == null) {
+            return;
+        }
+
+        List<SurveyQuestionOption> options = optionsByQuestionId.getOrDefault(question.getId(), List.of());
+        List<SurveyAnswer> answers = answersByQuestionId.getOrDefault(question.getId(), List.of());
+        List<OperationAnalyticsBreakdownItemDto> breakdown = switch (dimension) {
+            case "gender" -> buildGenderBreakdown(question, options, answers);
+            case "city" -> buildCityBreakdown(question, options, answers);
+            case "age" -> buildAgeBreakdown(question, options, answers);
+            default -> List.of();
+        };
+
+        long answeredCount = answers.stream()
+                .map(answer -> resolveAudienceValue(question, answer, options, dimension))
+                .filter(Objects::nonNull)
+                .count();
+
+        items.add(new OperationAnalyticsAudienceBreakdownDto(
+                dimension,
+                label,
+                question.getCode(),
+                question.getTitle(),
+                answeredCount,
+                breakdown
+        ));
+    }
+
+    private boolean matchesAudienceDimension(SurveyQuestion question, String dimension) {
+        String code = normalize(question.getCode());
+        String title = normalize(question.getTitle());
+
+        return switch (dimension) {
+            case "gender" -> code.contains("gender")
+                    || code.contains("cinsiyet")
+                    || title.contains("gender")
+                    || title.contains("cinsiyet");
+            case "city" -> code.contains("city")
+                    || code.contains("sehir")
+                    || code.contains("şehir")
+                    || code.contains("il")
+                    || title.contains("city")
+                    || title.contains("sehir")
+                    || title.contains("şehir")
+                    || title.contains("yasadiginiz sehir")
+                    || title.contains("yasadiginiz il");
+            case "age" -> code.contains("age")
+                    || code.contains("yas")
+                    || code.contains("yaş")
+                    || title.contains("age")
+                    || title.contains("yas")
+                    || title.contains("yaş");
+            default -> false;
+        };
+    }
+
+    private List<OperationAnalyticsBreakdownItemDto> buildGenderBreakdown(
+            SurveyQuestion question,
+            List<SurveyQuestionOption> options,
+            List<SurveyAnswer> answers
+    ) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (SurveyAnswer answer : answers) {
+            String value = resolveAudienceValue(question, answer, options, "gender");
+            if (value == null) {
+                continue;
+            }
+
+            counts.merge(value, 1L, Long::sum);
+        }
+        return toBreakdown(counts, counts.values().stream().mapToLong(Long::longValue).sum());
+    }
+
+    private List<OperationAnalyticsBreakdownItemDto> buildCityBreakdown(
+            SurveyQuestion question,
+            List<SurveyQuestionOption> options,
+            List<SurveyAnswer> answers
+    ) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (SurveyAnswer answer : answers) {
+            String value = resolveAudienceValue(question, answer, options, "city");
+            if (value == null) {
+                continue;
+            }
+            counts.merge(value, 1L, Long::sum);
+        }
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .limit(8)
+                .map(entry -> new OperationAnalyticsBreakdownItemDto(
+                        slugify(entry.getKey()),
+                        entry.getKey(),
+                        entry.getValue(),
+                        percentage(entry.getValue(), counts.values().stream().mapToLong(Long::longValue).sum())
+                ))
+                .toList();
+    }
+
+    private List<OperationAnalyticsBreakdownItemDto> buildAgeBreakdown(
+            SurveyQuestion question,
+            List<SurveyQuestionOption> options,
+            List<SurveyAnswer> answers
+    ) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        counts.put("18 alti", 0L);
+        counts.put("18-24", 0L);
+        counts.put("25-34", 0L);
+        counts.put("35-44", 0L);
+        counts.put("45-54", 0L);
+        counts.put("55+", 0L);
+
+        Map<String, Long> fallbackLabels = new LinkedHashMap<>();
+
+        for (SurveyAnswer answer : answers) {
+            Integer age = resolveAgeValue(answer, options);
+            if (age != null) {
+                counts.merge(resolveAgeBucket(age), 1L, Long::sum);
+                continue;
+            }
+
+            String fallback = resolveAudienceValue(question, answer, options, "age");
+            if (fallback != null) {
+                fallbackLabels.merge(fallback, 1L, Long::sum);
+            }
+        }
+
+        long numericTotal = counts.values().stream().mapToLong(Long::longValue).sum();
+        if (numericTotal > 0) {
+            return toBreakdown(counts, numericTotal);
+        }
+
+        return toBreakdown(fallbackLabels, fallbackLabels.values().stream().mapToLong(Long::longValue).sum());
+    }
+
+    private Integer resolveAgeValue(SurveyAnswer answer, List<SurveyQuestionOption> options) {
+        BigDecimal numericValue = resolveRatingValue(answer);
+        if (numericValue != null) {
+            int age = numericValue.intValue();
+            if (age >= 0 && age <= 120) {
+                return age;
+            }
+        }
+
+        List<String> labels = resolveChoiceLabels(answer, options);
+        for (String label : labels) {
+            Integer parsed = extractAgeNumber(label);
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+
+        return extractAgeNumber(resolveOpenEndedText(answer));
+    }
+
+    private Integer extractAgeNumber(String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return null;
+        }
+
+        String digits = rawValue.replaceAll("[^0-9]", " ").trim();
+        if (digits.isBlank()) {
+            return null;
+        }
+
+        String firstNumber = digits.split("\\s+")[0];
+        try {
+            int value = Integer.parseInt(firstNumber);
+            return value >= 0 && value <= 120 ? value : null;
+        } catch (NumberFormatException error) {
+            return null;
+        }
+    }
+
+    private String resolveAgeBucket(int age) {
+        if (age < 18) {
+            return "18 alti";
+        }
+        if (age <= 24) {
+            return "18-24";
+        }
+        if (age <= 34) {
+            return "25-34";
+        }
+        if (age <= 44) {
+            return "35-44";
+        }
+        if (age <= 54) {
+            return "45-54";
+        }
+        return "55+";
+    }
+
+    private String resolveAudienceValue(
+            SurveyQuestion question,
+            SurveyAnswer answer,
+            List<SurveyQuestionOption> options,
+            String dimension
+    ) {
+        if (question.getQuestionType() == QuestionType.SINGLE_CHOICE || question.getQuestionType() == QuestionType.MULTI_CHOICE) {
+            List<String> labels = resolveChoiceLabels(answer, options);
+            if (!labels.isEmpty()) {
+                return normalizeAudienceLabel(labels.get(0), dimension);
+            }
+        }
+
+        if (question.getQuestionType() == QuestionType.RATING && "age".equals(dimension)) {
+            Integer age = resolveAgeValue(answer, options);
+            return age == null ? null : resolveAgeBucket(age);
+        }
+
+        String text = resolveOpenEndedText(answer);
+        return normalizeAudienceLabel(text, dimension);
+    }
+
+    private String normalizeAudienceLabel(String rawValue, String dimension) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return null;
+        }
+
+        String trimmed = rawValue.trim();
+        String normalized = normalize(trimmed);
+
+        if ("gender".equals(dimension)) {
+            if (normalized.equals("erkek") || normalized.equals("male") || normalized.equals("man")) {
+                return "Erkek";
+            }
+            if (normalized.equals("kadin") || normalized.equals("kadın") || normalized.equals("female") || normalized.equals("woman")) {
+                return "Kadin";
+            }
+        }
+
+        if ("city".equals(dimension)) {
+            return toDisplayLabel(trimmed);
+        }
+
+        if ("age".equals(dimension)) {
+            Integer age = extractAgeNumber(trimmed);
+            return age == null ? toDisplayLabel(trimmed) : resolveAgeBucket(age);
+        }
+
+        return toDisplayLabel(trimmed);
+    }
+
+    private String toDisplayLabel(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.substring(0, 1).toUpperCase(Locale.forLanguageTag("tr"))
+                + (trimmed.length() > 1 ? trimmed.substring(1) : "");
     }
 
     private List<List<String>> resolveChoiceSelections(

@@ -16,6 +16,7 @@ public record OperationAnalyticsResponseDto(
         long failedCallJobs,
         long skippedCallJobs,
         long totalResponses,
+        long respondedContacts,
         long completedResponses,
         long partialResponses,
         long abandonedResponses,
@@ -29,6 +30,7 @@ public record OperationAnalyticsResponseDto(
         String insightSummary,
         List<OperationAnalyticsInsightItemDto> insightItems,
         List<OperationAnalyticsBreakdownItemDto> outcomeBreakdown,
+        List<OperationAnalyticsAudienceBreakdownDto> audienceBreakdowns,
         List<OperationAnalyticsQuestionSummaryDto> questionSummaries,
         List<OperationAnalyticsTrendPointDto> responseTrend
 ) {

@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 
 type PageHeaderOverride = {
   title?: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   action?: ReactNode;
 };
 

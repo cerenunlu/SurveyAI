@@ -42,6 +42,16 @@ type DashboardTask = {
   sparkline: number[];
 };
 
+type DashboardActivityRow = {
+  id: string;
+  time: string;
+  actor: string;
+  event: string;
+  area: string;
+  result: string;
+  href: string;
+};
+
 export default function DashboardPage() {
   const { currentUser } = useAuth();
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -143,7 +153,7 @@ export default function DashboardPage() {
   const responsePerformance = useMemo(() => buildResponsePerformance(analytics), [analytics]);
   const volumeSeries = useMemo(() => buildVolumeSeries(analytics, contacts), [analytics, contacts]);
   const tasks = useMemo(() => buildDashboardTasks(operations, surveys), [operations, surveys]);
-  const activities = useMemo(() => buildActivities(surveys, operations, contacts), [contacts, operations, surveys]);
+  const activityRows = useMemo(() => buildDashboardActivityRows(operations, contacts), [contacts, operations]);
   const systemHealth = useMemo(() => buildSystemHealth(unavailableSections, surveys, operations, contacts), [contacts, operations, surveys, unavailableSections]);
 
   const featuredQuickLinks: QuickLink[] = [
@@ -381,21 +391,34 @@ export default function DashboardPage() {
         </div>
 
         <div className="ops-dashboard-reference-side">
-          <SectionCard title="Son Aktiviteler" description="Ekipteki son hareketler." action={<button className="button-secondary compact-button">Detaylar</button>}>
-            {activities.length === 0 ? (
-              <EmptyState title="Aktivite yok" description="Yeni hareketler burada listelenecek." />
+          <SectionCard
+            title="Son Aktiviteler / Olay Akisi"
+            description="Son operasyon hareketleri ve ciktilar"
+            action={<Link href="/operations" className="button-secondary compact-button">Tumunu gor</Link>}
+          >
+            {activityRows.length === 0 ? (
+              <EmptyState title="Aktivite bulunmuyor" description="Operasyon guncellemeleri burada listelenecek." />
             ) : (
-              <div className="ops-dashboard-activity-list">
-                {activities.map((item) => (
-                  <div key={item.id} className="ops-dashboard-activity-row">
-                    <div className="ops-dashboard-activity-time">
-                      <strong>{extractTime(item.time)}</strong>
-                      <span>{extractDateLabel(item.time)}</span>
-                    </div>
-                    <div className="ops-dashboard-activity-copy">
-                      <strong>{welcomeName}</strong>
-                      <p>{item.detail}</p>
-                    </div>
+              <div className="ops-control-table">
+                <div className="ops-control-table-head ops-control-table-head-activity">
+                  <span>Saat</span>
+                  <span>Kullanici / Sistem</span>
+                  <span>Olay</span>
+                  <span>Ilgili Nesne</span>
+                  <span>Sonuc</span>
+                  <span>Aksiyon</span>
+                </div>
+                {activityRows.map((row) => (
+                  <div key={row.id} className="ops-control-table-row ops-control-table-head-activity">
+                    <span>{row.time}</span>
+                    <strong>{row.actor}</strong>
+                    <span>{row.event}</span>
+                    <span>{row.area}</span>
+                    <span>{row.result}</span>
+                    <Link href={row.href} className="ops-control-inline-action">
+                      Yonet
+                      <ArrowRightIcon className="nav-icon" />
+                    </Link>
                   </div>
                 ))}
               </div>
@@ -647,24 +670,28 @@ function buildDashboardTasks(operations: Operation[], surveys: Survey[]): Dashbo
     .slice(0, 3);
 }
 
-function buildActivities(surveys: Survey[], operations: Operation[], contacts: DashboardContact[]) {
-  return [
-    ...operations.slice(0, 2).map((operation) => ({
-      id: `operation-${operation.id}`,
-      detail: `${operation.name} operasyonu guncellendi.`,
-      time: operation.updatedAt,
-    })),
-    ...surveys.slice(0, 2).map((survey) => ({
-      id: `survey-${survey.id}`,
-      detail: `${survey.name} anketi yayin listesine alindi.`,
-      time: survey.updatedAt,
-    })),
-    ...contacts.slice(0, 2).map((contact) => ({
-      id: `contact-${contact.id}`,
-      detail: `${contact.name} kisisi aktif kuyruga eklendi.`,
-      time: contact.updatedAt,
-    })),
-  ].slice(0, 3);
+function buildDashboardActivityRows(operations: Operation[], contacts: DashboardContact[]): DashboardActivityRow[] {
+  const operationRows = operations.slice(0, 3).map((operation, index) => ({
+    id: operation.id,
+    time: extractTime(operation.updatedAt),
+    actor: index % 2 === 0 ? "Sistem" : "Operasyon Sahibi",
+    event: index === 0 ? "Kisi yukleme" : index === 1 ? "Rapor tazelendi" : "Durum degisti",
+    area: operation.name,
+    result: operation.readiness.blockingReasons[0] ?? `${operation.executionSummary.completedCallJobs} cagri tamamlandi`,
+    href: `/operations/${operation.id}`,
+  }));
+
+  const contactRows = contacts.slice(0, 2).map((contact) => ({
+    id: `contact-${contact.id}`,
+    time: extractTime(contact.updatedAt),
+    actor: "Sistem",
+    event: "Kisi kuyruga eklendi",
+    area: contact.operationName,
+    result: `${contact.name} / ${contact.status}`,
+    href: "/operations",
+  }));
+
+  return [...operationRows, ...contactRows].slice(0, 4);
 }
 
 function buildSystemHealth(
@@ -710,8 +737,4 @@ function buildSystemHealth(
 function extractTime(value: string) {
   const match = value.match(/(\d{2}:\d{2})/);
   return match?.[1] ?? value.slice(-5);
-}
-
-function extractDateLabel(value: string) {
-  return value.includes("Bugun") ? "Bugun" : value.split(",")[0];
 }
