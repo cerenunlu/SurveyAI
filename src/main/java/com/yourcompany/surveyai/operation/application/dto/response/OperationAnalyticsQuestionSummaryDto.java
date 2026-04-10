@@ -19,6 +19,7 @@ public record OperationAnalyticsQuestionSummaryDto(
         Double averageRating,
         String emptyStateMessage,
         List<OperationAnalyticsBreakdownItemDto> breakdown,
+        List<OperationAnalyticsBreakdownItemDto> specialAnswerBreakdown,
         List<String> sampleResponses
 ) {
 }

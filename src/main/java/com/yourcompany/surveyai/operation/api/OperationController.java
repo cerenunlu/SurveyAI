@@ -66,4 +66,20 @@ public class OperationController {
     ) {
         return ResponseEntity.ok(operationService.startOperation(companyId, operationId));
     }
+
+    @PostMapping("/{operationId}/pause")
+    public ResponseEntity<OperationResponseDto> pauseOperation(
+            @PathVariable UUID operationId,
+            @RequestParam UUID companyId
+    ) {
+        return ResponseEntity.ok(operationService.pauseOperation(companyId, operationId));
+    }
+
+    @PostMapping("/{operationId}/resume")
+    public ResponseEntity<OperationResponseDto> resumeOperation(
+            @PathVariable UUID operationId,
+            @RequestParam UUID companyId
+    ) {
+        return ResponseEntity.ok(operationService.resumeOperation(companyId, operationId));
+    }
 }

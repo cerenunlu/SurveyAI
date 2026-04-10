@@ -30,6 +30,7 @@ public record CallJobDetailResponseDto(
         boolean failed,
         String failureReason,
         boolean retryable,
+        boolean redialable,
         boolean partialResponseDataExists,
         String transcriptSummary,
         String transcriptText,

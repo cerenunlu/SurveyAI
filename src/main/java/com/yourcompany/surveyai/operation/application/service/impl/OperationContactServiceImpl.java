@@ -1,5 +1,9 @@
 package com.yourcompany.surveyai.operation.application.service.impl;
 
+import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
+import com.yourcompany.surveyai.call.domain.entity.CallJob;
+import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
+import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.common.exception.NotFoundException;
 import com.yourcompany.surveyai.common.exception.ValidationException;
 import com.yourcompany.surveyai.operation.application.dto.request.OperationContactInput;
@@ -13,10 +17,12 @@ import com.yourcompany.surveyai.operation.application.service.OperationContactSe
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
+import com.yourcompany.surveyai.operation.domain.enums.OperationStatus;
 import com.yourcompany.surveyai.operation.repository.OperationContactRepository;
 import com.yourcompany.surveyai.operation.repository.OperationRepository;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
+import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -38,15 +44,21 @@ public class OperationContactServiceImpl implements OperationContactService {
 
     private final OperationRepository operationRepository;
     private final OperationContactRepository operationContactRepository;
+    private final CallJobRepository callJobRepository;
+    private final CallJobDispatcher callJobDispatcher;
     private final Validator validator;
 
     public OperationContactServiceImpl(
             OperationRepository operationRepository,
             OperationContactRepository operationContactRepository,
+            CallJobRepository callJobRepository,
+            CallJobDispatcher callJobDispatcher,
             Validator validator
     ) {
         this.operationRepository = operationRepository;
         this.operationContactRepository = operationContactRepository;
+        this.callJobRepository = callJobRepository;
+        this.callJobDispatcher = callJobDispatcher;
         this.validator = validator;
     }
 
@@ -68,9 +80,9 @@ public class OperationContactServiceImpl implements OperationContactService {
                 .toList();
 
         try {
-            return operationContactRepository.saveAllAndFlush(contacts).stream()
-                    .map(this::toDto)
-                    .toList();
+            List<OperationContact> savedContacts = operationContactRepository.saveAllAndFlush(contacts);
+            appendStartedOperationJobs(operation, savedContacts);
+            return savedContacts.stream().map(this::toDto).toList();
         } catch (DataIntegrityViolationException ex) {
             throw new ValidationException("This operation already has a contact with the same normalized phone number.");
         }
@@ -246,6 +258,41 @@ public class OperationContactServiceImpl implements OperationContactService {
         contact.setStatus(OperationContactStatus.PENDING);
         contact.setRetryCount(0);
         return contact;
+    }
+
+    private void appendStartedOperationJobs(Operation operation, List<OperationContact> contacts) {
+        if (contacts.isEmpty()) {
+            return;
+        }
+
+        if (operation.getStatus() != OperationStatus.RUNNING && operation.getStatus() != OperationStatus.PAUSED) {
+            return;
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        List<CallJob> jobs = contacts.stream()
+                .map(contact -> buildPendingJob(operation, contact, now))
+                .toList();
+        callJobRepository.saveAll(jobs);
+
+        if (operation.getStatus() == OperationStatus.RUNNING) {
+            callJobDispatcher.dispatchNextPreparedJob(operation.getId());
+        }
+    }
+
+    private CallJob buildPendingJob(Operation operation, OperationContact contact, OffsetDateTime scheduledFor) {
+        CallJob job = new CallJob();
+        job.setCompany(operation.getCompany());
+        job.setOperation(operation);
+        job.setOperationContact(contact);
+        job.setStatus(CallJobStatus.PENDING);
+        job.setPriority((short) 5);
+        job.setScheduledFor(scheduledFor);
+        job.setAvailableAt(scheduledFor);
+        job.setAttemptCount(0);
+        job.setMaxAttempts(3);
+        job.setIdempotencyKey(operation.getId() + ":" + contact.getId());
+        return job;
     }
 
     private void validatePhoneNumber(String phoneNumber) {

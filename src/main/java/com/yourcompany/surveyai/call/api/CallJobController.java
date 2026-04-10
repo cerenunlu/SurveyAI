@@ -4,6 +4,7 @@ import com.yourcompany.surveyai.call.application.dto.response.CallJobListStatusD
 import com.yourcompany.surveyai.call.application.dto.response.CallJobDetailResponseDto;
 import com.yourcompany.surveyai.call.application.dto.response.CallJobPageResponseDto;
 import com.yourcompany.surveyai.call.application.service.CallJobService;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,7 +31,7 @@ public class CallJobController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size,
             @RequestParam(required = false) String query,
-            @RequestParam(required = false) CallJobListStatusDto status,
+            @RequestParam(required = false) List<CallJobListStatusDto> status,
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String direction
     ) {
@@ -62,5 +63,14 @@ public class CallJobController {
             @RequestParam UUID companyId
     ) {
         return ResponseEntity.ok(callJobService.retryOperationCallJob(companyId, operationId, callJobId));
+    }
+
+    @PostMapping("/{callJobId}/redial")
+    public ResponseEntity<CallJobDetailResponseDto> redialOperationCallJob(
+            @PathVariable UUID operationId,
+            @PathVariable UUID callJobId,
+            @RequestParam UUID companyId
+    ) {
+        return ResponseEntity.ok(callJobService.redialOperationCallJob(companyId, operationId, callJobId));
     }
 }

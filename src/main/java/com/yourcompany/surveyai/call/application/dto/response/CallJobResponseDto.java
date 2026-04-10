@@ -17,6 +17,7 @@ public record CallJobResponseDto(
         int maxAttempts,
         String lastErrorCode,
         String lastErrorMessage,
+        int answerCount,
         String lastResultSummary,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt

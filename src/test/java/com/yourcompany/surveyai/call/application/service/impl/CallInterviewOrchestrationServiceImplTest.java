@@ -51,6 +51,7 @@ class CallInterviewOrchestrationServiceImplTest {
     private Fixture fixture;
     private final Map<UUID, SurveyResponse> responsesByAttemptId = new LinkedHashMap<>();
     private final Map<UUID, List<SurveyAnswer>> answersByResponseId = new LinkedHashMap<>();
+    private final Map<UUID, List<SurveyQuestionOption>> questionOptionsByQuestionId = new LinkedHashMap<>();
 
     @BeforeEach
     void setUp() {
@@ -68,10 +69,18 @@ class CallInterviewOrchestrationServiceImplTest {
                 .thenReturn(Optional.of(fixture.callAttempt));
         when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
                 .thenReturn(List.of(fixture.yesNoQuestion, fixture.openQuestion));
-        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.yesNoQuestion.getId()))
-                .thenReturn(List.of(fixture.yesOption, fixture.noOption));
-        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.openQuestion.getId()))
-                .thenReturn(List.of());
+        questionOptionsByQuestionId.clear();
+        questionOptionsByQuestionId.put(fixture.yesNoQuestion.getId(), List.of(fixture.yesOption, fixture.noOption));
+        questionOptionsByQuestionId.put(fixture.openQuestion.getId(), List.of());
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(any()))
+                .thenAnswer(invocation -> {
+                    Iterable<UUID> questionIds = invocation.getArgument(0);
+                    List<SurveyQuestionOption> options = new ArrayList<>();
+                    for (UUID questionId : questionIds) {
+                        options.addAll(questionOptionsByQuestionId.getOrDefault(questionId, List.of()));
+                    }
+                    return options;
+                });
 
         when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(fixture.callAttempt.getId()))
                 .thenAnswer(invocation -> Optional.ofNullable(responsesByAttemptId.get(fixture.callAttempt.getId())));
@@ -110,8 +119,7 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(response.question()).isNotNull();
         assertThat(response.question().conversationQuestionType()).isEqualTo("YES_NO");
         assertThat(response.question().options()).extracting("label").containsExactly("Evet", "Hayır");
-        assertThat(response.prompt()).contains("SurveyAI");
-        assertThat(response.prompt()).contains(fixture.operation.getName());
+        assertThat(response.prompt()).contains("Memnun musunuz?");
     }
 
     @Test
@@ -138,14 +146,23 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(response.question().code()).isEqualTo("why");
         assertThat(response.answeredQuestionCount()).isEqualTo(1);
     }
+
+    @Test
+    void startInterview_doesNotReadChoiceOptionsInSpokenPrompt() {
+        InterviewOrchestrationResponse response = service.startInterview(
+                new InterviewSessionRequest(fixture.callAttempt.getId(), null, null)
+        );
+
+        assertThat(response.prompt()).contains("Memnun musunuz?");
+        assertThat(response.prompt()).doesNotContain("Evet").doesNotContain("Hay");
+    }
     
     @Test
     void invalidRatingAnswer_retriesBeforeMovingForward() {
         fixture.ratingQuestion.setSettingsJson("{\"min\":1,\"max\":5}");
         when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
                 .thenReturn(List.of(fixture.ratingQuestion, fixture.openQuestion));
-        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.ratingQuestion.getId()))
-                .thenReturn(List.of());
+        questionOptionsByQuestionId.put(fixture.ratingQuestion.getId(), List.of());
 
         service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
 
@@ -168,6 +185,1032 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(response.question()).isNotNull();
         assertThat(response.question().code()).isEqualTo(fixture.ratingQuestion.getCode());
         assertThat(response.prompt()).contains("Rating answer must be between 1 and 5");
+    }
+
+    @Test
+    void semanticRatingPhrase_mapsToHighestRatingWithoutClarification() {
+        fixture.ratingQuestion.setSettingsJson("{\"min\":1,\"max\":5}");
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(fixture.ratingQuestion, fixture.openQuestion));
+        questionOptionsByQuestionId.put(fixture.ratingQuestion.getId(), List.of());
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Oldukca onemli",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getAnswerNumber()).isEqualByComparingTo("5");
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void matrixRatingPrompt_readsSharedDescriptionOnlyOnFirstRow() {
+        String sharedDescription = "5 = Cok onemli, 1 = Hic onemli degil araliginda belirtiniz.";
+
+        SurveyQuestion firstMatrixRow = buildQuestion(
+                "priority_ekonomi",
+                1,
+                QuestionType.RATING,
+                "Ekonomi " + sharedDescription
+        );
+        firstMatrixRow.setSettingsJson("""
+                {
+                  "groupCode":"priority",
+                  "groupTitle":"Asagidaki konularin onem duzeyini degerlendirin.",
+                  "rowLabel":"Ekonomi 5 = Cok onemli, 1 = Hic onemli degil araliginda belirtiniz.",
+                  "matrixType":"GRID_RATING",
+                  "matrixDescription":"5 = Cok onemli, 1 = Hic onemli degil araliginda belirtiniz.",
+                  "min":1,
+                  "max":5
+                }
+                """);
+
+        SurveyQuestion secondMatrixRow = buildQuestion(
+                "priority_adalet",
+                2,
+                QuestionType.RATING,
+                "Adalet " + sharedDescription
+        );
+        secondMatrixRow.setSettingsJson("""
+                {
+                  "groupCode":"priority",
+                  "groupTitle":"Asagidaki konularin onem duzeyini degerlendirin.",
+                  "rowLabel":"Adalet 5 = Cok onemli, 1 = Hic onemli degil araliginda belirtiniz.",
+                  "matrixType":"GRID_RATING",
+                  "matrixDescription":"5 = Cok onemli, 1 = Hic onemli degil araliginda belirtiniz.",
+                  "min":1,
+                  "max":5
+                }
+                """);
+
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(firstMatrixRow, secondMatrixRow, fixture.openQuestion));
+        questionOptionsByQuestionId.put(firstMatrixRow.getId(), List.of());
+        questionOptionsByQuestionId.put(secondMatrixRow.getId(), List.of());
+
+        InterviewOrchestrationResponse startResponse = service.startInterview(
+                new InterviewSessionRequest(fixture.callAttempt.getId(), null, null)
+        );
+
+        assertThat(countOccurrences(startResponse.prompt(), sharedDescription)).isEqualTo(1);
+        assertThat(startResponse.prompt()).contains("Ekonomi");
+
+        InterviewOrchestrationResponse nextResponse = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "5",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(nextResponse.question()).isNotNull();
+        assertThat(nextResponse.question().code()).isEqualTo("priority_adalet");
+        assertThat(countOccurrences(nextResponse.prompt(), sharedDescription)).isZero();
+        assertThat(nextResponse.prompt()).contains("Adalet");
+    }
+
+    @Test
+    void submitAnswer_matchesChoiceAliasesFromQuestionSettings() {
+        fixture.yesNoQuestion.setTitle("Levent Uysal'i ne derece taniyorsunuz?");
+        fixture.yesNoQuestion.setSettingsJson("""
+                {
+                  "aliases": {
+                    "taniyorum": ["taniyorum", "biliyorum"],
+                    "hic_duymadim": ["hic duymadim", "tanimiyorum"]
+                  }
+                }
+                """);
+        fixture.yesOption.setOptionCode("taniyorum");
+        fixture.yesOption.setLabel("Taniyorum");
+        fixture.yesOption.setValue("taniyorum");
+        fixture.noOption.setOptionCode("hic_duymadim");
+        fixture.noOption.setLabel("Hic duymadim");
+        fixture.noOption.setValue("hic_duymadim");
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "biliyorum",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isEqualTo(fixture.yesOption);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_matchesSingleChoiceFromNaturalSentence() {
+        fixture.yesNoQuestion.setTitle("Levent Uysal'i ne derece taniyorsunuz?");
+        fixture.yesOption.setOptionCode("taniyorum");
+        fixture.yesOption.setLabel("Taniyorum");
+        fixture.yesOption.setValue("taniyorum");
+        fixture.noOption.setOptionCode("tanimiyorum");
+        fixture.noOption.setLabel("Tanimiyorum");
+        fixture.noOption.setValue("tanimiyorum");
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Evet, onu taniyorum",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isEqualTo(fixture.yesOption);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_mapsBareNegativeReplyToKnowledgeScaleOption() {
+        fixture.yesNoQuestion.setTitle("Levent Uysal'i ne derece taniyorsunuz?");
+        fixture.yesOption.setOptionCode("taniyorum");
+        fixture.yesOption.setLabel("Taniyorum");
+        fixture.yesOption.setValue("taniyorum");
+        fixture.noOption.setOptionCode("duydum_ama_tanimiyorum");
+        fixture.noOption.setLabel("Duydum ama tanimiyorum");
+        fixture.noOption.setValue("duydum_ama_tanimiyorum");
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Hayir",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isEqualTo(fixture.noOption);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_matchesTurkishCharactersInKnowledgeAnswer() {
+        fixture.yesNoQuestion.setTitle("Ali Mahir Basarir'i ne derece taniyorsunuz?");
+        fixture.yesOption.setOptionCode("taniyorum");
+        fixture.yesOption.setLabel("Taniyorum");
+        fixture.yesOption.setValue("taniyorum");
+        fixture.noOption.setOptionCode("duydum_ama_tanimiyorum");
+        fixture.noOption.setLabel("Duydum ama tanimiyorum");
+        fixture.noOption.setValue("duydum_ama_tanimiyorum");
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Tan\u0131m\u0131yorum",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isEqualTo(fixture.noOption);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_matchesConfiguredSpecialAnswerAndAdvances() {
+        fixture.yesNoQuestion.setSettingsJson("""
+                {
+                  "specialAnswers": {
+                    "bilmiyorum": ["bilmiyorum", "fikrim yok"]
+                  }
+                }
+                """);
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "fikrim yok",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isNull();
+        assertThat(answers.getFirst().getAnswerText()).isEqualTo("Bilmiyorum");
+        assertThat(answers.getFirst().getAnswerJson()).contains("\"specialAnswerCode\":\"bilmiyorum\"");
+        assertThat(answers.getFirst().getAnswerJson()).contains("\"normalizedValues\":[\"bilmiyorum\"]");
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_matchesElectionPreferenceFromNaturalSentence() {
+        fixture.yesNoQuestion.setCode("question_3");
+        fixture.yesNoQuestion.setTitle("Partiye gore mi yoksa adaylara gore mi oy kullaniyorsunuz?");
+        fixture.yesOption.setOptionCode("option_1");
+        fixture.yesOption.setLabel("Partiye Gore");
+        fixture.yesOption.setValue("option_1");
+        fixture.noOption.setOptionCode("option_3");
+        fixture.noOption.setLabel("Her ikisi de");
+        fixture.noOption.setValue("option_3");
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Ya, her ikisine gore de oy kullaniyorum.",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isEqualTo(fixture.noOption);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_mapsNumericAgeIntoConfiguredBucket() {
+        fixture.yesNoQuestion.setCode("demografi_yas");
+        fixture.yesNoQuestion.setTitle("Gorusulen kisinin yasi");
+        fixture.yesOption.setOptionCode("35_49");
+        fixture.yesOption.setLabel("35-49");
+        fixture.yesOption.setValue("35_49");
+        fixture.noOption.setOptionCode("50_64");
+        fixture.noOption.setLabel("50-64");
+        fixture.noOption.setValue("50_64");
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "kirk sekiz",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isEqualTo(fixture.yesOption);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_matchesDefaultSpecialAnswerWithoutQuestionConfiguration() {
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "cevap vermek istemiyorum",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isNull();
+        assertThat(answers.getFirst().getAnswerJson()).contains("\"specialAnswerCode\":\"reddetti\"");
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_ignoresAsrArtifactsAndRepeatsCurrentQuestion() {
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(fixture.openQuestion));
+        fixture.openQuestion.setRequired(true);
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Egitim.<ltr>",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isFalse();
+        assertThat(answers.getFirst().getRetryCount()).isEqualTo(1);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+        assertThat(response.prompt()).contains("No clear answer captured from the caller");
+    }
+
+    @Test
+    void submitAnswer_addsConfiguredOpenEndedCodingThemesToAnswerJson() {
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(fixture.openQuestion));
+        fixture.openQuestion.setRequired(true);
+        fixture.openQuestion.setSettingsJson("""
+                {
+                  "coding": {
+                    "categories": {
+                      "ulasim": ["ulasim", "trafik", "yol"],
+                      "ekonomi": ["ekonomi", "issizlik"]
+                    }
+                  }
+                }
+                """);
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Ulasim ve trafik en buyuk sorun",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().getAnswerJson()).contains("\"codedThemes\":[\"ulasim\"]");
+    }
+
+    @Test
+    void startInterview_withPermissionStyleIntroWaitsForConsentBeforeFirstQuestion() {
+        fixture.survey.setIntroPrompt("Merhaba, Ayna Arastirma adina ariyorum. Size birkac soru sorabilir miyim?");
+
+        InterviewOrchestrationResponse response = service.startInterview(
+                new InterviewSessionRequest(fixture.callAttempt.getId(), null, null)
+        );
+
+        assertThat(response.prompt()).isNull();
+        assertThat(response.question()).isNull();
+        assertThat(response.endCall()).isFalse();
+    }
+
+    @Test
+    void submitAnswer_positiveConsentAdvancesToFirstQuestionWithoutSavingSurveyAnswer() {
+        fixture.survey.setIntroPrompt("Merhaba, Ayna Arastirma adina ariyorum. Size birkac soru sorabilir miyim?");
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse pickupResponse = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Alo",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Evet, sorabilirsiniz",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(pickupResponse.question()).isNull();
+        assertThat(pickupResponse.prompt()).contains("Size birkac soru sorabilir miyim?");
+        assertThat(answers).isEmpty();
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("satisfied");
+        assertThat(response.prompt()).contains("Memnun musunuz?");
+    }
+
+    @Test
+    void submitAnswer_unclearConsentRepeatsOpeningPromptInsteadOfAdvancing() {
+        fixture.survey.setIntroPrompt("Merhaba, Ayna Arastirma adina ariyorum. Size birkac soru sorabilir miyim?");
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Alo",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(response.question()).isNull();
+        assertThat(response.prompt()).contains("Size birkac soru sorabilir miyim?");
+    }
+
+    @Test
+    void submitAnswer_initializesConsentFlowEvenIfStartInterviewWasNotCalled() {
+        fixture.survey.setIntroPrompt("Merhaba, Ayna Arastirma adina ariyorum. Size birkac soru sorabilir miyim?");
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Evet",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).isEmpty();
+        assertThat(response.question()).isNull();
+        assertThat(response.prompt()).contains("Size birkac soru sorabilir miyim?");
+    }
+
+    @Test
+    void finishInterview_stripsVoiceDirectionTagsFromClosingPrompt() {
+        fixture.survey.setClosingPrompt("[sad] Peki, [slow] tesekkur ederim. [happy] Iyi gunler dilerim.");
+
+        InterviewOrchestrationResponse response = service.finishInterview(
+                new com.yourcompany.surveyai.call.application.dto.request.InterviewFinishRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        null
+                )
+        );
+
+        assertThat(response.prompt()).isEqualTo("Peki, tesekkur ederim. Iyi gunler dilerim.");
+        assertThat(response.closingMessage()).isEqualTo("Peki, tesekkur ederim. Iyi gunler dilerim.");
+    }
+
+    @Test
+    void submitAnswer_skipsMatrixFollowUpRowWhenBranchSkipRuleMatchesSameRow() {
+        SurveyQuestion familiarityQuestion = buildQuestion("b2_levent", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece taniyorsunuz?");
+        familiarityQuestion.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"levent_uysal"}
+                """);
+
+        SurveyQuestion favorabilityQuestion = buildQuestion("b3_levent", 2, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece begeniyorsunuz?");
+        favorabilityQuestion.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"levent_uysal"}
+                """);
+        favorabilityQuestion.setBranchConditionJson("""
+                {
+                  "skipIf": {
+                    "groupCode": "B2",
+                    "sameRowCode": true,
+                    "selectedOptionCodes": ["duydum_ama_tanimiyorum", "hic_duymadim"]
+                  }
+                }
+                """);
+
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(familiarityQuestion, favorabilityQuestion, fixture.openQuestion));
+
+        SurveyQuestionOption taniyorumOption = buildOption(familiarityQuestion, 1, "taniyorum", "Taniyorum");
+        SurveyQuestionOption hicDuymadimOption = buildOption(familiarityQuestion, 2, "hic_duymadim", "Hic duymadim");
+        SurveyQuestionOption begeniyorumOption = buildOption(favorabilityQuestion, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption begenmiyorumOption = buildOption(favorabilityQuestion, 2, "begenmiyorum", "Begenmiyorum");
+
+        questionOptionsByQuestionId.put(familiarityQuestion.getId(), List.of(taniyorumOption, hicDuymadimOption));
+        questionOptionsByQuestionId.put(favorabilityQuestion.getId(), List.of(begeniyorumOption, begenmiyorumOption));
+        questionOptionsByQuestionId.put(fixture.openQuestion.getId(), List.of());
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Hic duymadim",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+        assertThat(response.totalQuestionCount()).isEqualTo(2);
+    }
+
+    @Test
+    void submitAnswer_keepsMatrixFollowUpRowWhenBranchSkipRuleDoesNotMatch() {
+        SurveyQuestion familiarityQuestion = buildQuestion("b2_levent", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece taniyorsunuz?");
+        familiarityQuestion.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"levent_uysal"}
+                """);
+
+        SurveyQuestion favorabilityQuestion = buildQuestion("b3_levent", 2, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece begeniyorsunuz?");
+        favorabilityQuestion.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"levent_uysal"}
+                """);
+        favorabilityQuestion.setBranchConditionJson("""
+                {
+                  "skipIf": {
+                    "groupCode": "B2",
+                    "sameRowCode": true,
+                    "selectedOptionCodes": ["duydum_ama_tanimiyorum", "hic_duymadim"]
+                  }
+                }
+                """);
+
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(familiarityQuestion, favorabilityQuestion, fixture.openQuestion));
+
+        SurveyQuestionOption taniyorumOption = buildOption(familiarityQuestion, 1, "taniyorum", "Taniyorum");
+        SurveyQuestionOption hicDuymadimOption = buildOption(familiarityQuestion, 2, "hic_duymadim", "Hic duymadim");
+        SurveyQuestionOption begeniyorumOption = buildOption(favorabilityQuestion, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption begenmiyorumOption = buildOption(favorabilityQuestion, 2, "begenmiyorum", "Begenmiyorum");
+
+        questionOptionsByQuestionId.put(familiarityQuestion.getId(), List.of(taniyorumOption, hicDuymadimOption));
+        questionOptionsByQuestionId.put(favorabilityQuestion.getId(), List.of(begeniyorumOption, begenmiyorumOption));
+        questionOptionsByQuestionId.put(fixture.openQuestion.getId(), List.of());
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Taniyorum",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("b3_levent");
+        assertThat(response.totalQuestionCount()).isEqualTo(3);
+    }
+
+    @Test
+    void submitAnswer_skipsMatrixFollowUpRowWhenLegacyBranchStoresMatrixReferenceInQuestionCode() {
+        SurveyQuestion familiarityQuestion = buildQuestion("b2_levent", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece taniyorsunuz?");
+        familiarityQuestion.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"levent_uysal"}
+                """);
+
+        SurveyQuestion favorabilityQuestion = buildQuestion("b3_levent", 2, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece begeniyorsunuz?");
+        favorabilityQuestion.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"levent_uysal"}
+                """);
+        favorabilityQuestion.setBranchConditionJson("""
+                {
+                  "skipIf": {
+                    "questionCode": "B2",
+                    "sameRowCode": true,
+                    "selectedOptionCodes": ["duydum_ama_tanimiyorum", "hic_duymadim"]
+                  }
+                }
+                """);
+
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(familiarityQuestion, favorabilityQuestion, fixture.openQuestion));
+
+        SurveyQuestionOption taniyorumOption = buildOption(familiarityQuestion, 1, "taniyorum", "Taniyorum");
+        SurveyQuestionOption hicDuymadimOption = buildOption(familiarityQuestion, 2, "hic_duymadim", "Hic duymadim");
+        SurveyQuestionOption begeniyorumOption = buildOption(favorabilityQuestion, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption begenmiyorumOption = buildOption(favorabilityQuestion, 2, "begenmiyorum", "Begenmiyorum");
+
+        questionOptionsByQuestionId.put(familiarityQuestion.getId(), List.of(taniyorumOption, hicDuymadimOption));
+        questionOptionsByQuestionId.put(favorabilityQuestion.getId(), List.of(begeniyorumOption, begenmiyorumOption));
+        questionOptionsByQuestionId.put(fixture.openQuestion.getId(), List.of());
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Hic duymadim",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+        assertThat(response.totalQuestionCount()).isEqualTo(2);
+    }
+
+    @Test
+    void submitAnswer_asksMatrixFollowUpRowWhenAskIfUsesKnowledgePositiveTag() {
+        SurveyQuestion familiarityQuestion = buildQuestion("b2_levent", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece taniyorsunuz?");
+        familiarityQuestion.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"levent_uysal"}
+                """);
+
+        SurveyQuestion favorabilityQuestion = buildQuestion("b3_levent", 2, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece begeniyorsunuz?");
+        favorabilityQuestion.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"levent_uysal"}
+                """);
+        favorabilityQuestion.setBranchConditionJson("""
+                {
+                  "askIf": {
+                    "groupCode": "B2",
+                    "sameRowCode": true,
+                    "answerTagsAnyOf": ["knowledge_positive"]
+                  }
+                }
+                """);
+
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(familiarityQuestion, favorabilityQuestion, fixture.openQuestion));
+
+        SurveyQuestionOption birazTaniyorumOption = buildOption(familiarityQuestion, 1, "biraz_taniyorum", "Biraz taniyorum");
+        SurveyQuestionOption tanimiyorumOption = buildOption(familiarityQuestion, 2, "tanimiyorum", "Tanimiyorum");
+        SurveyQuestionOption begeniyorumOption = buildOption(favorabilityQuestion, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption begenmiyorumOption = buildOption(favorabilityQuestion, 2, "begenmiyorum", "Begenmiyorum");
+
+        questionOptionsByQuestionId.put(familiarityQuestion.getId(), List.of(birazTaniyorumOption, tanimiyorumOption));
+        questionOptionsByQuestionId.put(favorabilityQuestion.getId(), List.of(begeniyorumOption, begenmiyorumOption));
+        questionOptionsByQuestionId.put(fixture.openQuestion.getId(), List.of());
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Biraz taniyorum",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("b3_levent");
+        assertThat(response.totalQuestionCount()).isEqualTo(3);
+    }
+
+    @Test
+    void submitAnswer_skipsMatrixFollowUpRowWhenLegacyNegativeOptionsOnlyMatchBySemanticTag() {
+        SurveyQuestion familiarityQuestion = buildQuestion("b2_levent", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece taniyorsunuz?");
+        familiarityQuestion.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"levent_uysal"}
+                """);
+
+        SurveyQuestion favorabilityQuestion = buildQuestion("b3_levent", 2, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece begeniyorsunuz?");
+        favorabilityQuestion.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"levent_uysal"}
+                """);
+        favorabilityQuestion.setBranchConditionJson("""
+                {
+                  "skipIf": {
+                    "groupCode": "B2",
+                    "sameRowCode": true,
+                    "selectedOptionCodes": ["duydum_ama_tanimiyorum", "hic_duymadim"]
+                  }
+                }
+                """);
+
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(familiarityQuestion, favorabilityQuestion, fixture.openQuestion));
+
+        SurveyQuestionOption tanimiyorumOption = buildOption(familiarityQuestion, 1, "tanimiyorum", "Tanimiyorum");
+        SurveyQuestionOption taniyorumOption = buildOption(familiarityQuestion, 2, "taniyorum", "Taniyorum");
+        SurveyQuestionOption begeniyorumOption = buildOption(favorabilityQuestion, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption begenmiyorumOption = buildOption(favorabilityQuestion, 2, "begenmiyorum", "Begenmiyorum");
+
+        questionOptionsByQuestionId.put(familiarityQuestion.getId(), List.of(tanimiyorumOption, taniyorumOption));
+        questionOptionsByQuestionId.put(favorabilityQuestion.getId(), List.of(begeniyorumOption, begenmiyorumOption));
+        questionOptionsByQuestionId.put(fixture.openQuestion.getId(), List.of());
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Tanimiyorum",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+        assertThat(response.totalQuestionCount()).isEqualTo(2);
+    }
+
+    @Test
+    void submitAnswer_onlyAsksLeventFavorabilityWhenLeventKnownAndAliUnknown() {
+        SurveyQuestion familiarityLevent = buildQuestion("b2_levent", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece taniyorsunuz?");
+        familiarityLevent.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"levent_uysal"}
+                """);
+        SurveyQuestion familiarityAli = buildQuestion("b2_ali", 2, QuestionType.SINGLE_CHOICE, "Ali Mahir Basarir'i ne derece taniyorsunuz?");
+        familiarityAli.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"ali_mahir_basarir"}
+                """);
+
+        SurveyQuestion favorabilityLevent = buildQuestion("b3_levent", 3, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece begeniyorsunuz?");
+        favorabilityLevent.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"levent_uysal"}
+                """);
+        favorabilityLevent.setBranchConditionJson("""
+                {
+                  "askIf": {
+                    "groupCode": "B2",
+                    "sameRowCode": true,
+                    "answerTagsAnyOf": ["knowledge_positive"]
+                  }
+                }
+                """);
+        SurveyQuestion favorabilityAli = buildQuestion("b3_ali", 4, QuestionType.SINGLE_CHOICE, "Ali Mahir Basarir'i ne derece begeniyorsunuz?");
+        favorabilityAli.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"ali_mahir_basarir"}
+                """);
+        favorabilityAli.setBranchConditionJson(favorabilityLevent.getBranchConditionJson());
+
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(familiarityLevent, familiarityAli, favorabilityLevent, favorabilityAli, fixture.openQuestion));
+
+        SurveyQuestionOption leventTaniyorumOption = buildOption(familiarityLevent, 1, "taniyorum", "Taniyorum");
+        SurveyQuestionOption leventTanimiyorumOption = buildOption(familiarityLevent, 2, "tanimiyorum", "Tanimiyorum");
+        SurveyQuestionOption leventHicDuymadimOption = buildOption(familiarityLevent, 3, "hic_duymadim", "Hic duymadim");
+        SurveyQuestionOption aliTaniyorumOption = buildOption(familiarityAli, 1, "taniyorum", "Taniyorum");
+        SurveyQuestionOption aliTanimiyorumOption = buildOption(familiarityAli, 2, "tanimiyorum", "Tanimiyorum");
+        SurveyQuestionOption aliHicDuymadimOption = buildOption(familiarityAli, 3, "hic_duymadim", "Hic duymadim");
+        SurveyQuestionOption leventBegeniyorumOption = buildOption(favorabilityLevent, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption leventBegenmiyorumOption = buildOption(favorabilityLevent, 2, "begenmiyorum", "Begenmiyorum");
+        SurveyQuestionOption aliBegeniyorumOption = buildOption(favorabilityAli, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption aliBegenmiyorumOption = buildOption(favorabilityAli, 2, "begenmiyorum", "Begenmiyorum");
+
+        questionOptionsByQuestionId.put(familiarityLevent.getId(), List.of(leventTaniyorumOption, leventTanimiyorumOption, leventHicDuymadimOption));
+        questionOptionsByQuestionId.put(familiarityAli.getId(), List.of(aliTaniyorumOption, aliTanimiyorumOption, aliHicDuymadimOption));
+        questionOptionsByQuestionId.put(favorabilityLevent.getId(), List.of(leventBegeniyorumOption, leventBegenmiyorumOption));
+        questionOptionsByQuestionId.put(favorabilityAli.getId(), List.of(aliBegeniyorumOption, aliBegenmiyorumOption));
+        questionOptionsByQuestionId.put(fixture.openQuestion.getId(), List.of());
+
+        InterviewOrchestrationResponse startResponse = service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+        assertThat(startResponse.question()).isNotNull();
+        assertThat(startResponse.question().code()).isEqualTo("b2_levent");
+
+        InterviewOrchestrationResponse afterLevent = service.submitAnswer(
+                new InterviewAnswerRequest(fixture.callAttempt.getId(), null, null, "Taniyorum", InterviewConversationSignal.ANSWER)
+        );
+        assertThat(afterLevent.question()).isNotNull();
+        assertThat(afterLevent.question().code()).isEqualTo("b2_ali");
+
+        InterviewOrchestrationResponse afterAli = service.submitAnswer(
+                new InterviewAnswerRequest(fixture.callAttempt.getId(), null, null, "Hic duymadim", InterviewConversationSignal.ANSWER)
+        );
+        assertThat(afterAli.question()).isNotNull();
+        assertThat(afterAli.question().code()).isEqualTo("b3_levent");
+        assertThat(afterAli.totalQuestionCount()).isEqualTo(4);
+
+        InterviewOrchestrationResponse afterLeventFavorability = service.submitAnswer(
+                new InterviewAnswerRequest(fixture.callAttempt.getId(), null, null, "Begeniyorum", InterviewConversationSignal.ANSWER)
+        );
+        assertThat(afterLeventFavorability.question()).isNotNull();
+        assertThat(afterLeventFavorability.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_onlyAsksAliFavorabilityWhenAliKnownAndLeventUnknown() {
+        SurveyQuestion familiarityLevent = buildQuestion("b2_levent", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece taniyorsunuz?");
+        familiarityLevent.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"levent_uysal"}
+                """);
+        SurveyQuestion familiarityAli = buildQuestion("b2_ali", 2, QuestionType.SINGLE_CHOICE, "Ali Mahir Basarir'i ne derece taniyorsunuz?");
+        familiarityAli.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"ali_mahir_basarir"}
+                """);
+
+        SurveyQuestion favorabilityLevent = buildQuestion("b3_levent", 3, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece begeniyorsunuz?");
+        favorabilityLevent.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"levent_uysal"}
+                """);
+        favorabilityLevent.setBranchConditionJson("""
+                {
+                  "askIf": {
+                    "groupCode": "B2",
+                    "sameRowCode": true,
+                    "answerTagsAnyOf": ["knowledge_positive"]
+                  }
+                }
+                """);
+        SurveyQuestion favorabilityAli = buildQuestion("b3_ali", 4, QuestionType.SINGLE_CHOICE, "Ali Mahir Basarir'i ne derece begeniyorsunuz?");
+        favorabilityAli.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"ali_mahir_basarir"}
+                """);
+        favorabilityAli.setBranchConditionJson(favorabilityLevent.getBranchConditionJson());
+
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(familiarityLevent, familiarityAli, favorabilityLevent, favorabilityAli, fixture.openQuestion));
+
+        SurveyQuestionOption leventTaniyorumOption = buildOption(familiarityLevent, 1, "taniyorum", "Taniyorum");
+        SurveyQuestionOption leventTanimiyorumOption = buildOption(familiarityLevent, 2, "tanimiyorum", "Tanimiyorum");
+        SurveyQuestionOption leventHicDuymadimOption = buildOption(familiarityLevent, 3, "hic_duymadim", "Hic duymadim");
+        SurveyQuestionOption aliTaniyorumOption = buildOption(familiarityAli, 1, "taniyorum", "Taniyorum");
+        SurveyQuestionOption aliTanimiyorumOption = buildOption(familiarityAli, 2, "tanimiyorum", "Tanimiyorum");
+        SurveyQuestionOption aliHicDuymadimOption = buildOption(familiarityAli, 3, "hic_duymadim", "Hic duymadim");
+        SurveyQuestionOption leventBegeniyorumOption = buildOption(favorabilityLevent, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption leventBegenmiyorumOption = buildOption(favorabilityLevent, 2, "begenmiyorum", "Begenmiyorum");
+        SurveyQuestionOption aliBegeniyorumOption = buildOption(favorabilityAli, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption aliBegenmiyorumOption = buildOption(favorabilityAli, 2, "begenmiyorum", "Begenmiyorum");
+
+        questionOptionsByQuestionId.put(familiarityLevent.getId(), List.of(leventTaniyorumOption, leventTanimiyorumOption, leventHicDuymadimOption));
+        questionOptionsByQuestionId.put(familiarityAli.getId(), List.of(aliTaniyorumOption, aliTanimiyorumOption, aliHicDuymadimOption));
+        questionOptionsByQuestionId.put(favorabilityLevent.getId(), List.of(leventBegeniyorumOption, leventBegenmiyorumOption));
+        questionOptionsByQuestionId.put(favorabilityAli.getId(), List.of(aliBegeniyorumOption, aliBegenmiyorumOption));
+        questionOptionsByQuestionId.put(fixture.openQuestion.getId(), List.of());
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse afterLevent = service.submitAnswer(
+                new InterviewAnswerRequest(fixture.callAttempt.getId(), null, null, "Hic duymadim", InterviewConversationSignal.ANSWER)
+        );
+        assertThat(afterLevent.question()).isNotNull();
+        assertThat(afterLevent.question().code()).isEqualTo("b2_ali");
+
+        InterviewOrchestrationResponse afterAli = service.submitAnswer(
+                new InterviewAnswerRequest(fixture.callAttempt.getId(), null, null, "Taniyorum", InterviewConversationSignal.ANSWER)
+        );
+        assertThat(afterAli.question()).isNotNull();
+        assertThat(afterAli.question().code()).isEqualTo("b3_ali");
+        assertThat(afterAli.totalQuestionCount()).isEqualTo(4);
+    }
+
+    @Test
+    void submitAnswer_skipsWholeFavorabilityGroupWhenNobodyIsKnown() {
+        SurveyQuestion familiarityLevent = buildQuestion("b2_levent", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece taniyorsunuz?");
+        familiarityLevent.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"levent_uysal"}
+                """);
+        SurveyQuestion familiarityAli = buildQuestion("b2_ali", 2, QuestionType.SINGLE_CHOICE, "Ali Mahir Basarir'i ne derece taniyorsunuz?");
+        familiarityAli.setSettingsJson("""
+                {"groupCode":"B2","rowCode":"ali_mahir_basarir"}
+                """);
+
+        SurveyQuestion favorabilityLevent = buildQuestion("b3_levent", 3, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece begeniyorsunuz?");
+        favorabilityLevent.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"levent_uysal"}
+                """);
+        favorabilityLevent.setBranchConditionJson("""
+                {
+                  "askIf": {
+                    "groupCode": "B2",
+                    "sameRowCode": true,
+                    "answerTagsAnyOf": ["knowledge_positive"]
+                  }
+                }
+                """);
+        SurveyQuestion favorabilityAli = buildQuestion("b3_ali", 4, QuestionType.SINGLE_CHOICE, "Ali Mahir Basarir'i ne derece begeniyorsunuz?");
+        favorabilityAli.setSettingsJson("""
+                {"groupCode":"B3","rowCode":"ali_mahir_basarir"}
+                """);
+        favorabilityAli.setBranchConditionJson(favorabilityLevent.getBranchConditionJson());
+
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(familiarityLevent, familiarityAli, favorabilityLevent, favorabilityAli, fixture.openQuestion));
+
+        SurveyQuestionOption leventTaniyorumOption = buildOption(familiarityLevent, 1, "taniyorum", "Taniyorum");
+        SurveyQuestionOption leventTanimiyorumOption = buildOption(familiarityLevent, 2, "tanimiyorum", "Tanimiyorum");
+        SurveyQuestionOption leventHicDuymadimOption = buildOption(familiarityLevent, 3, "hic_duymadim", "Hic duymadim");
+        SurveyQuestionOption aliTaniyorumOption = buildOption(familiarityAli, 1, "taniyorum", "Taniyorum");
+        SurveyQuestionOption aliTanimiyorumOption = buildOption(familiarityAli, 2, "tanimiyorum", "Tanimiyorum");
+        SurveyQuestionOption aliHicDuymadimOption = buildOption(familiarityAli, 3, "hic_duymadim", "Hic duymadim");
+        SurveyQuestionOption leventBegeniyorumOption = buildOption(favorabilityLevent, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption leventBegenmiyorumOption = buildOption(favorabilityLevent, 2, "begenmiyorum", "Begenmiyorum");
+        SurveyQuestionOption aliBegeniyorumOption = buildOption(favorabilityAli, 1, "begeniyorum", "Begeniyorum");
+        SurveyQuestionOption aliBegenmiyorumOption = buildOption(favorabilityAli, 2, "begenmiyorum", "Begenmiyorum");
+
+        questionOptionsByQuestionId.put(familiarityLevent.getId(), List.of(leventTaniyorumOption, leventTanimiyorumOption, leventHicDuymadimOption));
+        questionOptionsByQuestionId.put(familiarityAli.getId(), List.of(aliTaniyorumOption, aliTanimiyorumOption, aliHicDuymadimOption));
+        questionOptionsByQuestionId.put(favorabilityLevent.getId(), List.of(leventBegeniyorumOption, leventBegenmiyorumOption));
+        questionOptionsByQuestionId.put(favorabilityAli.getId(), List.of(aliBegeniyorumOption, aliBegenmiyorumOption));
+        questionOptionsByQuestionId.put(fixture.openQuestion.getId(), List.of());
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        service.submitAnswer(
+                new InterviewAnswerRequest(fixture.callAttempt.getId(), null, null, "Hic duymadim", InterviewConversationSignal.ANSWER)
+        );
+        InterviewOrchestrationResponse afterAli = service.submitAnswer(
+                new InterviewAnswerRequest(fixture.callAttempt.getId(), null, null, "Tanimiyorum", InterviewConversationSignal.ANSWER)
+        );
+
+        assertThat(afterAli.question()).isNotNull();
+        assertThat(afterAli.question().code()).isEqualTo("why");
+        assertThat(afterAli.totalQuestionCount()).isEqualTo(3);
+    }
+
+    private SurveyQuestion buildQuestion(String code, int order, QuestionType type, String title) {
+        SurveyQuestion question = new SurveyQuestion();
+        question.setId(UUID.randomUUID());
+        question.setCompany(fixture.company);
+        question.setSurvey(fixture.survey);
+        question.setCode(code);
+        question.setQuestionOrder(order);
+        question.setQuestionType(type);
+        question.setTitle(title);
+        question.setRequired(true);
+        question.setSettingsJson("{}");
+        question.setBranchConditionJson("{}");
+        return question;
+    }
+
+    private int countOccurrences(String text, String needle) {
+        if (text == null || needle == null || needle.isEmpty()) {
+            return 0;
+        }
+
+        int count = 0;
+        int index = 0;
+        while ((index = text.indexOf(needle, index)) >= 0) {
+            count += 1;
+            index += needle.length();
+        }
+        return count;
+    }
+
+    private SurveyQuestionOption buildOption(SurveyQuestion question, int order, String optionCode, String label) {
+        SurveyQuestionOption option = new SurveyQuestionOption();
+        option.setId(UUID.randomUUID());
+        option.setCompany(fixture.company);
+        option.setSurveyQuestion(question);
+        option.setOptionOrder(order);
+        option.setOptionCode(optionCode);
+        option.setLabel(label);
+        option.setValue(optionCode);
+        option.setActive(true);
+        return option;
     }
 
     private static final class Fixture {

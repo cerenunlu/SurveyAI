@@ -8,6 +8,7 @@ public record SurveyImportPreviewQuestionDto(
         String title,
         String description,
         boolean required,
+        String branchConditionJson,
         String settingsJson,
         String sourceExternalId,
         String sourcePayloadJson,

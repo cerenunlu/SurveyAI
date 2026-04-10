@@ -16,5 +16,9 @@ public interface OperationService {
 
     OperationResponseDto startOperation(UUID companyId, UUID operationId);
 
+    OperationResponseDto pauseOperation(UUID companyId, UUID operationId);
+
+    OperationResponseDto resumeOperation(UUID companyId, UUID operationId);
+
     OperationAnalyticsResponseDto getOperationAnalytics(UUID companyId, UUID operationId);
 }

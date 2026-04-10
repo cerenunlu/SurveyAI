@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.call.application.provider.CallProviderRegistry;
+import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.configuration.VoiceExecutionProperties;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderMode;
@@ -46,6 +47,7 @@ class ProviderWebhookIngestionServiceImplTest {
     private final OperationContactRepository operationContactRepository = mock(OperationContactRepository.class);
     private final SurveyResponseIngestionService surveyResponseIngestionService = mock(SurveyResponseIngestionService.class);
     private final ProviderExecutionObservationService providerExecutionObservationService = mock(ProviderExecutionObservationService.class);
+    private final CallJobDispatcher callJobDispatcher = mock(CallJobDispatcher.class);
     private ProviderWebhookIngestionServiceImpl ingestionService;
 
     @BeforeEach
@@ -67,7 +69,8 @@ class ProviderWebhookIngestionServiceImplTest {
                 callJobRepository,
                 operationContactRepository,
                 surveyResponseIngestionService,
-                providerExecutionObservationService
+                providerExecutionObservationService,
+                callJobDispatcher
         );
 
         when(callAttemptRepository.save(any(CallAttempt.class))).thenAnswer(invocation -> invocation.getArgument(0));

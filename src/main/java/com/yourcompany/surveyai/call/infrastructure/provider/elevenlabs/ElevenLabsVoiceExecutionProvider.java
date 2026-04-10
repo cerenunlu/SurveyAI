@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.Logger;
@@ -43,6 +44,7 @@ import org.springframework.web.client.RestClientResponseException;
 public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider {
 
     private static final Logger log = LoggerFactory.getLogger(ElevenLabsVoiceExecutionProvider.class);
+    private static final Pattern VOICE_DIRECTION_PATTERN = Pattern.compile("\\[(?:[a-zA-Z_\\-]{2,20})]|\\((?:[a-zA-Z_\\-]{2,20})\\)");
 
     private final ObjectMapper objectMapper;
     private final ElevenLabsApiClient apiClient;
@@ -80,8 +82,14 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         }
 
         String payload = buildOutboundCallPayload(request, configuration);
+        String builtFirstMessage = buildFirstMessage(request);
+        String builtAgentPrompt = buildAgentPrompt(request);
+        String effectiveLanguage = firstNonBlank(request.survey().getLanguageCode());
+        boolean promptOverrideEnabled = isOverrideEnabled(configuration, "agent-prompt-override-enabled");
+        boolean firstMessageOverrideEnabled = isOverrideEnabled(configuration, "agent-first-message-override-enabled");
+        boolean languageOverrideEnabled = isOverrideEnabled(configuration, "agent-language-override-enabled");
         log.info(
-                "Preparing ElevenLabs outbound dispatch. callJobId={} callAttemptId={} baseUrl={} authHeaderType={} apiKeyPresent={} agentIdPresent={} phoneNumberIdPresent={} webhookBaseUrlPresent={} promptOverrideEnabled={} firstMessageOverrideEnabled={} languageOverrideEnabled={}",
+                "Preparing ElevenLabs outbound dispatch. callJobId={} callAttemptId={} baseUrl={} authHeaderType={} apiKeyPresent={} agentIdPresent={} phoneNumberIdPresent={} webhookBaseUrlPresent={} promptOverrideEnabled={} firstMessageOverrideEnabled={} languageOverrideEnabled={} promptSource={} promptLength={} promptFingerprint={} firstMessageSource={} firstMessageLength={} firstMessageFingerprint={} languageSource={} languageValue={}",
                 request.callJob().getId(),
                 request.callAttempt().getId(),
                 configuration.baseUrl(),
@@ -90,9 +98,17 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 hasText(configuration.agentId()),
                 hasText(configuration.phoneNumberId()),
                 hasText(configuration.settings().get("public-webhook-base-url")),
-                isOverrideEnabled(configuration, "agent-prompt-override-enabled"),
-                isOverrideEnabled(configuration, "agent-first-message-override-enabled"),
-                isOverrideEnabled(configuration, "agent-language-override-enabled")
+                promptOverrideEnabled,
+                firstMessageOverrideEnabled,
+                languageOverrideEnabled,
+                promptOverrideEnabled ? "runtime_override" : "published_agent",
+                promptOverrideEnabled ? builtAgentPrompt.length() : 0,
+                promptOverrideEnabled ? fingerprint(builtAgentPrompt) : null,
+                firstMessageOverrideEnabled ? "runtime_override" : "published_agent",
+                firstMessageOverrideEnabled && builtFirstMessage != null ? builtFirstMessage.length() : 0,
+                firstMessageOverrideEnabled ? fingerprint(builtFirstMessage) : null,
+                languageOverrideEnabled && hasText(effectiveLanguage) ? "runtime_override" : "published_agent",
+                languageOverrideEnabled ? effectiveLanguage : null
         );
         try {
             String responseBody = apiClient.startOutboundCall(payload, configuration);
@@ -159,10 +175,11 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
 
         String responseBody = apiClient.fetchConversation(callAttempt.getProviderCallId(), configuration);
         JsonNode root = readJson(responseBody);
-        CallJobStatus jobStatus = mapJobStatus(text(root, "status"), "conversation_status");
+        String providerStatus = text(root, "status");
+        CallJobStatus jobStatus = mapJobStatus(providerStatus, "conversation_status");
         return new ProviderCallStatusResult(
                 jobStatus,
-                mapAttemptStatus(jobStatus),
+                mapAttemptStatus(providerStatus, jobStatus),
                 resolveOccurredAt(root, OffsetDateTime.now()),
                 responseBody
         );
@@ -289,7 +306,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 idempotencyKey,
                 eventType,
                 jobStatus,
-                mapAttemptStatus(jobStatus),
+                mapAttemptStatus(providerStatus, jobStatus),
                 resolveOccurredAt(root, resolveOccurredAt(data, OffsetDateTime.now())),
                 integerValue(firstNonBlank(
                         text(data, "duration_seconds"),
@@ -339,16 +356,14 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         dynamicVariables.put("contact_phone", normalizePhoneNumber(request.contact().getPhoneNumber()));
         dynamicVariables.put("operation_name", request.operation().getName());
         dynamicVariables.put("survey_name", request.survey().getName());
-        dynamicVariables.put("survey_intro", firstNonBlank(request.survey().getIntroPrompt(), ""));
-        dynamicVariables.put("survey_closing", firstNonBlank(request.survey().getClosingPrompt(), ""));
+        dynamicVariables.put("survey_intro", sanitizePromptForSpeech(firstNonBlank(request.survey().getIntroPrompt(), "")));
+        dynamicVariables.put("survey_closing", sanitizePromptForSpeech(firstNonBlank(request.survey().getClosingPrompt(), "")));
         conversationInitiationClientData.put("dynamic_variables", dynamicVariables);
 
         Map<String, Object> conversationConfigOverride = new LinkedHashMap<>();
         Map<String, Object> agentOverrides = new LinkedHashMap<>();
-        if (isOverrideEnabled(configuration, "agent-first-message-override-enabled")
-                && request.survey().getIntroPrompt() != null
-                && !request.survey().getIntroPrompt().isBlank()) {
-            agentOverrides.put("first_message", request.survey().getIntroPrompt().trim());
+        if (isOverrideEnabled(configuration, "agent-first-message-override-enabled")) {
+            agentOverrides.put("first_message", buildFirstMessage(request));
         }
         if (isOverrideEnabled(configuration, "agent-language-override-enabled")
                 && request.survey().getLanguageCode() != null
@@ -384,15 +399,34 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
     private String buildAgentPrompt(ProviderDispatchRequest request) {
         return """
                 You are conducting a live survey interview for SurveyAI.
-                The backend is the source of truth for survey flow. Never invent the question order, skip ahead, or decide completion on your own.
-                Start by calling the `survey_start_interview` tool when the call begins.
-                Ask only the question returned by the backend and wait for the caller's answer.
-                After each caller turn, call `survey_submit_answer` with the latest utterance unless the caller is asking you to repeat, asking who you are, or asking to stop.
-                If the caller asks who you are, call the backend flow with the identity-request signal and follow its returned prompt.
-                If the caller asks you to repeat, call the backend flow with the repeat-request signal and repeat only the current question.
-                If the caller wants to stop, call `survey_finish_interview`, deliver the closing message, and use the built-in end-call tool.
-                If the backend response says the survey is complete, read the closing message briefly and end the call.
-                Keep your tone concise, polite, and natural. Ask one question at a time.
+                Sound warm, calm, and natural, like a capable real caller.
+                Use short everyday sentences. Brief natural reactions are fine, but keep them very light.
+                Do not sound scripted. Do not explain the system. Do not over-talk.
+                Start proactively by calling `survey_start_interview` as soon as the call begins.
+                The backend controls question order, completion, and skip logic. Do not invent or skip questions on your own.
+                If the opening message asks for permission to continue, wait for the callee's answer before moving to the first survey question.
+                As soon as the callee answers the opening message, immediately call `survey_submit_answer`, even if the answer is very short.
+                Once permission is granted, move straight into the first survey question.
+                Do not add extra filler, long thanks, or enthusiastic reactions before the first question.
+                At most, use one very short phrase like "TeÅŸekkÃ¼r ederim" and continue immediately.
+                After every later caller turn, call `survey_submit_answer` with the latest utterance.
+                Call `survey_submit_answer` before you think out loud, paraphrase, or react.
+                Do not pause to compose a long spoken response after the caller answers.
+                If the backend returns the next question, ask it promptly in the same turn.
+                Keep transitions short. Prefer one brief bridge phrase or no bridge phrase at all.
+                Never summarize the caller's answer unless the backend explicitly tells you to do so.
+                If the caller asks who you are, use the identity-request flow and follow the backend prompt.
+                If the caller asks you to repeat, use the repeat-request flow and repeat only the current question.
+                If the caller wants to stop, call `survey_finish_interview`, say the closing message naturally, and end the call.
+                If a tool response indicates `endCall=true`, say the provided closing message once and terminate the call immediately.
+                Do not wait for the callee to hang up first.
+                Do not ask any extra wrap-up question after the closing message.
+                Do not stay silent on the line after the closing message.
+                Ask only one question at a time and wait for the answer.
+                For grid or matrix questions, do not read all answer choices unless the callee asks for them.
+                If a prompt includes a question and a scale, say them as two short natural sentences rather than one rushed sentence.
+                Never say bracketed emotion tags or decorative exclamations like "Harika", "SÃ¼per", or similar filler unless the backend prompt explicitly requires it.
+                Never include stage directions or bracketed text in what you say.
                 Operation: %s
                 Survey: %s
                 Contact: %s
@@ -403,6 +437,27 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 buildContactName(request),
                 request.callAttempt().getId()
         ).trim();
+    }
+
+    private String buildFirstMessage(ProviderDispatchRequest request) {
+        String languageCode = request.survey().getLanguageCode() == null
+                ? ""
+                : request.survey().getLanguageCode().trim().toLowerCase(Locale.ROOT);
+
+        if (languageCode.startsWith("tr")) {
+            return "Alo?";
+        }
+
+        return "Hello?";
+    }
+    private String sanitizePromptForSpeech(String value) {
+        String trimmed = firstNonBlank(value);
+        if (trimmed == null) {
+            return null;
+        }
+        String withoutDirections = VOICE_DIRECTION_PATTERN.matcher(trimmed).replaceAll(" ");
+        String normalizedWhitespace = withoutDirections.replaceAll("\\s+", " ").trim();
+        return normalizedWhitespace.isEmpty() ? null : normalizedWhitespace;
     }
 
     private boolean isOverrideEnabled(VoiceProviderConfiguration configuration, String settingKey) {
@@ -528,6 +583,19 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         return value != null && !value.isBlank();
     }
 
+    private String fingerprint(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.trim().getBytes(StandardCharsets.UTF_8));
+            return toHex(hash).substring(0, 12);
+        } catch (Exception ignored) {
+            return "unavailable";
+        }
+    }
+
     private Integer integerValue(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -611,7 +679,28 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         };
     }
 
-    private CallAttemptStatus mapAttemptStatus(CallJobStatus status) {
+    private CallAttemptStatus mapAttemptStatus(String providerStatus, CallJobStatus status) {
+        String normalizedProviderStatus = providerStatus == null ? null : providerStatus.trim().toUpperCase(Locale.ROOT);
+        if (normalizedProviderStatus != null) {
+            switch (normalizedProviderStatus) {
+                case "NO_ANSWER", "NO-ANSWER" -> {
+                    return CallAttemptStatus.NO_ANSWER;
+                }
+                case "BUSY" -> {
+                    return CallAttemptStatus.BUSY;
+                }
+                case "VOICEMAIL" -> {
+                    return CallAttemptStatus.VOICEMAIL;
+                }
+                case "CANCELLED", "SKIPPED" -> {
+                    return CallAttemptStatus.CANCELLED;
+                }
+                default -> {
+                    // fall back to coarse-grained job status mapping below
+                }
+            }
+        }
+
         if (status == null) {
             return null;
         }
@@ -624,3 +713,4 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         };
     }
 }
+

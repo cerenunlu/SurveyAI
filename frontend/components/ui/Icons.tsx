@@ -140,6 +140,15 @@ export function PlayIcon({ className }: IconProps) {
   );
 }
 
+export function PauseIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path {...strokeProps} d="M8.5 6.5v11" />
+      <path {...strokeProps} d="M15.5 6.5v11" />
+    </svg>
+  );
+}
+
 export function EyeIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">

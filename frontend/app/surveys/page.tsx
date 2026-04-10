@@ -69,7 +69,7 @@ export default function SurveysPage() {
   const [googleLanguageCode, setGoogleLanguageCode] = useState("tr");
   const [googleIntroPrompt, setGoogleIntroPrompt] = useState("");
   const [googleClosingPrompt, setGoogleClosingPrompt] = useState("");
-  const [googleRetryCount, setGoogleRetryCount] = useState("2");
+  const [googleRetryCount, setGoogleRetryCount] = useState("10");
   const [googleImportError, setGoogleImportError] = useState<string | null>(null);
   const [isGoogleImporting, setIsGoogleImporting] = useState(false);
   const headerAction = useMemo(
@@ -287,7 +287,7 @@ export default function SurveysPage() {
         languageCode: googleLanguageCode,
         introPrompt: googleIntroPrompt,
         closingPrompt: googleClosingPrompt,
-        maxRetryPerQuestion: Number.isFinite(retryCount) ? retryCount : 2,
+        maxRetryPerQuestion: Number.isFinite(retryCount) ? retryCount : 10,
       });
 
       setIsGoogleImportModalOpen(false);
@@ -295,7 +295,7 @@ export default function SurveysPage() {
       setGoogleAccessToken("");
       setGoogleIntroPrompt("");
       setGoogleClosingPrompt("");
-      setGoogleRetryCount("2");
+      setGoogleRetryCount("10");
       await reloadPage();
       router.push(`/surveys/${result.surveyId}`);
     } catch (error) {
@@ -462,6 +462,14 @@ export default function SurveysPage() {
             >
               Detaya Git
             </Link>
+            {survey.status === "Draft" ? (
+              <Link
+                href={`/surveys/${survey.id}/edit`}
+                className="button-secondary compact-button"
+              >
+                Duzenle
+              </Link>
+            ) : null}
             <button
               type="button"
               className="button-secondary compact-button survey-delete-button"

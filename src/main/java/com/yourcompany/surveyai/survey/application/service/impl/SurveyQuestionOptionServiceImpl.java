@@ -18,7 +18,6 @@ import com.yourcompany.surveyai.survey.repository.SurveyQuestionRepository;
 import com.yourcompany.surveyai.survey.repository.SurveyRepository;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -106,8 +105,7 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
             throw new ValidationException("Option cannot be deleted because answers already reference it");
         }
 
-        option.setDeletedAt(OffsetDateTime.now());
-        surveyQuestionOptionRepository.save(option);
+        surveyQuestionOptionRepository.delete(option);
     }
 
     @Override

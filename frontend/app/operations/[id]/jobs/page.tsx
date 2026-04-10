@@ -48,6 +48,18 @@ const jobColumns: TableColumn<CallJob>[] = [
     render: (job) => `${job.attemptCount} / ${job.maxAttempts}`,
   },
   {
+    key: "result",
+    label: "Özet",
+    render: (job) => (
+      <div>
+        <div className="table-title">
+          {`${job.answerCount ?? 0} soruya cevap verdi`}
+        </div>
+        <div className="table-subtitle">{job.lastErrorMessage ?? job.lastResultSummary ?? "Durum ozeti"}</div>
+      </div>
+    ),
+  },
+  {
     key: "createdAt",
     label: "Olusturuldu",
     render: (job) => job.createdAt,
@@ -56,16 +68,6 @@ const jobColumns: TableColumn<CallJob>[] = [
     key: "updatedAt",
     label: "Guncellendi",
     render: (job) => job.updatedAt,
-  },
-  {
-    key: "result",
-    label: "Son sonuc",
-    render: (job) => (
-      <div>
-        <div className="table-title">{job.lastErrorMessage ?? job.lastResultSummary ?? "Sonuc henuz yok"}</div>
-        <div className="table-subtitle">{job.lastErrorCode ? `Hata kodu: ${job.lastErrorCode}` : "Durum ozeti"}</div>
-      </div>
-    ),
   },
   {
     key: "detail",
@@ -136,7 +138,7 @@ export default function OperationJobsPage() {
             page,
             size: 25,
             query,
-            status: statusFilter,
+            statuses: statusFilter === "All" ? [] : [statusFilter],
             sortBy,
             direction,
             init: { signal: controller.signal },

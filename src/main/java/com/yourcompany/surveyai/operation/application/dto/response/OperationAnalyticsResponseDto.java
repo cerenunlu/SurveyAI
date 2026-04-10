@@ -23,6 +23,7 @@ public record OperationAnalyticsResponseDto(
         long invalidResponses,
         double completionRate,
         double responseRate,
+        double personResponseRate,
         double contactReachRate,
         double participationRate,
         double averageCompletionPercent,
@@ -32,6 +33,7 @@ public record OperationAnalyticsResponseDto(
         List<OperationAnalyticsBreakdownItemDto> outcomeBreakdown,
         List<OperationAnalyticsAudienceBreakdownDto> audienceBreakdowns,
         List<OperationAnalyticsQuestionSummaryDto> questionSummaries,
+        List<OperationAnalyticsQuestionGroupSummaryDto> questionGroups,
         List<OperationAnalyticsTrendPointDto> responseTrend
 ) {
 }

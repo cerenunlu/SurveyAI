@@ -1,14 +1,15 @@
 import { Operation, OperationAnalytics, OperationAnalyticsQuestionSummary } from "@/lib/types";
 
-type OperationLifecycleStatus = Extract<Operation["status"], "Draft" | "Ready" | "Running" | "Completed" | "Failed">;
+type OperationLifecycleStatus = Extract<Operation["status"], "Draft" | "Ready" | "Running" | "Paused" | "Completed" | "Failed">;
 
 export const OPERATION_STATUS_BADGE_CONFIG: Record<
   OperationLifecycleStatus,
-  { tone: "neutral" | "ready" | "live" | "success" | "danger"; label: string }
+  { tone: "neutral" | "ready" | "live" | "warning" | "success" | "danger"; label: string }
 > = {
   Draft: { tone: "neutral", label: "Taslak" },
   Ready: { tone: "ready", label: "Hazir" },
   Running: { tone: "live", label: "Yurutuluyor" },
+  Paused: { tone: "warning", label: "Duraklatildi" },
   Completed: { tone: "success", label: "Tamamlandi" },
   Failed: { tone: "danger", label: "Basarisiz" },
 };
@@ -54,6 +55,14 @@ export function getOperationStatusConfig(operation: Operation | null, contactCou
         nextStepTitle: "Sonuclari kullan",
         nextStepText: "Sonuclari inceleyin, disa aktarim alin ve gerekirse daha detayli analytics akisina gecin.",
       };
+    case "Paused":
+      return {
+        badge,
+        title: "Operasyon duraklatildi",
+        summary: "Aktif gorusme bittikten sonra sistem yeni cagrilara gecmez. Hazir oldugunuzda devam ettirebilirsiniz.",
+        nextStepTitle: "Akisi devam ettir",
+        nextStepText: "Devam ettir aksiyonu siradaki bekleyen cagri isini yeniden kuyruga alir.",
+      };
     case "Failed":
       return {
         badge,
@@ -87,6 +96,11 @@ export function getAnalyticsEmptyState(status: Operation["status"], contactCount
         title: "Kismi veri yok",
         description: "Bu hata durumunda henuz gosterilecek cevap verisi birikmedi.",
       };
+    case "Paused":
+      return {
+        title: "Akis duraklatildi",
+        description: "Mevcut gorusme tamamlandiktan sonra yeni cagriya gecilmez. Devam ettirdiginizde veri akisi surer.",
+      };
     case "Completed":
     default:
       return {
@@ -98,21 +112,70 @@ export function getAnalyticsEmptyState(status: Operation["status"], contactCount
 
 export function getPrimaryAction(operation: Operation | null, isStarting: boolean) {
   if (!operation) {
-    return { label: "Yukleniyor", disabled: true };
+    return { label: "Akisi baslat", disabled: true, hint: "Operasyon bilgisi yukleniyor.", intent: "start" as const };
   }
 
   if (operation.status === "Ready") {
-    return { label: isStarting ? "Akis baslatiliyor..." : "Akisi baslat", disabled: isStarting };
+    return {
+      label: isStarting ? "Akis baslatiliyor..." : "Akisi baslat",
+      disabled: isStarting,
+      hint: "Operasyon hazir. Akisi bu aksiyondan baslatabilirsiniz.",
+      intent: "start" as const,
+    };
   }
 
   if (operation.status === "Draft") {
     return {
-      label: operation.readiness.contactsLoaded ? "Onkosullari tamamla" : "Kisi yukle",
+      label: "Akisi baslat",
       disabled: true,
+      hint: operation.readiness.blockingReasons[0]
+        ?? (operation.readiness.contactsLoaded ? "Baslatmadan once onkosullari tamamlayin." : "Baslatmadan once kisi yukleyin."),
+      intent: "start" as const,
     };
   }
 
-  return { label: "Akis zaten acik", disabled: true };
+  if (operation.status === "Running") {
+    return {
+      label: "Durdur",
+      disabled: false,
+      hint: "Mevcut gorusme tamamlandiktan sonra yeni cagrilar baslatilmaz.",
+      intent: "pause" as const,
+    };
+  }
+
+  if (operation.status === "Paused") {
+    return {
+      label: "Devam ettir",
+      disabled: false,
+      hint: "Duraklatilan operasyonu siradaki bekleyen cagridan devam ettirir.",
+      intent: "resume" as const,
+    };
+  }
+
+  if (operation.status === "Completed") {
+    return {
+      label: "Akis tamamlandi",
+      disabled: true,
+      hint: "Tamamlanan operasyonlarda baslatma aksiyonu yeniden acilmaz.",
+      intent: "start" as const,
+    };
+  }
+
+  if (operation.status === "Failed") {
+    return {
+      label: "Akis durdu",
+      disabled: true,
+      hint: "Operasyon hata ile durdu. Detaylari inceleyip yeniden hazirlamaniz gerekir.",
+      intent: "start" as const,
+    };
+  }
+
+  return {
+    label: "Akisi baslat",
+    disabled: true,
+    hint: "Bu durumdayken akis baslatilamaz.",
+    intent: "start" as const,
+  };
 }
 
 export function getAnalyticsKpis(operation: Operation | null, analytics: OperationAnalytics | null) {
@@ -169,7 +232,7 @@ export function getAnalyticsKpis(operation: Operation | null, analytics: Operati
     },
     {
       label: "Cevap orani",
-      value: `%${analytics.responseRate}`,
+      value: `%${analytics.personResponseRate}`,
       detail: "Yanit veren kisi / hedef kisi",
       tone: isFailed ? "warning" as const : "positive" as const,
     },
@@ -207,7 +270,7 @@ export function getAnalyticsKpisCompact(operation: Operation | null, analytics: 
     },
     {
       label: "Cevap orani",
-      value: `%${analytics.responseRate}`,
+      value: `%${analytics.personResponseRate}`,
       detail: hasResponses
         ? `Yanit veren kisi / hedef kisi, %${analytics.completionRate} tamamlanan yanit`
         : "Yanit veren kisi / hedef kisi",

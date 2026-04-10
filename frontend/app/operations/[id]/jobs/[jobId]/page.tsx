@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { notFound, useParams } from "next/navigation";
+import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
 import { KeyValueList } from "@/components/ui/KeyValueList";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { fetchOperationById, fetchOperationCallJobDetail, retryOperationCallJob } from "@/lib/operations";
+import { fetchOperationById, fetchOperationCallJobDetail, redialOperationCallJob } from "@/lib/operations";
 import { CallJobAttempt, CallJobDetail, Operation } from "@/lib/types";
 
 export default function OperationJobDetailPage() {
   const params = useParams<{ id: string; jobId: string }>();
+  const router = useRouter();
   const operationId = params.id;
   const callJobId = params.jobId;
   const [operation, setOperation] = useState<Operation | null>(null);
@@ -81,8 +82,8 @@ export default function OperationJobDetailPage() {
     notFound();
   }
 
-  async function handleRetry() {
-    if (!detail?.retryable) {
+  async function handleRecall() {
+    if (!detail) {
       return;
     }
 
@@ -90,11 +91,12 @@ export default function OperationJobDetailPage() {
       setIsRetrying(true);
       setRetryMessage(null);
       setRetryErrorMessage(null);
-      const nextDetail = await retryOperationCallJob(operationId, callJobId);
-      setDetail(nextDetail);
-      setRetryMessage("Yeni deneme kaydi olusturuldu. Guncel durum asagidaki zaman cizelgesine islendi.");
+      const nextDetail = await redialOperationCallJob(operationId, callJobId);
+      setRetryMessage("Ayni operasyon icinde yeni bir cagri isi olusturuldu. Yeni detay ekranina yonlendiriliyorsunuz.");
+      router.push(`/operations/${operationId}/jobs/${nextDetail.id}`);
+      router.refresh();
     } catch (error) {
-      setRetryErrorMessage(error instanceof Error ? error.message : "Yeniden deneme baslatilamadi.");
+      setRetryErrorMessage(error instanceof Error ? error.message : "Cagri yeniden baslatilamadi.");
     } finally {
       setIsRetrying(false);
     }
@@ -154,6 +156,9 @@ export default function OperationJobDetailPage() {
             <span className={detail?.retryable ? "operation-readiness-pill is-ready" : "operation-readiness-pill is-blocked"}>
               {detail?.retryable ? "Retry uygun" : "Retry kapali"}
             </span>
+            <span className={detail?.redialable ? "operation-readiness-pill is-ready" : "operation-readiness-pill is-blocked"}>
+              {detail?.redialable ? "Tekrar ara uygun" : "Tekrar ara kapali"}
+            </span>
           </div>
         </div>
         <div className="chip-row">
@@ -187,10 +192,10 @@ export default function OperationJobDetailPage() {
                   <button
                     type="button"
                     className="button-primary compact-button"
-                    disabled={!detail.retryable || isRetrying}
-                    onClick={() => void handleRetry()}
+                    disabled={isRetrying}
+                    onClick={() => void handleRecall()}
                   >
-                    {isRetrying ? "Yeniden deneniyor..." : "Guvenli retry"}
+                    {isRetrying ? "Cagri yeniden baslatiliyor..." : "Cagriyi tekrar baslat"}
                   </button>
                 </div>
               )}
@@ -201,6 +206,7 @@ export default function OperationJobDetailPage() {
                   { label: "Son guncelleme", value: detail.updatedAt },
                   { label: "Planlanan zaman", value: detail.scheduledFor },
                   { label: "Tekrar uygunlugu", value: detail.retryable ? "Uygun" : "Uygun degil" },
+                  { label: "Yeni arama uygunlugu", value: detail.redialable ? "Uygun" : "Uygun degil" },
                   { label: "Failure reason", value: detail.failureReason ?? "Kayitli neden yok" },
                   { label: "Son hata", value: detail.lastErrorMessage ?? "Kayitli hata yok" },
                 ]}

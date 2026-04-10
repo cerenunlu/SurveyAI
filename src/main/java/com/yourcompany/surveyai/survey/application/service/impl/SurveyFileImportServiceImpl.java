@@ -1,5 +1,6 @@
 package com.yourcompany.surveyai.survey.application.service.impl;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -20,9 +21,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -47,6 +50,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class SurveyFileImportServiceImpl implements SurveyFileImportService {
 
     private static final Pattern NUMBERED_QUESTION_PATTERN = Pattern.compile("^\\s*(\\d+)[\\).:-]\\s*(.+)$");
+    private static final Pattern QUESTION_CODE_PATTERN = Pattern.compile("^\\s*([A-Za-z]\\d+(?:\\.\\d+)?)\\s*[\\).:-]?\\s*(.*)$");
+    private static final Pattern QUESTION_REFERENCE_PATTERN = Pattern.compile("\\b([A-Za-z]\\d+(?:\\.\\d+)?)\\b");
     private static final Pattern BULLET_PATTERN = Pattern.compile("^\\s*(?:[-*•]|[a-zA-Z]\\)|\\d+[\\).])\\s+(.+)$");
 
     private final CompanyRepository companyRepository;
@@ -109,6 +114,30 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
                 String typeCell = readCell(row, headerMap, "question_type", "type");
                 String description = readCell(row, headerMap, "description", "help_text", "note");
                 String optionsCell = readCell(row, headerMap, "options", "choices");
+                StructuredQuestionMetadata metadata = readStructuredMetadata(
+                        readCell(row, headerMap, "group_code", "question_group_code", "matrix_group_code"),
+                        readCell(row, headerMap, "group_title", "question_group_title", "matrix_group_title"),
+                        readCell(row, headerMap, "row_label", "matrix_row_label"),
+                        readCell(row, headerMap, "option_set_code", "matrix_option_set_code")
+                );
+                String branchConditionJson = readStructuredBranchConditionJson(
+                        readCell(row, headerMap, "skip_if_group_code"),
+                        readCell(row, headerMap, "skip_if_question_code"),
+                        readCell(row, headerMap, "skip_if_row_code"),
+                        readCell(row, headerMap, "skip_if_same_row"),
+                        readCell(row, headerMap, "skip_if_option_codes", "skip_if_options", "skip_if_selected_option_codes"),
+                        readCell(row, headerMap, "skip_if_answer_tags_any_of", "skip_if_answer_tags"),
+                        readCell(row, headerMap, "skip_if_valid_answer_required"),
+                        readCell(row, headerMap, "ask_if_group_code"),
+                        readCell(row, headerMap, "ask_if_question_code"),
+                        readCell(row, headerMap, "ask_if_row_code"),
+                        readCell(row, headerMap, "ask_if_same_row"),
+                        readCell(row, headerMap, "ask_if_option_codes", "ask_if_options", "ask_if_selected_option_codes"),
+                        readCell(row, headerMap, "ask_if_answer_tags_any_of", "ask_if_answer_tags"),
+                        readCell(row, headerMap, "ask_if_valid_answer_required"),
+                        readCell(row, headerMap, "branch_operator", "branch_logic")
+                );
+                String codingMetadata = readCell(row, headerMap, "coding_json", "coding_categories", "coding_keywords");
                 boolean required = parseRequired(readCell(row, headerMap, "required", "zorunlu"));
 
                 ImportedQuestionDraft question = buildQuestionFromStructuredRow(
@@ -117,6 +146,9 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
                         description,
                         typeCell,
                         optionsCell,
+                        metadata,
+                        branchConditionJson,
+                        codingMetadata,
                         fileName,
                         warnings
                 );
@@ -173,6 +205,30 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
                 String typeCell = readCell(row, headerMap, "question_type", "type");
                 String description = readCell(row, headerMap, "description", "help_text", "note");
                 String optionsCell = readCell(row, headerMap, "options", "choices");
+                StructuredQuestionMetadata metadata = readStructuredMetadata(
+                        readCell(row, headerMap, "group_code", "question_group_code", "matrix_group_code"),
+                        readCell(row, headerMap, "group_title", "question_group_title", "matrix_group_title"),
+                        readCell(row, headerMap, "row_label", "matrix_row_label"),
+                        readCell(row, headerMap, "option_set_code", "matrix_option_set_code")
+                );
+                String branchConditionJson = readStructuredBranchConditionJson(
+                        readCell(row, headerMap, "skip_if_group_code"),
+                        readCell(row, headerMap, "skip_if_question_code"),
+                        readCell(row, headerMap, "skip_if_row_code"),
+                        readCell(row, headerMap, "skip_if_same_row"),
+                        readCell(row, headerMap, "skip_if_option_codes", "skip_if_options", "skip_if_selected_option_codes"),
+                        readCell(row, headerMap, "skip_if_answer_tags_any_of", "skip_if_answer_tags"),
+                        readCell(row, headerMap, "skip_if_valid_answer_required"),
+                        readCell(row, headerMap, "ask_if_group_code"),
+                        readCell(row, headerMap, "ask_if_question_code"),
+                        readCell(row, headerMap, "ask_if_row_code"),
+                        readCell(row, headerMap, "ask_if_same_row"),
+                        readCell(row, headerMap, "ask_if_option_codes", "ask_if_options", "ask_if_selected_option_codes"),
+                        readCell(row, headerMap, "ask_if_answer_tags_any_of", "ask_if_answer_tags"),
+                        readCell(row, headerMap, "ask_if_valid_answer_required"),
+                        readCell(row, headerMap, "branch_operator", "branch_logic")
+                );
+                String codingMetadata = readCell(row, headerMap, "coding_json", "coding_categories", "coding_keywords");
                 boolean required = parseRequired(readCell(row, headerMap, "required", "zorunlu"));
 
                 ImportedQuestionDraft question = buildQuestionFromStructuredRow(
@@ -181,6 +237,9 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
                         description,
                         typeCell,
                         optionsCell,
+                        metadata,
+                        branchConditionJson,
+                        codingMetadata,
                         fileName,
                         warnings
                 );
@@ -324,6 +383,9 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
             String description,
             String typeCell,
             String optionsCell,
+            StructuredQuestionMetadata metadata,
+            String branchConditionJson,
+            String codingMetadata,
             String fileName,
             List<String> warnings
     ) {
@@ -334,8 +396,18 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
         question.required = true;
         question.options = splitOptions(optionsCell);
         question.type = normalizeStructuredType(typeCell, question.title, question.options, warnings);
-        question.settingsJson = buildSettingsJson(question.type);
-        question.sourcePayloadJson = buildQuestionSourcePayload("file-row", fileName, question.title, description, question.options);
+        question.branchConditionJson = branchConditionJson != null ? branchConditionJson : inferBranchConditionJson(question.title, question.description, metadata);
+        question.settingsJson = buildSettingsJson(question.type, metadata, question.options, question.title, codingMetadata);
+        question.sourcePayloadJson = buildQuestionSourcePayload(
+                "file-row",
+                fileName,
+                question.title,
+                description,
+                question.options,
+                metadata,
+                question.branchConditionJson,
+                codingMetadata
+        );
         return question;
     }
 
@@ -350,8 +422,18 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
         question.required = true;
         question.options = block.options.stream().map(String::trim).filter(option -> !option.isBlank()).toList();
         question.type = inferQuestionType(question.title, question.description, question.options, warnings);
-        question.settingsJson = buildSettingsJson(question.type);
-        question.sourcePayloadJson = buildQuestionSourcePayload("heuristic-document", null, question.title, question.description, question.options);
+        question.branchConditionJson = inferBranchConditionJson(question.title, question.description, null);
+        question.settingsJson = buildSettingsJson(question.type, null, question.options, question.title, null);
+        question.sourcePayloadJson = buildQuestionSourcePayload(
+                "heuristic-document",
+                null,
+                question.title,
+                question.description,
+                question.options,
+                null,
+                question.branchConditionJson,
+                null
+        );
         return question;
     }
 
@@ -426,13 +508,34 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
         return normalized.contains("evet") && (normalized.contains("hayir") || normalized.contains("hayır") || normalized.contains("no"));
     }
 
-    private String buildSettingsJson(String type) {
+    private String buildSettingsJson(
+            String type,
+            StructuredQuestionMetadata metadata,
+            List<String> options,
+            String title,
+            String codingMetadata
+    ) {
         ObjectNode node = objectMapper.createObjectNode().put("builderType", type);
         if ("rating_1_5".equals(type)) {
             node.put("ratingScale", 5);
         } else if ("rating_1_10".equals(type)) {
             node.put("ratingScale", 10);
         }
+        if (metadata != null && metadata.groupCode() != null) {
+            node.put("groupCode", metadata.groupCode());
+            node.put("groupTitle", metadata.groupTitle() != null ? metadata.groupTitle() : title);
+            node.put("rowLabel", metadata.rowLabel() != null ? metadata.rowLabel() : title);
+            String rowCode = slugify(metadata.rowLabel() != null ? metadata.rowLabel() : title);
+            node.put("rowCode", rowCode);
+            node.put("rowKey", rowCode);
+            String optionSetCode = metadata.optionSetCode() != null ? metadata.optionSetCode() : inferOptionSetCode(options);
+            if (optionSetCode != null) {
+                node.put("optionSetCode", optionSetCode);
+            }
+            node.put("matrixType", "GRID_SINGLE_CHOICE");
+        }
+        appendCodingSettings(node, codingMetadata);
+        appendChoiceAliases(node, options);
         return node.toString();
     }
 
@@ -445,7 +548,16 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
         return payload.toString();
     }
 
-    private String buildQuestionSourcePayload(String sourceKind, String fileName, String title, String description, List<String> options) {
+    private String buildQuestionSourcePayload(
+            String sourceKind,
+            String fileName,
+            String title,
+            String description,
+            List<String> options,
+            StructuredQuestionMetadata metadata,
+            String branchConditionJson,
+            String codingMetadata
+    ) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("sourceKind", sourceKind);
         if (fileName != null) {
@@ -457,7 +569,406 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
         }
         ArrayNode optionArray = payload.putArray("options");
         options.forEach(optionArray::add);
+        if (metadata != null && metadata.groupCode() != null) {
+            payload.put("groupCode", metadata.groupCode());
+            if (metadata.groupTitle() != null) {
+                payload.put("groupTitle", metadata.groupTitle());
+            }
+            if (metadata.rowLabel() != null) {
+                payload.put("rowLabel", metadata.rowLabel());
+                payload.put("rowCode", slugify(metadata.rowLabel()));
+            }
+            String optionSetCode = metadata.optionSetCode() != null ? metadata.optionSetCode() : inferOptionSetCode(options);
+            if (optionSetCode != null) {
+                payload.put("optionSetCode", optionSetCode);
+            }
+        }
+        String normalizedBranchConditionJson = trimToNull(branchConditionJson);
+        if (normalizedBranchConditionJson != null && !"{}".equals(normalizedBranchConditionJson)) {
+            try {
+                payload.set("branchCondition", objectMapper.readTree(normalizedBranchConditionJson));
+            } catch (Exception ignored) {
+                payload.put("branchConditionJson", normalizedBranchConditionJson);
+            }
+        }
+        appendCodingSourceMetadata(payload, codingMetadata);
         return payload.toString();
+    }
+
+    private StructuredQuestionMetadata readStructuredMetadata(
+            String groupCode,
+            String groupTitle,
+            String rowLabel,
+            String optionSetCode
+    ) {
+        String normalizedGroupCode = trimToNull(groupCode);
+        if (normalizedGroupCode == null) {
+            return null;
+        }
+        return new StructuredQuestionMetadata(
+                normalizedGroupCode,
+                trimToNull(groupTitle),
+                trimToNull(rowLabel),
+                trimToNull(optionSetCode)
+        );
+    }
+
+    private String readStructuredBranchConditionJson(
+            String skipGroupCode,
+            String skipQuestionCode,
+            String skipRowCode,
+            String skipSameRow,
+            String skipOptionCodes,
+            String skipAnswerTags,
+            String skipValidAnswerRequired,
+            String askGroupCode,
+            String askQuestionCode,
+            String askRowCode,
+            String askSameRow,
+            String askOptionCodes,
+            String askAnswerTags,
+            String askValidAnswerRequired,
+            String branchOperator
+    ) {
+        ObjectNode root = objectMapper.createObjectNode();
+        String normalizedOperator = trimToNull(branchOperator);
+        if (normalizedOperator != null) {
+            root.put("operator", "ANY".equalsIgnoreCase(normalizedOperator) ? "ANY" : "ALL");
+        }
+
+        ObjectNode skipRule = buildStructuredBranchRule(
+                skipGroupCode,
+                skipQuestionCode,
+                skipRowCode,
+                skipSameRow,
+                skipOptionCodes,
+                skipAnswerTags,
+                skipValidAnswerRequired
+        );
+        if (skipRule != null) {
+            root.set("skipIf", skipRule);
+        }
+
+        ObjectNode askRule = buildStructuredBranchRule(
+                askGroupCode,
+                askQuestionCode,
+                askRowCode,
+                askSameRow,
+                askOptionCodes,
+                askAnswerTags,
+                askValidAnswerRequired
+        );
+        if (askRule != null) {
+            root.set("askIf", askRule);
+        }
+
+        return root.isEmpty() ? "{}" : root.toString();
+    }
+
+    private ObjectNode buildStructuredBranchRule(
+            String groupCode,
+            String questionCode,
+            String rowCode,
+            String sameRow,
+            String optionCodes,
+            String answerTags,
+            String validAnswerRequired
+    ) {
+        String normalizedGroupCode = trimToNull(groupCode);
+        String normalizedQuestionCode = trimToNull(questionCode);
+        String normalizedRowCode = trimToNull(rowCode);
+        List<String> selectedOptionCodes = splitBranchOptionCodes(optionCodes);
+        List<String> branchAnswerTags = splitBranchOptionCodes(answerTags);
+        Boolean sameRowValue = parseOptionalBoolean(sameRow);
+        Boolean validAnswerRequiredValue = parseOptionalBoolean(validAnswerRequired);
+
+        if (normalizedGroupCode == null
+                && normalizedQuestionCode == null
+                && normalizedRowCode == null
+                && selectedOptionCodes.isEmpty()
+                && branchAnswerTags.isEmpty()
+                && sameRowValue == null
+                && validAnswerRequiredValue == null) {
+            return null;
+        }
+
+        ObjectNode rule = objectMapper.createObjectNode();
+        if (normalizedGroupCode != null) {
+            rule.put("groupCode", normalizedGroupCode);
+        }
+        if (normalizedQuestionCode != null) {
+            rule.put("questionCode", normalizedQuestionCode);
+        }
+        if (normalizedRowCode != null) {
+            rule.put("rowCode", normalizedRowCode);
+        }
+        if (sameRowValue != null) {
+            rule.put("sameRowCode", sameRowValue);
+        }
+        if (!selectedOptionCodes.isEmpty()) {
+            ArrayNode optionArray = rule.putArray("selectedOptionCodes");
+            selectedOptionCodes.forEach(optionArray::add);
+        }
+        if (!branchAnswerTags.isEmpty()) {
+            ArrayNode tagArray = rule.putArray("answerTagsAnyOf");
+            branchAnswerTags.forEach(tagArray::add);
+        }
+        if (validAnswerRequiredValue != null) {
+            rule.put("validAnswerRequired", validAnswerRequiredValue);
+        }
+        return rule;
+    }
+
+    private List<String> splitBranchOptionCodes(String rawValue) {
+        String normalized = trimToNull(rawValue);
+        if (normalized == null) {
+            return List.of();
+        }
+        String delimiter = normalized.contains("|") ? "\\|" : normalized.contains(";") ? ";" : normalized.contains(",") ? "," : "\\n";
+        return Arrays.stream(normalized.split(delimiter))
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .toList();
+    }
+
+    private Boolean parseOptionalBoolean(String rawValue) {
+        String normalized = normalize(rawValue);
+        if (normalized == null) {
+            return null;
+        }
+        if (List.of("true", "evet", "yes", "1").contains(normalized)) {
+            return true;
+        }
+        if (List.of("false", "hayir", "hayır", "no", "0").contains(normalized)) {
+            return false;
+        }
+        return null;
+    }
+
+    private String inferBranchConditionJson(String title, String description, StructuredQuestionMetadata metadata) {
+        String combined = trimToNull((title == null ? "" : title) + " " + (description == null ? "" : description));
+        if (combined == null) {
+            return "{}";
+        }
+
+        String normalizedCombined = normalize(combined);
+        if (normalizedCombined == null || (!normalizedCombined.contains("sorulmayacak") && !normalizedCombined.contains("sorulmaz"))) {
+            return "{}";
+        }
+
+        String currentQuestionCode = extractLeadingQuestionCode(title);
+        String referencedCode = extractReferencedQuestionCode(combined, currentQuestionCode);
+        List<String> selectedOptionCodes = inferSelectedOptionCodes(normalizedCombined);
+        if (referencedCode == null || selectedOptionCodes.isEmpty()) {
+            return "{}";
+        }
+
+        ObjectNode root = objectMapper.createObjectNode();
+        List<String> inferredAnswerTags = inferBranchAnswerTags(selectedOptionCodes);
+        boolean useKnowledgePositiveAskIf = inferredAnswerTags.contains("knowledge_negative");
+        ObjectNode branchNode = root.putObject(useKnowledgePositiveAskIf ? "askIf" : "skipIf");
+        if (metadata != null && metadata.groupCode() != null) {
+            branchNode.put("groupCode", referencedCode);
+            if (!normalize(referencedCode).equals(normalize(metadata.groupCode()))) {
+                branchNode.put("sameRowCode", true);
+            }
+        } else {
+            branchNode.put("questionCode", referencedCode);
+        }
+        if (useKnowledgePositiveAskIf) {
+            branchNode.putArray("answerTagsAnyOf").add("knowledge_positive");
+        } else {
+            ArrayNode optionArray = branchNode.putArray("selectedOptionCodes");
+            selectedOptionCodes.forEach(optionArray::add);
+            if (!inferredAnswerTags.isEmpty()) {
+                ArrayNode tagArray = branchNode.putArray("answerTagsAnyOf");
+                inferredAnswerTags.forEach(tagArray::add);
+            }
+        }
+        return root.toString();
+    }
+
+    private String extractLeadingQuestionCode(String text) {
+        String value = trimToNull(text);
+        if (value == null) {
+            return null;
+        }
+        Matcher matcher = QUESTION_CODE_PATTERN.matcher(value);
+        return matcher.matches() ? matcher.group(1).toUpperCase(Locale.ROOT) : null;
+    }
+
+    private String extractReferencedQuestionCode(String text, String currentQuestionCode) {
+        String value = trimToNull(text);
+        if (value == null) {
+            return null;
+        }
+        Matcher matcher = QUESTION_REFERENCE_PATTERN.matcher(value);
+        while (matcher.find()) {
+            String candidate = matcher.group(1).toUpperCase(Locale.ROOT);
+            if (currentQuestionCode == null || !candidate.equalsIgnoreCase(currentQuestionCode)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private List<String> inferSelectedOptionCodes(String normalizedText) {
+        Set<String> selectedOptionCodes = new LinkedHashSet<>();
+        if (normalizedText.contains("hic duymadim")) {
+            selectedOptionCodes.add("hic_duymadim");
+        }
+        if (normalizedText.contains("duydum ama tanimiyorum") || normalizedText.contains("tanimiyorum")) {
+            selectedOptionCodes.add("duydum_ama_tanimiyorum");
+        }
+        if (normalizedText.contains("bilmiyorum")) {
+            selectedOptionCodes.add("bilmiyorum");
+        }
+        if (normalizedText.contains("cevap vermedi")) {
+            selectedOptionCodes.add("cevap_yok");
+        }
+        if (normalizedText.contains("hayir")) {
+            selectedOptionCodes.add("hayir");
+        }
+        if (normalizedText.contains("evet")) {
+            selectedOptionCodes.add("evet");
+        }
+        return List.copyOf(selectedOptionCodes);
+    }
+
+    private List<String> inferBranchAnswerTags(List<String> selectedOptionCodes) {
+        Set<String> tags = new LinkedHashSet<>();
+        for (String optionCode : selectedOptionCodes) {
+            String normalized = normalize(optionCode);
+            if (normalized == null) {
+                continue;
+            }
+            if (normalized.contains("hic duymad")) {
+                tags.add("knowledge_negative");
+                tags.add("knowledge_never_heard");
+            }
+            if (normalized.contains("duydum") && normalized.contains("tanimiyorum")) {
+                tags.add("knowledge_negative");
+                tags.add("knowledge_heard_but_unknown");
+            }
+            if ((normalized.contains("tanimiyorum") || normalized.contains("bilmiyorum"))
+                    && !normalized.contains("taniyorum")) {
+                tags.add("knowledge_negative");
+            }
+            if ((normalized.contains("taniyorum") || normalized.contains("biliyorum"))
+                    && !normalized.contains("tanimiyorum")) {
+                tags.add("knowledge_positive");
+            }
+            if (normalized.contains("evet")) {
+                tags.add("yes");
+            }
+            if (normalized.contains("hayir")) {
+                tags.add("no");
+            }
+        }
+        return List.copyOf(tags);
+    }
+
+    private void appendCodingSettings(ObjectNode settingsNode, String codingMetadata) {
+        ObjectNode categoriesNode = parseCodingCategories(codingMetadata);
+        if (categoriesNode == null || categoriesNode.isEmpty()) {
+            return;
+        }
+        settingsNode.with("coding").set("categories", categoriesNode);
+    }
+
+    private void appendCodingSourceMetadata(ObjectNode payload, String codingMetadata) {
+        ObjectNode categoriesNode = parseCodingCategories(codingMetadata);
+        if (categoriesNode == null || categoriesNode.isEmpty()) {
+            return;
+        }
+        payload.set("codingCategories", categoriesNode);
+    }
+
+    private ObjectNode parseCodingCategories(String codingMetadata) {
+        String normalized = trimToNull(codingMetadata);
+        if (normalized == null) {
+            return null;
+        }
+
+        try {
+            if (normalized.startsWith("{")) {
+                JsonNode root = objectMapper.readTree(normalized);
+                JsonNode categoriesNode = root.path("coding").path("categories");
+                if (categoriesNode.isMissingNode() || !categoriesNode.isObject()) {
+                    categoriesNode = root.path("categories");
+                }
+                if (categoriesNode.isObject()) {
+                    return (ObjectNode) categoriesNode.deepCopy();
+                }
+                if (root.isObject()) {
+                    return (ObjectNode) root.deepCopy();
+                }
+            }
+        } catch (Exception ignored) {
+            // Fall back to simple parsing below.
+        }
+
+        ObjectNode categories = objectMapper.createObjectNode();
+        Arrays.stream(normalized.split(";"))
+                .map(String::trim)
+                .filter(entry -> !entry.isBlank())
+                .forEach(entry -> {
+                    String[] parts = entry.split("[:=]", 2);
+                    if (parts.length != 2) {
+                        return;
+                    }
+                    String categoryCode = slugify(parts[0]);
+                    if (categoryCode.isBlank()) {
+                        return;
+                    }
+                    ArrayNode aliases = categories.putArray(categoryCode);
+                    Arrays.stream(parts[1].split("\\|"))
+                            .map(String::trim)
+                            .filter(value -> !value.isBlank())
+                            .forEach(aliases::add);
+                });
+        return categories.isEmpty() ? null : categories;
+    }
+
+    private void appendChoiceAliases(ObjectNode settingsNode, List<String> options) {
+        if (options.isEmpty()) {
+            return;
+        }
+        Map<String, List<String>> aliases = buildKnownChoiceAliases(options);
+        if (aliases.isEmpty()) {
+            return;
+        }
+        ObjectNode aliasesNode = settingsNode.putObject("aliases");
+        aliases.forEach((key, values) -> {
+            ArrayNode valueArray = aliasesNode.putArray(key);
+            values.forEach(valueArray::add);
+        });
+    }
+
+    private Map<String, List<String>> buildKnownChoiceAliases(List<String> options) {
+        List<String> normalizedOptions = options.stream()
+                .map(this::normalize)
+                .toList();
+        if (normalizedOptions.containsAll(List.of(
+                "cok iyi taniyorum",
+                "taniyorum",
+                "biraz taniyorum",
+                "duydum ama tanimiyorum",
+                "hic duymadim"
+        ))) {
+            Map<String, List<String>> aliases = new LinkedHashMap<>();
+            aliases.put("cok_iyi_taniyorum", List.of("cok iyi taniyorum", "çok iyi tanıyorum", "cok iyi biliyorum"));
+            aliases.put("taniyorum", List.of("taniyorum", "tanıyorum", "biliyorum"));
+            aliases.put("biraz_taniyorum", List.of("biraz taniyorum", "biraz tanıyorum", "az taniyorum"));
+            aliases.put("duydum_ama_tanimiyorum", List.of("duydum ama tanimiyorum", "duydum ama tanımıyorum", "ismini duydum"));
+            aliases.put("hic_duymadim", List.of("hic duymadim", "hiç duymadım", "duymadim", "duymadım"));
+            return aliases;
+        }
+        return Map.of();
+    }
+
+    private String inferOptionSetCode(List<String> options) {
+        return buildKnownChoiceAliases(options).isEmpty() ? null : "familiarity_5";
     }
 
     private SurveyImportPreviewResponseDto toPreviewDto(ImportedSurveyDraft draft) {
@@ -479,6 +990,7 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
                                 question.title,
                                 question.description,
                                 question.required,
+                                question.branchConditionJson,
                                 question.settingsJson,
                                 question.sourceExternalId,
                                 question.sourcePayloadJson,
@@ -591,6 +1103,14 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
         return baseName.isBlank() ? "Dosya Importu" : baseName.replace('_', ' ').replace('-', ' ').trim();
     }
 
+    private String slugify(String input) {
+        String normalized = normalize(input);
+        if (normalized == null) {
+            return "question";
+        }
+        return normalized.replaceAll("[^a-z0-9]+", "_").replaceAll("(^_|_$)", "");
+    }
+
     private String resolveExtension(String fileName) {
         int index = fileName.lastIndexOf('.');
         if (index < 0 || index == fileName.length() - 1) {
@@ -687,10 +1207,19 @@ public class SurveyFileImportServiceImpl implements SurveyFileImportService {
         private String title;
         private String description;
         private boolean required;
+        private String branchConditionJson = "{}";
         private String settingsJson;
         private String sourceExternalId;
         private String sourcePayloadJson;
         private List<String> options = List.of();
+    }
+
+    private record StructuredQuestionMetadata(
+            String groupCode,
+            String groupTitle,
+            String rowLabel,
+            String optionSetCode
+    ) {
     }
 
     private static class QuestionBlock {

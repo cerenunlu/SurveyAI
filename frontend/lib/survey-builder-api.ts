@@ -1,6 +1,7 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import type { SurveyBuilderQuestion, SurveyBuilderSurvey, SurveyQuestionOption, SurveyQuestionType } from "@/lib/types";
+import { isMatrixQuestion } from "@/lib/survey-builder";
 
 type SurveyStatusDto = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 type QuestionTypeDto = "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING";
@@ -106,6 +107,13 @@ type UpsertSurveyQuestionOptionRequest = {
 type BuilderSettings = {
   builderType?: SurveyQuestionType;
   ratingScale?: 5 | 10;
+  groupCode?: string;
+  groupTitle?: string;
+  rowLabel?: string;
+  rowCode?: string;
+  rowKey?: string;
+  matrixType?: string;
+  matrixDescription?: string;
 };
 
 export type BuilderSaveAction = "save" | "draft" | "publish";
@@ -195,8 +203,9 @@ async function syncQuestions(
   localQuestions: SurveyBuilderQuestion[],
   existingQuestions: SurveyQuestionApiResponse[],
 ): Promise<SurveyQuestionApiResponse[]> {
+  const expandedLocalQuestions = expandBuilderQuestions(localQuestions);
   const existingById = new Map(existingQuestions.map((question) => [question.id, question]));
-  const localPersistedIds = new Set(localQuestions.filter((question) => existingById.has(question.id)).map((question) => question.id));
+  const localPersistedIds = new Set(expandedLocalQuestions.filter((question) => existingById.has(question.id)).map((question) => question.id));
 
   for (const existingQuestion of existingQuestions) {
     if (!localPersistedIds.has(existingQuestion.id)) {
@@ -223,8 +232,8 @@ async function syncQuestions(
 
   const syncedQuestions: SurveyQuestionApiResponse[] = [];
 
-  for (let index = 0; index < localQuestions.length; index += 1) {
-    const localQuestion = localQuestions[index];
+  for (let index = 0; index < expandedLocalQuestions.length; index += 1) {
+    const localQuestion = expandedLocalQuestions[index];
     const currentOrder = index + 1;
     const existingQuestion = existingById.get(localQuestion.id);
     const questionRequest = buildQuestionRequest(localQuestion, currentOrder);
@@ -364,9 +373,12 @@ function buildSurveyUpdateRequest(survey: SurveyBuilderSurvey, action: BuilderSa
 
 function buildQuestionRequest(question: SurveyBuilderQuestion, questionOrder: number): UpsertSurveyQuestionRequest {
   const parsedSettings = parseBuilderSettings(question.settingsJson);
+  const effectiveBuilderType = isGridBuilderType(parsedSettings.builderType)
+    ? parsedSettings.builderType
+    : question.type;
   const mergedSettings: BuilderSettings = {
     ...parsedSettings,
-    builderType: question.type,
+    builderType: effectiveBuilderType,
   };
 
   if (question.type === "rating_1_5") {
@@ -407,10 +419,7 @@ function mapApiSurveyToBuilder(
   survey: SurveyApiResponse,
   questions: SurveyQuestionApiResponse[],
 ): SurveyBuilderSurvey {
-  const mappedQuestions = questions
-    .slice()
-    .sort((left, right) => left.questionOrder - right.questionOrder)
-    .map(mapApiQuestionToBuilder);
+  const mappedQuestions = mapApiQuestionsToBuilderQuestions(questions);
 
   return {
     id: survey.id,
@@ -424,7 +433,7 @@ function mapApiSurveyToBuilder(
     languageCode: survey.languageCode,
     introPrompt: survey.introPrompt ?? "",
     closingPrompt: survey.closingPrompt ?? "",
-    maxRetryPerQuestion: survey.maxRetryPerQuestion ?? 2,
+    maxRetryPerQuestion: survey.maxRetryPerQuestion ?? 10,
     source: survey.sourceProvider
       ? {
           provider: survey.sourceProvider,
@@ -457,6 +466,85 @@ function mapApiQuestionToBuilder(question: SurveyQuestionApiResponse): SurveyBui
   };
 }
 
+function mapApiQuestionsToBuilderQuestions(questions: SurveyQuestionApiResponse[]): SurveyBuilderQuestion[] {
+  const sortedQuestions = questions
+    .slice()
+    .sort((left, right) => left.questionOrder - right.questionOrder);
+  const mappedQuestions: SurveyBuilderQuestion[] = [];
+
+  for (let index = 0; index < sortedQuestions.length; index += 1) {
+    const current = sortedQuestions[index];
+    if (!isGridQuestion(current)) {
+      mappedQuestions.push(mapApiQuestionToBuilder(current));
+      continue;
+    }
+
+    const settings = parseBuilderSettings(current.settingsJson);
+    const groupCode = settings.groupCode || current.code;
+    const groupQuestions = [current];
+    let nextIndex = index + 1;
+    while (nextIndex < sortedQuestions.length) {
+      const candidate = sortedQuestions[nextIndex];
+      if (!isGridQuestion(candidate)) {
+        break;
+      }
+      const candidateSettings = parseBuilderSettings(candidate.settingsJson);
+      if ((candidateSettings.groupCode || candidate.code) !== groupCode || candidate.questionType !== current.questionType) {
+        break;
+      }
+      groupQuestions.push(candidate);
+      nextIndex += 1;
+    }
+
+    mappedQuestions.push(buildGridQuestionFromApi(groupQuestions));
+    index = nextIndex - 1;
+  }
+
+  return mappedQuestions;
+}
+
+function buildGridQuestionFromApi(groupQuestions: SurveyQuestionApiResponse[]): SurveyBuilderQuestion {
+  const firstQuestion = groupQuestions[0];
+  const settings = parseBuilderSettings(firstQuestion.settingsJson);
+  const baseSettings = parseJsonObject(firstQuestion.settingsJson);
+  delete baseSettings.rowLabel;
+  delete baseSettings.rowCode;
+  delete baseSettings.rowKey;
+  const builderType = resolveGridBuilderType(firstQuestion, settings);
+  baseSettings.builderType = builderType;
+  baseSettings.groupCode = settings.groupCode || firstQuestion.code;
+  baseSettings.groupTitle = settings.groupTitle || firstQuestion.title;
+  baseSettings.matrixType = firstQuestion.questionType === "RATING" ? "GRID_RATING" : "GRID_SINGLE_CHOICE";
+  if (settings.matrixDescription || firstQuestion.description) {
+    baseSettings.matrixDescription = settings.matrixDescription || firstQuestion.description;
+  }
+
+  return {
+    id: `matrix-${settings.groupCode || firstQuestion.code}-${firstQuestion.id}`,
+    code: settings.groupCode || firstQuestion.code,
+    type: builderType,
+    title: settings.groupTitle || firstQuestion.title,
+    description: settings.matrixDescription || firstQuestion.description || "",
+    required: firstQuestion.required,
+    retryPrompt: firstQuestion.retryPrompt ?? "",
+    branchConditionJson: normalizeJsonString(firstQuestion.branchConditionJson),
+    settingsJson: JSON.stringify(baseSettings),
+    sourceExternalId: firstQuestion.sourceExternalId ?? undefined,
+    sourcePayloadJson: firstQuestion.sourcePayloadJson ?? undefined,
+    options: firstQuestion.questionType === "RATING"
+      ? buildRatingGridOptions(settings.ratingScale === 10 ? 10 : 5)
+      : mapQuestionOptions(firstQuestion.options),
+    matrixRows: groupQuestions.map((question) => {
+      const rowSettings = parseBuilderSettings(question.settingsJson);
+      return {
+        id: question.id,
+        label: rowSettings.rowLabel || question.title,
+        code: rowSettings.rowCode || undefined,
+      };
+    }),
+  };
+}
+
 function mapQuestionOptions(options: SurveyQuestionOptionApiResponse[]): SurveyQuestionOption[] | undefined {
   if (options.length === 0) {
     return undefined;
@@ -474,8 +562,15 @@ function mapQuestionOptions(options: SurveyQuestionOptionApiResponse[]): SurveyQ
 }
 
 function mapApiQuestionTypeToBuilder(questionType: QuestionTypeDto, settings: BuilderSettings): SurveyQuestionType {
-  if (settings.builderType) {
+  if (settings.builderType && isBuilderQuestionType(settings.builderType)) {
     return settings.builderType;
+  }
+
+  if (questionType === "RATING" && settings.matrixType === "GRID_RATING" && settings.groupCode) {
+    return settings.ratingScale === 10 ? "rating_grid_1_10" : "rating_grid_1_5";
+  }
+  if (questionType === "SINGLE_CHOICE" && settings.matrixType === "GRID_SINGLE_CHOICE" && settings.groupCode) {
+    return "single_choice_grid";
   }
 
   switch (questionType) {
@@ -492,6 +587,12 @@ function mapApiQuestionTypeToBuilder(questionType: QuestionTypeDto, settings: Bu
 }
 
 function mapBuilderQuestionTypeToApi(type: SurveyQuestionType): QuestionTypeDto {
+  if (type === "single_choice_grid") {
+    return "SINGLE_CHOICE";
+  }
+  if (type === "rating_grid_1_5" || type === "rating_grid_1_10") {
+    return "RATING";
+  }
   if (type === "single_choice" || type === "dropdown" || type === "yes_no") {
     return "SINGLE_CHOICE";
   }
@@ -544,6 +645,143 @@ function parseBuilderSettings(payload: string | null | undefined): BuilderSettin
   } catch {
     return {};
   }
+}
+
+function parseJsonObject(payload: string | null | undefined): Record<string, unknown> {
+  if (!payload) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(payload) as unknown;
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? { ...(parsed as Record<string, unknown>) }
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function expandBuilderQuestions(localQuestions: SurveyBuilderQuestion[]): SurveyBuilderQuestion[] {
+  const expandedQuestions: SurveyBuilderQuestion[] = [];
+
+  localQuestions.forEach((question, questionIndex) => {
+    if (!isMatrixQuestion(question.type)) {
+      expandedQuestions.push(question);
+      return;
+    }
+
+    const matrixSettings = parseJsonObject(question.settingsJson);
+    const groupCode = normalizeCode(question.code?.trim() || `matrix_${questionIndex + 1}_${slugify(question.title)}`, `matrix_${questionIndex + 1}`);
+    const matrixTitle = requireText(question.title, "Matrix title is required");
+    const matrixDescription = toNullableText(question.description);
+    const matrixRows = (question.matrixRows ?? []).filter((row) => row.label.trim());
+    const matrixOptions = question.options ?? [];
+    const isRatingGrid = question.type === "rating_grid_1_5" || question.type === "rating_grid_1_10";
+    const ratingScale = question.type === "rating_grid_1_10" ? 10 : 5;
+
+    matrixRows.forEach((row, rowIndex) => {
+      const rowLabel = requireText(row.label, "Matrix row label is required");
+      const rowCode = normalizeCode(row.code?.trim() || slugify(rowLabel), `row_${rowIndex + 1}`);
+      const settings: BuilderSettings & Record<string, unknown> = {
+        ...matrixSettings,
+        builderType: question.type,
+        groupCode,
+        groupTitle: matrixTitle,
+        rowLabel,
+        rowCode,
+        rowKey: rowCode,
+        matrixType: isRatingGrid ? "GRID_RATING" : "GRID_SINGLE_CHOICE",
+      };
+      if (isRatingGrid) {
+        settings.ratingScale = ratingScale as 5 | 10;
+      }
+      if (matrixDescription) {
+        settings.matrixDescription = matrixDescription;
+      }
+
+      expandedQuestions.push({
+        id: row.id,
+        code: `${groupCode}_${rowCode}`,
+        type: isRatingGrid ? (ratingScale === 10 ? "rating_1_10" : "rating_1_5") : "single_choice",
+        title: rowLabel,
+        description: "",
+        required: question.required,
+        retryPrompt: question.retryPrompt,
+        branchConditionJson: question.branchConditionJson,
+        settingsJson: JSON.stringify(settings),
+        sourceExternalId: question.sourceExternalId,
+        sourcePayloadJson: question.sourcePayloadJson,
+        options: isRatingGrid
+          ? undefined
+          : matrixOptions.map((option, optionIndex) => ({
+              ...option,
+              code: option.code ?? `option_${optionIndex + 1}`,
+              value: option.value ?? `option_${optionIndex + 1}`,
+            })),
+      });
+    });
+  });
+
+  return expandedQuestions;
+}
+
+function isGridQuestion(question: SurveyQuestionApiResponse): boolean {
+  const settings = parseBuilderSettings(question.settingsJson);
+  if (question.questionType === "SINGLE_CHOICE") {
+    return settings.builderType === "single_choice_grid"
+      || (settings.matrixType === "GRID_SINGLE_CHOICE" && Boolean(settings.groupCode));
+  }
+  if (question.questionType === "RATING") {
+    return settings.builderType === "rating_grid_1_5"
+      || settings.builderType === "rating_grid_1_10"
+      || (settings.matrixType === "GRID_RATING" && Boolean(settings.groupCode));
+  }
+  return false;
+}
+
+function resolveGridBuilderType(question: SurveyQuestionApiResponse, settings: BuilderSettings): SurveyQuestionType {
+  if (question.questionType === "RATING") {
+    return settings.ratingScale === 10 ? "rating_grid_1_10" : "rating_grid_1_5";
+  }
+  return "single_choice_grid";
+}
+
+function buildRatingGridOptions(max: 5 | 10): SurveyQuestionOption[] {
+  return Array.from({ length: max }, (_, index) => {
+    const value = index + 1;
+    return {
+      id: `rating-grid-option-${value}`,
+      label: String(value),
+      code: `rating_${value}`,
+      value: String(value),
+    };
+  });
+}
+
+function isGridBuilderType(value: unknown): value is SurveyQuestionType {
+  return value === "single_choice_grid" || value === "rating_grid_1_5" || value === "rating_grid_1_10";
+}
+
+function isBuilderQuestionType(value: unknown): value is SurveyQuestionType {
+  return typeof value === "string"
+    && [
+      "short_text",
+      "long_text",
+      "yes_no",
+      "single_choice",
+      "single_choice_grid",
+      "rating_grid_1_5",
+      "rating_grid_1_10",
+      "multi_choice",
+      "dropdown",
+      "rating_1_5",
+      "rating_1_10",
+      "date",
+      "full_name",
+      "number",
+      "phone",
+    ].includes(value);
 }
 
 function normalizeJsonString(payload: string | null | undefined): string {
@@ -603,7 +841,7 @@ function sanitizeLanguageCode(value: string): string {
 
 function normalizeRetryCount(value: number): number {
   if (!Number.isFinite(value)) {
-    return 2;
+    return 10;
   }
 
   return Math.min(10, Math.max(0, Math.round(value)));

@@ -6,6 +6,7 @@ import com.yourcompany.surveyai.call.application.provider.ProviderWebhookRequest
 import com.yourcompany.surveyai.call.application.provider.VoiceExecutionProvider;
 import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.application.service.ProviderWebhookIngestionService;
+import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfigurationResolver;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
@@ -46,6 +47,7 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
     private final OperationContactRepository operationContactRepository;
     private final SurveyResponseIngestionService surveyResponseIngestionService;
     private final ProviderExecutionObservationService providerExecutionObservationService;
+    private final CallJobDispatcher callJobDispatcher;
 
     public ProviderWebhookIngestionServiceImpl(
             CallProviderRegistry callProviderRegistry,
@@ -54,7 +56,8 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
             CallJobRepository callJobRepository,
             OperationContactRepository operationContactRepository,
             SurveyResponseIngestionService surveyResponseIngestionService,
-            ProviderExecutionObservationService providerExecutionObservationService
+            ProviderExecutionObservationService providerExecutionObservationService,
+            CallJobDispatcher callJobDispatcher
     ) {
         this.callProviderRegistry = callProviderRegistry;
         this.configurationResolver = configurationResolver;
@@ -63,6 +66,7 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         this.operationContactRepository = operationContactRepository;
         this.surveyResponseIngestionService = surveyResponseIngestionService;
         this.providerExecutionObservationService = providerExecutionObservationService;
+        this.callJobDispatcher = callJobDispatcher;
     }
 
     @Override
@@ -163,6 +167,9 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
 
         if (shouldIngestSurveyResult(event)) {
             surveyResponseIngestionService.ingest(attempt, event);
+        }
+        if (isTerminal(callJob.getStatus())) {
+            callJobDispatcher.dispatchNextPreparedJob(callJob.getOperation().getId());
         }
         providerExecutionObservationService.recordWebhookOutcome(attempt, event, ProviderExecutionOutcome.ACCEPTED, "Webhook applied to internal state");
 

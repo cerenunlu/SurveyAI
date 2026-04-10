@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -45,6 +46,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class CallJobServiceImpl implements CallJobService {
+
+    private static final AtomicLong REDIAL_SEQUENCE = new AtomicLong();
 
     private static final Set<CallJobStatus> QUEUED_STATUSES = EnumSet.of(
             CallJobStatus.PENDING,
@@ -96,7 +99,7 @@ public class CallJobServiceImpl implements CallJobService {
             int page,
             int size,
             String query,
-            CallJobListStatusDto status,
+            List<CallJobListStatusDto> statuses,
             String sortBy,
             String direction
     ) {
@@ -109,7 +112,7 @@ public class CallJobServiceImpl implements CallJobService {
         Sort.Direction sortDirection = "asc".equalsIgnoreCase(direction) ? Sort.Direction.ASC : Sort.Direction.DESC;
 
         var pageResult = callJobRepository.findAll(
-                buildSpecification(operationId, companyId, normalizedQuery, status),
+                buildSpecification(operationId, companyId, normalizedQuery, statuses),
                 PageRequest.of(normalizedPage, normalizedSize, Sort.by(sortDirection, normalizedSortBy))
         );
 
@@ -176,6 +179,57 @@ public class CallJobServiceImpl implements CallJobService {
         return buildDetailDto(getCallJob(companyId, operationId, callJobId));
     }
 
+    @Override
+    @Transactional
+    public CallJobDetailResponseDto redialOperationCallJob(UUID companyId, UUID operationId, UUID callJobId) {
+        ensureOperationExists(companyId, operationId);
+        CallJob sourceJob = getCallJob(companyId, operationId, callJobId);
+        CallAttempt latestAttempt = callAttemptRepository
+                .findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(sourceJob.getId())
+                .orElse(null);
+
+        validateRedialEligibility(sourceJob, latestAttempt);
+
+        OperationContact contact = sourceJob.getOperationContact();
+        OffsetDateTime now = OffsetDateTime.now();
+        OperationContactStatus previousContactStatus = contact.getStatus();
+
+        CallJob redialJob = new CallJob();
+        redialJob.setCompany(sourceJob.getCompany());
+        redialJob.setOperation(sourceJob.getOperation());
+        redialJob.setOperationContact(contact);
+        redialJob.setStatus(CallJobStatus.PENDING);
+        redialJob.setPriority(sourceJob.getPriority() != null ? sourceJob.getPriority() : (short) 5);
+        redialJob.setScheduledFor(now);
+        redialJob.setAvailableAt(now);
+        redialJob.setAttemptCount(0);
+        redialJob.setMaxAttempts(sourceJob.getMaxAttempts() != null ? sourceJob.getMaxAttempts() : 3);
+        redialJob.setIdempotencyKey(buildRedialIdempotencyKey(sourceJob, now));
+        redialJob.setLastErrorCode(null);
+        redialJob.setLastErrorMessage(null);
+        redialJob.setLockedAt(null);
+        redialJob.setLockedBy(null);
+        redialJob = callJobRepository.save(redialJob);
+
+        contact.setStatus(OperationContactStatus.RETRY);
+        contact.setNextRetryAt(null);
+        operationContactRepository.save(contact);
+
+        try {
+            callJobDispatcher.dispatchPreparedJobs(List.of(redialJob));
+        } catch (RuntimeException error) {
+            contact.setStatus(previousContactStatus);
+            operationContactRepository.save(contact);
+            throw error;
+        }
+
+        contact.setRetryCount((contact.getRetryCount() == null ? 0 : contact.getRetryCount()) + 1);
+        contact.setNextRetryAt(null);
+        operationContactRepository.save(contact);
+
+        return buildDetailDto(getCallJob(companyId, operationId, redialJob.getId()));
+    }
+
     private void ensureOperationExists(UUID companyId, UUID operationId) {
         operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId)
                 .orElseThrow(() -> new NotFoundException("Operation not found for company: " + operationId));
@@ -190,7 +244,7 @@ public class CallJobServiceImpl implements CallJobService {
             UUID operationId,
             UUID companyId,
             String query,
-            CallJobListStatusDto status
+            List<CallJobListStatusDto> statuses
     ) {
         return (root, criteriaQuery, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -198,8 +252,8 @@ public class CallJobServiceImpl implements CallJobService {
             predicates.add(criteriaBuilder.equal(root.get("company").get("id"), companyId));
             predicates.add(criteriaBuilder.isNull(root.get("deletedAt")));
 
-            if (status != null) {
-                predicates.add(root.get("status").in(mapFilterStatuses(status)));
+            if (statuses != null && !statuses.isEmpty()) {
+                predicates.add(root.get("status").in(mapFilterStatuses(statuses)));
             }
 
             if (query != null) {
@@ -225,19 +279,24 @@ public class CallJobServiceImpl implements CallJobService {
         };
     }
 
-    private Set<CallJobStatus> mapFilterStatuses(CallJobListStatusDto status) {
-        return switch (status) {
-            case QUEUED -> QUEUED_STATUSES;
-            case IN_PROGRESS -> EnumSet.of(CallJobStatus.IN_PROGRESS);
-            case COMPLETED -> EnumSet.of(CallJobStatus.COMPLETED);
-            case FAILED -> FAILED_STATUSES;
-            case SKIPPED -> EnumSet.of(CallJobStatus.CANCELLED);
-        };
+    private Set<CallJobStatus> mapFilterStatuses(List<CallJobListStatusDto> statuses) {
+        EnumSet<CallJobStatus> mappedStatuses = EnumSet.noneOf(CallJobStatus.class);
+        for (CallJobListStatusDto status : statuses) {
+            switch (status) {
+                case QUEUED -> mappedStatuses.addAll(QUEUED_STATUSES);
+                case IN_PROGRESS -> mappedStatuses.add(CallJobStatus.IN_PROGRESS);
+                case COMPLETED -> mappedStatuses.add(CallJobStatus.COMPLETED);
+                case FAILED -> mappedStatuses.addAll(FAILED_STATUSES);
+                case SKIPPED -> mappedStatuses.add(CallJobStatus.CANCELLED);
+            }
+        }
+        return mappedStatuses;
     }
 
     private CallJobResponseDto toDto(CallJob callJob) {
         OperationContact contact = callJob.getOperationContact();
         String personName = buildPersonName(contact);
+        int answerCount = resolveAnswerCount(callJob);
 
         return new CallJobResponseDto(
                 callJob.getId(),
@@ -252,10 +311,30 @@ public class CallJobServiceImpl implements CallJobService {
                 callJob.getMaxAttempts() == null ? 0 : callJob.getMaxAttempts(),
                 callJob.getLastErrorCode(),
                 callJob.getLastErrorMessage(),
+                answerCount,
                 buildLastResultSummary(callJob),
                 callJob.getCreatedAt(),
                 callJob.getUpdatedAt()
         );
+    }
+
+    private int resolveAnswerCount(CallJob callJob) {
+        List<CallAttempt> attempts = callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(callJob.getId()).stream()
+                .filter(attempt -> attempt.getDeletedAt() == null)
+                .toList();
+        if (attempts.isEmpty()) {
+            return 0;
+        }
+
+        Map<UUID, SurveyResponse> responsesByAttemptId = loadResponsesByAttemptId(attempts);
+        Map<UUID, List<SurveyAnswer>> answersByResponseId = loadAnswersByResponseId(responsesByAttemptId.values());
+
+        return attempts.stream()
+                .map(attempt -> toSurveyResponseSummary(responsesByAttemptId.get(attempt.getId()), answersByResponseId))
+                .filter(Objects::nonNull)
+                .findFirst()
+                .map(summary -> summary.validAnswerCount() > 0 ? summary.validAnswerCount() : summary.answerCount())
+                .orElse(0);
     }
 
     private CallJobDetailResponseDto buildDetailDto(CallJob callJob) {
@@ -330,6 +409,7 @@ public class CallJobServiceImpl implements CallJobService {
                 FAILED_STATUSES.contains(callJob.getStatus()),
                 resolveFailureReason(callJob, latestAttempt),
                 isRetryable(callJob, latestAttempt),
+                isRedialable(callJob, latestAttempt),
                 partialResponseDataExists,
                 transcriptSummary,
                 transcriptText,
@@ -447,20 +527,35 @@ public class CallJobServiceImpl implements CallJobService {
     }
 
     private void validateRetryEligibility(CallJob callJob, CallAttempt latestAttempt) {
-        if (!FAILED_STATUSES.contains(callJob.getStatus())) {
-            throw new ValidationException("Only failed call jobs can be retried");
-        }
-        if ((callJob.getAttemptCount() == null ? 0 : callJob.getAttemptCount()) >= (callJob.getMaxAttempts() == null ? 0 : callJob.getMaxAttempts())) {
-            throw new ValidationException("Call job retry limit has been reached");
-        }
         if (latestAttempt != null && ACTIVE_ATTEMPT_STATUSES.contains(latestAttempt.getStatus())) {
             throw new ValidationException("Call job already has an active execution attempt");
         }
     }
 
+    private void validateRedialEligibility(CallJob callJob, CallAttempt latestAttempt) {
+        if (!isRedialable(callJob, latestAttempt)) {
+            throw new ValidationException("Call job cannot be redialed while it has an active execution attempt");
+        }
+    }
+
     private boolean isRetryable(CallJob callJob, CallAttempt latestAttempt) {
-        return FAILED_STATUSES.contains(callJob.getStatus())
-                && (callJob.getAttemptCount() == null ? 0 : callJob.getAttemptCount()) < (callJob.getMaxAttempts() == null ? 0 : callJob.getMaxAttempts())
-                && (latestAttempt == null || !ACTIVE_ATTEMPT_STATUSES.contains(latestAttempt.getStatus()));
+        return latestAttempt == null || !ACTIVE_ATTEMPT_STATUSES.contains(latestAttempt.getStatus());
+    }
+
+    private boolean isRedialable(CallJob callJob, CallAttempt latestAttempt) {
+        if (latestAttempt != null && ACTIVE_ATTEMPT_STATUSES.contains(latestAttempt.getStatus())) {
+            return false;
+        }
+        return true;
+    }
+
+    private String buildRedialIdempotencyKey(CallJob sourceJob, OffsetDateTime now) {
+        return sourceJob.getOperation().getId()
+                + ":"
+                + sourceJob.getOperationContact().getId()
+                + ":redial:"
+                + now.toInstant().toEpochMilli()
+                + ":"
+                + REDIAL_SEQUENCE.incrementAndGet();
     }
 }

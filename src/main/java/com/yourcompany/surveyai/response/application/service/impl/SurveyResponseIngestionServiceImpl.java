@@ -115,9 +115,20 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
                 }
 
                 SurveyQuestion question = questionOptional.get();
-                SurveyAnswer surveyAnswer = surveyAnswerRepository
-                        .findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(savedResponse.getId(), question.getId())
-                        .orElseGet(() -> createSurveyAnswer(savedResponse, question));
+                Optional<SurveyAnswer> existingAnswer = surveyAnswerRepository
+                        .findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(savedResponse.getId(), question.getId());
+                if (existingAnswer.isPresent() && shouldPreserveExistingAnswer(existingAnswer.get())) {
+                    log.info(
+                            "Skipping provider answer overwrite for live tool answer. callAttemptId={} providerCallId={} surveyResponseId={} questionCode={}",
+                            callAttempt.getId(),
+                            callAttempt.getProviderCallId(),
+                            savedResponse.getId(),
+                            question.getCode()
+                    );
+                    continue;
+                }
+
+                SurveyAnswer surveyAnswer = existingAnswer.orElseGet(() -> createSurveyAnswer(savedResponse, question));
                 applyAnswer(surveyAnswer, question, optionsByQuestionId.getOrDefault(question.getId(), List.of()), answer);
                 surveyAnswerRepository.save(surveyAnswer);
                 upsertedAnswers++;
@@ -257,6 +268,21 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
         }
 
         surveyAnswer.setAnswerJson(buildAnswerJson(question.getQuestionType(), ingestedAnswer, surveyAnswer));
+    }
+
+    private boolean shouldPreserveExistingAnswer(SurveyAnswer existingAnswer) {
+        return existingAnswer.isValid() && !hasProviderMetadata(existingAnswer.getAnswerJson());
+    }
+
+    private boolean hasProviderMetadata(String answerJson) {
+        if (answerJson == null || answerJson.isBlank()) {
+            return false;
+        }
+        try {
+            return objectMapper.readTree(answerJson).has("providerMetadata");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private Optional<SurveyQuestion> resolveQuestion(List<SurveyQuestion> questions, IngestedSurveyAnswer answer) {

@@ -164,7 +164,64 @@ class SurveyResponseIngestionServiceImplTest {
 
         assertThat(savedResponses).isNotEmpty();
         assertThat(savedResponses.getLast().getId()).isEqualTo(existingResponse.getId());
-        assertThat(savedAnswers).hasSize(2);
+        assertThat(savedAnswers).hasSize(1);
+        assertThat(savedAnswers.getFirst().getSurveyQuestion().getCode()).isEqualTo("nps");
+    }
+
+    @Test
+    void ingest_preservesExistingValidLiveToolAnswerWhenProviderPayloadDisagrees() {
+        TestFixture fixture = buildFixture();
+        SurveyResponse existingResponse = new SurveyResponse();
+        existingResponse.setId(UUID.randomUUID());
+        existingResponse.setCompany(fixture.company());
+        existingResponse.setSurvey(fixture.survey());
+        existingResponse.setOperation(fixture.operation());
+        existingResponse.setOperationContact(fixture.contact());
+        existingResponse.setCallAttempt(fixture.callAttempt());
+        existingResponse.setStatus(SurveyResponseStatus.PARTIAL);
+        existingResponse.setCompletionPercent(BigDecimal.ZERO);
+        existingResponse.setRespondentPhone(fixture.contact().getPhoneNumber());
+        existingResponse.setStartedAt(OffsetDateTime.now());
+        existingResponse.setTranscriptJson("{}");
+
+        SurveyAnswer existingAnswer = new SurveyAnswer();
+        existingAnswer.setId(UUID.randomUUID());
+        existingAnswer.setCompany(fixture.company());
+        existingAnswer.setSurveyResponse(existingResponse);
+        existingAnswer.setSurveyQuestion(fixture.choiceQuestion());
+        existingAnswer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        existingAnswer.setSelectedOption(fixture.yesOption());
+        existingAnswer.setAnswerText("Yes");
+        existingAnswer.setRawInputText("Yes");
+        existingAnswer.setRetryCount(1);
+        existingAnswer.setValid(true);
+        existingAnswer.setAnswerJson("""
+                {
+                  "questionType": "SINGLE_CHOICE",
+                  "rawText": "Yes",
+                  "normalizedText": "Yes",
+                  "selectedOptionId": "%s"
+                }
+                """.formatted(fixture.yesOption().getId()));
+
+        when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(fixture.callAttempt().getId())).thenReturn(Optional.of(existingResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey().getId()))
+                .thenReturn(List.of(fixture.choiceQuestion(), fixture.ratingQuestion()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.choiceQuestion().getId()))
+                .thenReturn(List.of(fixture.yesOption(), fixture.noOption()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.ratingQuestion().getId()))
+                .thenReturn(List.of());
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(existingResponse.getId(), fixture.choiceQuestion().getId()))
+                .thenReturn(Optional.of(existingAnswer));
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(existingResponse.getId(), fixture.ratingQuestion().getId()))
+                .thenReturn(Optional.empty());
+
+        service.ingest(fixture.callAttempt(), fixture.completedWebhook());
+
+        assertThat(savedAnswers).hasSize(1);
+        assertThat(savedAnswers.getFirst().getSurveyQuestion().getCode()).isEqualTo("nps");
+        assertThat(existingAnswer.getSelectedOption()).isEqualTo(fixture.yesOption());
+        assertThat(existingAnswer.getAnswerText()).isEqualTo("Yes");
     }
 
     @Test

@@ -105,14 +105,11 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
             throw new ValidationException("Question cannot be deleted because answers already exist");
         }
 
-        OffsetDateTime deletedAt = OffsetDateTime.now();
         for (SurveyQuestionOption option : surveyQuestionOptionRepository
                 .findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(questionId)) {
-            option.setDeletedAt(deletedAt);
-            surveyQuestionOptionRepository.save(option);
+            surveyQuestionOptionRepository.delete(option);
         }
-        question.setDeletedAt(deletedAt);
-        surveyQuestionRepository.save(question);
+        surveyQuestionRepository.delete(question);
     }
 
     @Override

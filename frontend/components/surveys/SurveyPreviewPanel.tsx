@@ -1,4 +1,4 @@
-import { isChoiceQuestion, isDropdownQuestion, isMultiSelectQuestion, isRatingQuestion, questionTypeLabels } from "@/lib/survey-builder";
+import { isChoiceQuestion, isDropdownQuestion, isMultiSelectQuestion, isRatingGridQuestion, isRatingQuestion, questionTypeLabels } from "@/lib/survey-builder";
 import type { SurveyBuilderSurvey } from "@/lib/types";
 
 export function SurveyPreviewPanel({ survey }: { survey: SurveyBuilderSurvey }) {
@@ -52,6 +52,48 @@ export function SurveyPreviewPanel({ survey }: { survey: SurveyBuilderSurvey }) 
 }
 
 function renderPreviewInput(question: SurveyBuilderSurvey["questions"][number]) {
+  if (question.type === "single_choice_grid" || isRatingGridQuestion(question.type)) {
+    const rows = question.matrixRows ?? [];
+    const options = question.options ?? [];
+    const isRatingGrid = isRatingGridQuestion(question.type);
+
+    return (
+      <div className="matrix-preview-table-wrap">
+        <div className="matrix-preview-table">
+          <div className="matrix-preview-head">
+            <div className="matrix-preview-corner">{isRatingGrid ? "Maddeler" : "Satırlar"}</div>
+            <div className="matrix-preview-columns">
+              {options.map((option) => (
+                <div key={option.id} className="matrix-preview-column">
+                  {option.label}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="matrix-preview-body">
+            {rows.map((row, index) => (
+              <div key={row.id} className="matrix-preview-row">
+                <div className="matrix-preview-row-label">
+                  <span className="matrix-preview-row-index">{index + 1}</span>
+                  <span>{row.label}</span>
+                </div>
+                <div className="matrix-preview-row-options">
+                  {options.map((option) => (
+                    <label key={`${row.id}-${option.id}`} className="matrix-preview-cell">
+                      <span className="choice-marker is-radio" />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (question.type === "yes_no") {
     return (
       <div className="choice-pill-row">

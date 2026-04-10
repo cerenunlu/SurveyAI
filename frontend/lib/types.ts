@@ -41,6 +41,9 @@ export type SurveyQuestionType =
   | "long_text"
   | "yes_no"
   | "single_choice"
+  | "single_choice_grid"
+  | "rating_grid_1_5"
+  | "rating_grid_1_10"
   | "multi_choice"
   | "dropdown"
   | "rating_1_5"
@@ -49,6 +52,12 @@ export type SurveyQuestionType =
   | "full_name"
   | "number"
   | "phone";
+
+export type SurveyQuestionMatrixRow = {
+  id: string;
+  label: string;
+  code?: string;
+};
 
 export type SurveyQuestionOption = {
   id: string;
@@ -77,6 +86,7 @@ export type SurveyBuilderQuestion = {
   sourceExternalId?: string;
   sourcePayloadJson?: string;
   options?: SurveyQuestionOption[];
+  matrixRows?: SurveyQuestionMatrixRow[];
 };
 
 export type SurveyBuilderSurvey = {
@@ -155,6 +165,7 @@ export type CallJob = {
   maxAttempts: number;
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
+  answerCount: number;
   lastResultSummary: string | null;
   createdAt: string;
   updatedAt: string;
@@ -214,6 +225,7 @@ export type CallJobDetail = {
   failed: boolean;
   failureReason: string | null;
   retryable: boolean;
+  redialable: boolean;
   partialResponseDataExists: boolean;
   transcriptSummary: string | null;
   transcriptText: string | null;
@@ -297,7 +309,36 @@ export type OperationAnalyticsQuestionSummary = {
   averageRating: number | null;
   emptyStateMessage: string | null;
   breakdown: OperationAnalyticsBreakdownItem[];
+  specialAnswerBreakdown: OperationAnalyticsBreakdownItem[];
   sampleResponses: string[];
+};
+
+export type OperationAnalyticsQuestionGroupRow = {
+  questionId: string;
+  questionCode: string;
+  questionOrder: number;
+  rowKey: string;
+  rowLabel: string;
+  answeredCount: number;
+  responseRate: number;
+};
+
+export type OperationAnalyticsQuestionGroupSeries = {
+  key: string;
+  label: string;
+  data: number[];
+};
+
+export type OperationAnalyticsQuestionGroupSummary = {
+  groupCode: string;
+  groupTitle: string;
+  chartKind: "GROUPED_CHOICE" | "GROUPED_MULTI_CHOICE";
+  optionSetCode: string | null;
+  respondedContactCount: number;
+  answeredRowCount: number;
+  emptyStateMessage: string | null;
+  rows: OperationAnalyticsQuestionGroupRow[];
+  series: OperationAnalyticsQuestionGroupSeries[];
 };
 
 export type OperationAnalyticsTrendPoint = {
@@ -332,6 +373,7 @@ export type OperationAnalytics = {
   invalidResponses: number;
   completionRate: number;
   responseRate: number;
+  personResponseRate: number;
   contactReachRate: number;
   participationRate: number;
   averageCompletionPercent: number;
@@ -341,6 +383,7 @@ export type OperationAnalytics = {
   outcomeBreakdown: OperationAnalyticsBreakdownItem[];
   audienceBreakdowns: OperationAnalyticsAudienceBreakdown[];
   questionSummaries: OperationAnalyticsQuestionSummary[];
+  questionGroups: OperationAnalyticsQuestionGroupSummary[];
   responseTrend: OperationAnalyticsTrendPoint[];
 };
 

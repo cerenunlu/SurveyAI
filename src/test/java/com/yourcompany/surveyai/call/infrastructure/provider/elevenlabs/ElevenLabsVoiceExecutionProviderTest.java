@@ -86,6 +86,75 @@ class ElevenLabsVoiceExecutionProviderTest {
         assertThat(payload).contains("survey_submit_answer");
         assertThat(payload).contains(request.operation().getName());
         assertThat(payload).contains(request.survey().getName());
+        assertThat(payload).contains("\"first_message\":\"Hello from SurveyAI\"");
+        assertThat(payload).contains("If the opening message asks for permission to continue");
+        assertThat(payload).contains("After the callee responds to the opening permission question, immediately call `survey_submit_answer`.");
+        assertThat(payload).contains("Do this even if the response is short");
+    }
+
+    @Test
+    void dispatchCallJob_includesGeneratedFirstMessageWhenSurveyIntroIsMissing() {
+        ProviderDispatchRequest request = buildRequest();
+        request.survey().setIntroPrompt(null);
+        VoiceProviderConfiguration configuration = configuration(false);
+        when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
+                {
+                  "conversation_id": "conv_123"
+                }
+                """);
+
+        provider.dispatchCallJob(request, configuration);
+
+        org.mockito.ArgumentCaptor<String> payloadCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
+        String payload = payloadCaptor.getValue();
+
+        assertThat(payload).contains("\"first_message\":\"Hello Aylin Yilmaz, this is SurveyAI calling with a short survey.\"");
+    }
+
+    @Test
+    void dispatchCallJob_includesSurveyLanguageOverrideForTurkishSurvey() {
+        ProviderDispatchRequest request = buildRequest();
+        request.survey().setLanguageCode("tr");
+        VoiceProviderConfiguration configuration = configuration(false);
+        when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
+                {
+                  "conversation_id": "conv_123"
+                }
+                """);
+
+        provider.dispatchCallJob(request, configuration);
+
+        org.mockito.ArgumentCaptor<String> payloadCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
+        String payload = payloadCaptor.getValue();
+
+        assertThat(payload).contains("\"language\":\"tr\"");
+    }
+
+    @Test
+    void dispatchCallJob_stripsVoiceDirectionTagsFromConfiguredPrompts() {
+        ProviderDispatchRequest request = buildRequest();
+        request.survey().setIntroPrompt("[happy] Hello from SurveyAI");
+        request.survey().setClosingPrompt("[sad] Thank you for your time");
+        VoiceProviderConfiguration configuration = configuration(false);
+        when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
+                {
+                  "conversation_id": "conv_123"
+                }
+                """);
+
+        provider.dispatchCallJob(request, configuration);
+
+        org.mockito.ArgumentCaptor<String> payloadCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
+        String payload = payloadCaptor.getValue();
+
+        assertThat(payload).contains("\"first_message\":\"Hello from SurveyAI\"");
+        assertThat(payload).contains("\"survey_intro\":\"Hello from SurveyAI\"");
+        assertThat(payload).contains("\"survey_closing\":\"Thank you for your time\"");
+        assertThat(payload).doesNotContain("[happy]");
+        assertThat(payload).doesNotContain("[sad]");
     }
 
     @Test
