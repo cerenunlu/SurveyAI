@@ -20,6 +20,7 @@ import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
 import com.yourcompany.surveyai.operation.domain.enums.OperationStatus;
 import com.yourcompany.surveyai.operation.repository.OperationContactRepository;
 import com.yourcompany.surveyai.operation.repository.OperationRepository;
+import com.yourcompany.surveyai.operation.support.OperationContactPhoneResolver;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import java.time.OffsetDateTime;
@@ -27,8 +28,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 import jakarta.persistence.criteria.Predicate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -47,19 +50,22 @@ public class OperationContactServiceImpl implements OperationContactService {
     private final CallJobRepository callJobRepository;
     private final CallJobDispatcher callJobDispatcher;
     private final Validator validator;
+    private final boolean allowDuplicatePhoneNumbersForDev;
 
     public OperationContactServiceImpl(
             OperationRepository operationRepository,
             OperationContactRepository operationContactRepository,
             CallJobRepository callJobRepository,
             CallJobDispatcher callJobDispatcher,
-            Validator validator
+            Validator validator,
+            @Value("${surveyai.dev.allow-duplicate-operation-contact-phone-numbers:false}") boolean allowDuplicatePhoneNumbersForDev
     ) {
         this.operationRepository = operationRepository;
         this.operationContactRepository = operationContactRepository;
         this.callJobRepository = callJobRepository;
         this.callJobDispatcher = callJobDispatcher;
         this.validator = validator;
+        this.allowDuplicatePhoneNumbersForDev = allowDuplicatePhoneNumbersForDev;
     }
 
     @Override
@@ -212,6 +218,16 @@ public class OperationContactServiceImpl implements OperationContactService {
     }
 
     private Set<String> ensureNoDuplicatePhoneNumbers(List<OperationContactInput> contacts) {
+        if (allowDuplicatePhoneNumbersForDev) {
+            Set<String> normalizedPhoneNumbers = new HashSet<>();
+            for (OperationContactInput input : contacts) {
+                String normalizedPhoneNumber = normalizePhoneNumber(input.getPhoneNumber());
+                validatePhoneNumber(normalizedPhoneNumber);
+                normalizedPhoneNumbers.add(normalizedPhoneNumber);
+            }
+            return normalizedPhoneNumbers;
+        }
+
         Set<String> seenPhoneNumbers = new HashSet<>();
 
         for (OperationContactInput input : contacts) {
@@ -227,6 +243,9 @@ public class OperationContactServiceImpl implements OperationContactService {
     }
 
     private void ensurePhoneNumbersDoNotAlreadyExist(Operation operation, Set<String> normalizedPhoneNumbers) {
+        if (allowDuplicatePhoneNumbersForDev) {
+            return;
+        }
         if (normalizedPhoneNumbers.isEmpty()) {
             return;
         }
@@ -253,8 +272,13 @@ public class OperationContactServiceImpl implements OperationContactService {
         contact.setCompany(operation.getCompany());
         contact.setOperation(operation);
         contact.setFirstName(input.getName().trim());
-        contact.setPhoneNumber(normalizedPhoneNumber);
-        contact.setMetadataJson("{}");
+        if (allowDuplicatePhoneNumbersForDev) {
+            contact.setPhoneNumber(generateSyntheticStoredPhoneNumber());
+            contact.setMetadataJson(OperationContactPhoneResolver.augmentMetadataWithOriginalPhone("{}", normalizedPhoneNumber));
+        } else {
+            contact.setPhoneNumber(normalizedPhoneNumber);
+            contact.setMetadataJson("{}");
+        }
         contact.setStatus(OperationContactStatus.PENDING);
         contact.setRetryCount(0);
         return contact;
@@ -315,13 +339,18 @@ public class OperationContactServiceImpl implements OperationContactService {
         return digitsOnly;
     }
 
+    private String generateSyntheticStoredPhoneNumber() {
+        long value = Math.abs(ThreadLocalRandom.current().nextLong(100_000_000_000L, 999_999_999_999_999L));
+        return Long.toString(value);
+    }
+
     private OperationContactResponseDto toDto(OperationContact contact) {
         return new OperationContactResponseDto(
                 contact.getId(),
                 contact.getCompany().getId(),
                 contact.getOperation().getId(),
                 contact.getFirstName(),
-                contact.getPhoneNumber(),
+                OperationContactPhoneResolver.resolveDisplayPhoneNumber(contact),
                 contact.getStatus(),
                 contact.getCreatedAt(),
                 contact.getUpdatedAt()

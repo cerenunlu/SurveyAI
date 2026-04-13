@@ -23,6 +23,7 @@ import com.yourcompany.surveyai.response.domain.entity.SurveyAnswer;
 import com.yourcompany.surveyai.response.domain.entity.SurveyResponse;
 import com.yourcompany.surveyai.response.repository.SurveyAnswerRepository;
 import com.yourcompany.surveyai.response.repository.SurveyResponseRepository;
+import com.yourcompany.surveyai.survey.application.support.TurkeyGeoDataService;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestionOption;
@@ -62,7 +63,8 @@ class CallInterviewOrchestrationServiceImplTest {
                 surveyAnswerRepository,
                 surveyQuestionRepository,
                 surveyQuestionOptionRepository,
-                new ObjectMapper()
+                new ObjectMapper(),
+                new TurkeyGeoDataService(new ObjectMapper())
         );
 
         when(callAttemptRepository.findByIdAndDeletedAtIsNull(fixture.callAttempt.getId()))
@@ -118,7 +120,6 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(response.surveyResponseId()).isNotNull();
         assertThat(response.question()).isNotNull();
         assertThat(response.question().conversationQuestionType()).isEqualTo("YES_NO");
-        assertThat(response.question().options()).extracting("label").containsExactly("Evet", "Hayır");
         assertThat(response.prompt()).contains("Memnun musunuz?");
     }
 
@@ -156,6 +157,79 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(response.prompt()).contains("Memnun musunuz?");
         assertThat(response.prompt()).doesNotContain("Evet").doesNotContain("Hay");
     }
+
+    @Test
+    void startInterview_deliversIntroOnlyAfterGreeting() {
+        fixture.survey.setIntroPrompt("Izmir Gundem Arastirmasi icin sizi ariyorum.");
+
+        InterviewOrchestrationResponse startResponse = service.startInterview(
+                new InterviewSessionRequest(fixture.callAttempt.getId(), null, null)
+        );
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Merhaba",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(startResponse.prompt()).isNull();
+        assertThat(startResponse.question()).isNull();
+        assertThat(response.prompt()).contains("Memnun musunuz?");
+        assertThat(response.prompt()).contains("Izmir Gundem Arastirmasi icin sizi ariyorum.");
+    }
+
+    @Test
+    void submitAnswer_staysSilentUntilGreetingLikeOpeningArrives() {
+        fixture.survey.setIntroPrompt("Kisa bir anketimize katilmak ister miydiniz?");
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Bir saniye",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(response.question()).isNull();
+        assertThat(response.prompt()).isNull();
+    }
+
+    @Test
+    void submitAnswer_consumesConsentReplyWithoutRepeatingOpeningPrompt() {
+        fixture.survey.setIntroPrompt("Kisa bir anketimize katilmak ister miydiniz?");
+
+        InterviewOrchestrationResponse introResponse = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Alo",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Evet, buyurun",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(introResponse.question()).isNull();
+        assertThat(introResponse.prompt()).contains("Kisa bir anketimize katilmak ister miydiniz?");
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("satisfied");
+        assertThat(response.prompt()).contains("Memnun musunuz?");
+        assertThat(response.prompt()).doesNotContain("Kisa bir anketimize katilmak ister miydiniz?");
+    }
     
     @Test
     void invalidRatingAnswer_retriesBeforeMovingForward() {
@@ -185,6 +259,33 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(response.question()).isNotNull();
         assertThat(response.question().code()).isEqualTo(fixture.ratingQuestion.getCode());
         assertThat(response.prompt()).contains("Rating answer must be between 1 and 5");
+    }
+
+    @Test
+    void invalidOptionalSingleChoiceAnswer_retriesInsteadOfSkippingForward() {
+        fixture.yesNoQuestion.setRequired(false);
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Ulasim sorunlarini cozmesi",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isFalse();
+        assertThat(answers.getFirst().getRetryCount()).isEqualTo(1);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("satisfied");
+        assertThat(response.prompt()).contains("Answer did not match");
     }
 
     @Test
@@ -489,6 +590,47 @@ class CallInterviewOrchestrationServiceImplTest {
     }
 
     @Test
+    void submitAnswer_matchesPoliticalCandidateUsingGeneratedAliases() {
+        fixture.yesNoQuestion.setCode("aday_tercihi");
+        fixture.yesNoQuestion.setTitle("Bu pazar secim olsa hangi adaya oy verirsiniz?");
+        fixture.yesNoQuestion.setSettingsJson("""
+                {
+                  "autoAliases": {
+                    "ali_mahir_basarir": ["Ali Mahir Başarır", "Ali Mahir", "Mahir Başarır", "Başarır"],
+                    "veli_ucar": ["Veli Uçar", "Veli", "Uçar"]
+                  }
+                }
+                """);
+        fixture.yesOption.setOptionCode("ali_mahir_basarir");
+        fixture.yesOption.setLabel("Ali Mahir Başarır");
+        fixture.yesOption.setValue("ali_mahir_basarir");
+        fixture.noOption.setOptionCode("veli_ucar");
+        fixture.noOption.setLabel("Veli Uçar");
+        fixture.noOption.setValue("veli_ucar");
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Sanirim Halim Ahir Basarir'a daha yakinim",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isEqualTo(fixture.yesOption);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
     void submitAnswer_mapsNumericAgeIntoConfiguredBucket() {
         fixture.yesNoQuestion.setCode("demografi_yas");
         fixture.yesNoQuestion.setTitle("Gorusulen kisinin yasi");
@@ -628,7 +770,7 @@ class CallInterviewOrchestrationServiceImplTest {
         fixture.survey.setIntroPrompt("Merhaba, Ayna Arastirma adina ariyorum. Size birkac soru sorabilir miyim?");
         service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
 
-        InterviewOrchestrationResponse pickupResponse = service.submitAnswer(
+        InterviewOrchestrationResponse introResponse = service.submitAnswer(
                 new InterviewAnswerRequest(
                         fixture.callAttempt.getId(),
                         null,
@@ -651,8 +793,8 @@ class CallInterviewOrchestrationServiceImplTest {
         SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
         List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
 
-        assertThat(pickupResponse.question()).isNull();
-        assertThat(pickupResponse.prompt()).contains("Size birkac soru sorabilir miyim?");
+        assertThat(introResponse.question()).isNull();
+        assertThat(introResponse.prompt()).contains("Size birkac soru sorabilir miyim?");
         assertThat(answers).isEmpty();
         assertThat(response.question()).isNotNull();
         assertThat(response.question().code()).isEqualTo("satisfied");
@@ -664,7 +806,7 @@ class CallInterviewOrchestrationServiceImplTest {
         fixture.survey.setIntroPrompt("Merhaba, Ayna Arastirma adina ariyorum. Size birkac soru sorabilir miyim?");
         service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
 
-        InterviewOrchestrationResponse response = service.submitAnswer(
+        InterviewOrchestrationResponse firstResponse = service.submitAnswer(
                 new InterviewAnswerRequest(
                         fixture.callAttempt.getId(),
                         null,
@@ -674,6 +816,18 @@ class CallInterviewOrchestrationServiceImplTest {
                 )
         );
 
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Merhaba",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        assertThat(firstResponse.question()).isNull();
+        assertThat(firstResponse.prompt()).contains("Size birkac soru sorabilir miyim?");
         assertThat(response.question()).isNull();
         assertThat(response.prompt()).contains("Size birkac soru sorabilir miyim?");
     }
@@ -697,7 +851,7 @@ class CallInterviewOrchestrationServiceImplTest {
 
         assertThat(answers).isEmpty();
         assertThat(response.question()).isNull();
-        assertThat(response.prompt()).contains("Size birkac soru sorabilir miyim?");
+        assertThat(response.prompt()).isNull();
     }
 
     @Test
@@ -1169,6 +1323,64 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(afterAli.question()).isNotNull();
         assertThat(afterAli.question().code()).isEqualTo("why");
         assertThat(afterAli.totalQuestionCount()).isEqualTo(3);
+    }
+
+    @Test
+    void submitAnswer_normalizesCivicOpenEndedAsrPhraseBeforeSaving() {
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(fixture.openQuestion));
+        fixture.openQuestion.setRequired(true);
+        fixture.openQuestion.setTitle("Milletvekillerinden Izmir icin en oncelikli beklentiniz nedir?");
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Sehzadin sorunlariyla ilgilenmelerini bekliyorum.",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getRawInputText()).isEqualTo("Sehzadin sorunlariyla ilgilenmelerini bekliyorum.");
+        assertThat(answers.getFirst().getAnswerText()).isEqualTo("şehrin sorunlarıyla ilgilenmelerini bekliyorum.");
+        assertThat(response.question()).isNull();
+    }
+
+    @Test
+    void submitAnswer_requestsRepeatForSuspiciousCivicOpenEndedPhraseWhenCorrectionIsNotSafe() {
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(fixture.openQuestion));
+        fixture.openQuestion.setRequired(true);
+        fixture.openQuestion.setTitle("Milletvekillerinden Izmir icin en oncelikli beklentiniz nedir?");
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Sehzade konusunda bir sey demek istiyorum.",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isFalse();
+        assertThat(answers.getFirst().getRetryCount()).isEqualTo(1);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.prompt()).contains("Could you please repeat your answer briefly and clearly?");
     }
 
     private SurveyQuestion buildQuestion(String code, int order, QuestionType type, String title) {

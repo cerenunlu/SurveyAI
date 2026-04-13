@@ -14,6 +14,7 @@ import com.yourcompany.surveyai.operation.application.dto.response.OperationAnal
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionGroupRowDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionGroupSeriesDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionGroupSummaryDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsSampleResponseDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionSummaryDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsResponseDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsTrendPointDto;
@@ -98,6 +99,33 @@ public class OperationServiceImpl implements OperationService {
             "sanki", "biraz", "fazla", "az", "en", "çok", "dair", "the", "and", "for",
             "with", "that", "this", "are", "is", "was", "were", "have", "has", "had"
     );
+
+    private static final Set<String> OPEN_ENDED_CONSENT_ARTIFACTS = Set.of(
+            "evet",
+            "hayir",
+            "olur",
+            "olabilir",
+            "tamam",
+            "tabii",
+            "tabi",
+            "uygunum",
+            "uygun degil",
+            "musait degilim",
+            "istemiyorum",
+            "hayir istemiyorum",
+            "simdi olmaz",
+            "rahatsiz etmeyin",
+            "aramayin",
+            "yes",
+            "no",
+            "nope",
+            "not now",
+            "go ahead"
+    );
+
+    private static final String CONSENT_STATE_KEY = "openingConsentState";
+    private static final String CONSENT_GRANTED = "GRANTED";
+    private static final String CONSENT_DECLINED = "DECLINED";
 
     private static final Map<String, String> OPEN_ENDED_THEME_BY_KEYWORD = Map.ofEntries(
             Map.entry("ulasim", "Ulasim"),
@@ -455,6 +483,7 @@ public class OperationServiceImpl implements OperationService {
                 answersByQuestionId,
                 totalContacts
         );
+        List<OperationAnalyticsBreakdownItemDto> consentBreakdown = buildConsentBreakdown(responses, totalContacts);
 
         Map<String, Long> trendMap = responses.stream()
                 .map(response -> response.getCompletedAt() != null ? response.getCompletedAt() : response.getStartedAt())
@@ -525,6 +554,7 @@ public class OperationServiceImpl implements OperationService {
                 buildInsightSummary(operation, totalContacts, completedResponses, partialResponses, failedCallJobs, responseRate),
                 insightItems,
                 outcomeBreakdown,
+                consentBreakdown,
                 audienceBreakdowns,
                 questionSummaries,
                 questionGroups,
@@ -1453,7 +1483,78 @@ public class OperationServiceImpl implements OperationService {
 
     private boolean hasUsableOpenEndedAnswer(SurveyAnswer answer) {
         String text = resolveOpenEndedText(answer);
-        return text != null && !text.isBlank();
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+
+        String normalized = normalize(text);
+        return !normalized.isBlank() && !OPEN_ENDED_CONSENT_ARTIFACTS.contains(normalized);
+    }
+
+    private List<OperationAnalyticsBreakdownItemDto> buildConsentBreakdown(List<SurveyResponse> responses, long totalContacts) {
+        if (responses.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, Long> counts = new LinkedHashMap<>();
+        counts.put("Katilmayi kabul etti", 0L);
+        counts.put("Katilmayi reddetti", 0L);
+        counts.put("Belirsiz / yanitsiz", 0L);
+
+        for (SurveyResponse response : responses) {
+            String consentState = readConsentState(response);
+            if (CONSENT_DECLINED.equals(consentState) || inferConsentDeclined(response)) {
+                counts.computeIfPresent("Katilmayi reddetti", (key, value) -> value + 1L);
+            } else if (CONSENT_GRANTED.equals(consentState) || inferConsentAccepted(response)) {
+                counts.computeIfPresent("Katilmayi kabul etti", (key, value) -> value + 1L);
+            } else {
+                counts.computeIfPresent("Belirsiz / yanitsiz", (key, value) -> value + 1L);
+            }
+        }
+
+        long denominator = totalContacts > 0 ? totalContacts : responses.size();
+        return toBreakdown(counts, denominator);
+    }
+
+    private boolean inferConsentDeclined(SurveyResponse response) {
+        if (response == null || response.getStatus() != SurveyResponseStatus.ABANDONED) {
+            return false;
+        }
+
+        BigDecimal completionPercent = response.getCompletionPercent();
+        return completionPercent == null || completionPercent.compareTo(BigDecimal.ZERO) <= 0;
+    }
+
+    private boolean inferConsentAccepted(SurveyResponse response) {
+        if (response == null) {
+            return false;
+        }
+
+        if (response.getStatus() == SurveyResponseStatus.COMPLETED
+                || response.getStatus() == SurveyResponseStatus.PARTIAL
+                || response.getStatus() == SurveyResponseStatus.INVALID) {
+            return true;
+        }
+
+        BigDecimal completionPercent = response.getCompletionPercent();
+        return completionPercent != null && completionPercent.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    private String readConsentState(SurveyResponse response) {
+        String payload = response.getTranscriptJson();
+        if (payload == null || payload.isBlank()) {
+            return null;
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(payload);
+            if (!root.hasNonNull(CONSENT_STATE_KEY)) {
+                return null;
+            }
+            return trimToNull(root.get(CONSENT_STATE_KEY).asText(null));
+        } catch (Exception error) {
+            return null;
+        }
     }
 
     private List<OperationAnalyticsBreakdownItemDto> buildOpenEndedBreakdown(List<SurveyAnswer> answers, long answeredCount) {
@@ -1497,14 +1598,48 @@ public class OperationServiceImpl implements OperationService {
         return toBreakdown(counts, answeredCount == 0 ? 1 : answeredCount);
     }
 
-    private List<String> buildOpenEndedSamples(List<SurveyAnswer> answers) {
+    private List<OperationAnalyticsSampleResponseDto> buildOpenEndedSamples(List<SurveyAnswer> answers) {
         return sortOpenEndedAnswers(answers).stream()
-                .map(this::resolveOpenEndedText)
+                .map(this::toOpenEndedSampleResponse)
                 .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(text -> !text.isBlank())
-                .map(this::trimSample)
                 .toList();
+    }
+
+    private OperationAnalyticsSampleResponseDto toOpenEndedSampleResponse(SurveyAnswer answer) {
+        String responseText = resolveOpenEndedText(answer);
+        if (responseText == null || responseText.isBlank()) {
+            return null;
+        }
+
+        SurveyResponse surveyResponse = answer.getSurveyResponse();
+        if (surveyResponse == null || surveyResponse.getCallAttempt() == null || surveyResponse.getCallAttempt().getCallJob() == null) {
+            return null;
+        }
+
+        CallJob callJob = surveyResponse.getCallAttempt().getCallJob();
+        String respondentName = surveyResponse.getOperationContact() != null
+                ? buildContactDisplayName(surveyResponse.getOperationContact())
+                : null;
+        if (respondentName == null) {
+            respondentName = "Katilimci";
+        }
+
+        return new OperationAnalyticsSampleResponseDto(
+                callJob.getId(),
+                respondentName,
+                resolveResponseMoment(surveyResponse),
+                trimSample(responseText.trim())
+        );
+    }
+
+    private String buildContactDisplayName(OperationContact contact) {
+        if (contact == null) {
+            return null;
+        }
+        String firstName = contact.getFirstName() == null ? "" : contact.getFirstName().trim();
+        String lastName = contact.getLastName() == null ? "" : contact.getLastName().trim();
+        String fullName = (firstName + " " + lastName).trim();
+        return fullName.isBlank() ? null : fullName;
     }
 
     private List<SurveyAnswer> sortOpenEndedAnswers(List<SurveyAnswer> answers) {

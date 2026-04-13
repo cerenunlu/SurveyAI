@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { jsPDF } from "jspdf";
 import { toBlob, toPng } from "html-to-image";
 import { KpiCard } from "@/components/ui/KpiCard";
@@ -16,6 +16,7 @@ type OperationAnalyticsSectionProps = {
   contactCount: number;
   isLoading: boolean;
   view: OperationAnalyticsView;
+  onSaveSampleResponse?: (payload: { callJobId: string; questionId: string; responseText: string }) => Promise<void>;
 };
 
 type GroupedChartTooltip = {
@@ -123,6 +124,7 @@ export function OperationAnalyticsSection({
   contactCount,
   isLoading,
   view,
+  onSaveSampleResponse,
 }: OperationAnalyticsSectionProps) {
   const [groupedChartTooltip, setGroupedChartTooltip] = useState<GroupedChartTooltip>(null);
   const [donutChartHover, setDonutChartHover] = useState<DonutChartHover>(null);
@@ -130,14 +132,65 @@ export function OperationAnalyticsSection({
   const [copyFeedback, setCopyFeedback] = useState<Record<string, string>>({});
   const [copyingKey, setCopyingKey] = useState<string | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [sampleResponseDrafts, setSampleResponseDrafts] = useState<Record<string, string>>({});
+  const [sampleResponseSavingKeys, setSampleResponseSavingKeys] = useState<Record<string, boolean>>({});
+  const [sampleResponseStatus, setSampleResponseStatus] = useState<Record<string, string>>({});
   const chartCopyRefs = useRef<Record<string, HTMLElement | null>>({});
   const analyticsExportRef = useRef<HTMLDivElement | null>(null);
   const emptyState = getAnalyticsEmptyState(operation?.status ?? "Draft", contactCount);
   const kpis = getAnalyticsKpisCompact(operation, analytics);
   const demographicBreakdowns = analytics?.audienceBreakdowns ?? [];
-  const questionGroups = analytics?.questionGroups ?? [];
+  const questionGroups = (analytics?.questionGroups ?? [])
+    .map((group) => {
+      const rowIndexes = group.rows
+        .map((row, index) => ({ row, index }))
+        .sort((left, right) => left.row.questionOrder - right.row.questionOrder);
+
+      return {
+        ...group,
+        rows: rowIndexes.map((item) => item.row),
+        series: group.series.map((series) => ({
+          ...series,
+          data: rowIndexes.map((item) => series.data[item.index] ?? 0),
+        })),
+      };
+    })
+    .sort((left, right) => {
+      const leftOrder = Math.min(...left.rows.map((row) => row.questionOrder));
+      const rightOrder = Math.min(...right.rows.map((row) => row.questionOrder));
+      return leftOrder - rightOrder;
+    });
   const groupedQuestionIds = new Set(questionGroups.flatMap((group) => group.rows.map((row) => row.questionId)));
-  const questionSummaries = analytics?.questionSummaries.filter((summary) => !groupedQuestionIds.has(summary.questionId)) ?? [];
+  const questionSummaries = (analytics?.questionSummaries ?? [])
+    .filter((summary) => !groupedQuestionIds.has(summary.questionId))
+    .slice()
+    .sort((left, right) => left.questionOrder - right.questionOrder);
+  const orderedQuestionItems = [
+    ...questionGroups.map((group) => ({
+      kind: "group" as const,
+      order: Math.min(...group.rows.map((row) => row.questionOrder)),
+      key: `group-${group.groupCode}`,
+      group,
+    })),
+    ...questionSummaries.map((summary) => ({
+      kind: "summary" as const,
+      order: summary.questionOrder,
+      key: `summary-${summary.questionId}`,
+      summary,
+    })),
+  ].sort((left, right) => left.order - right.order);
+
+  useEffect(() => {
+    const nextDrafts: Record<string, string> = {};
+
+    for (const summary of analytics?.questionSummaries ?? []) {
+      for (const sample of summary.sampleResponses) {
+        nextDrafts[buildSampleResponseKey(summary.questionId, sample.callJobId)] = sample.responseText ?? "";
+      }
+    }
+
+    setSampleResponseDrafts(nextDrafts);
+  }, [analytics]);
 
   const setChartCopyRef = (key: string) => (node: HTMLElement | null) => {
     chartCopyRefs.current[key] = node;
@@ -282,6 +335,69 @@ export function OperationAnalyticsSection({
     }
   };
 
+  const handleSampleResponseChange = (sampleKey: string, value: string) => {
+    setSampleResponseDrafts((current) => ({
+      ...current,
+      [sampleKey]: value,
+    }));
+  };
+
+  const handleSampleResponseBlur = async (
+    sampleKey: string,
+    callJobId: string,
+    questionId: string,
+    initialValue: string,
+  ) => {
+    if (!onSaveSampleResponse) {
+      return;
+    }
+
+    const draftValue = (sampleResponseDrafts[sampleKey] ?? initialValue).trim();
+    const normalizedInitialValue = initialValue.trim();
+    if (draftValue === normalizedInitialValue) {
+      return;
+    }
+
+    setSampleResponseSavingKeys((current) => ({ ...current, [sampleKey]: true }));
+    setSampleResponseStatus((current) => {
+      const next = { ...current };
+      delete next[sampleKey];
+      return next;
+    });
+
+    try {
+      await onSaveSampleResponse({
+        callJobId,
+        questionId,
+        responseText: draftValue,
+      });
+      setSampleResponseDrafts((current) => ({
+        ...current,
+        [sampleKey]: draftValue,
+      }));
+      setSampleResponseStatus((current) => ({ ...current, [sampleKey]: "Kaydedildi" }));
+    } catch {
+      setSampleResponseDrafts((current) => ({
+        ...current,
+        [sampleKey]: initialValue,
+      }));
+      setSampleResponseStatus((current) => ({ ...current, [sampleKey]: "Kaydedilemedi" }));
+    } finally {
+      setSampleResponseSavingKeys((current) => {
+        const next = { ...current };
+        delete next[sampleKey];
+        return next;
+      });
+      globalThis.setTimeout(() => {
+        setSampleResponseStatus((current) => {
+          const next = { ...current };
+          delete next[sampleKey];
+          return next;
+        });
+      }, 1800);
+    }
+  };
+
   const renderEmptyState = () => (
     <div className="operation-empty-state operation-analytics-empty">
       <strong>{emptyState.title}</strong>
@@ -315,6 +431,22 @@ export function OperationAnalyticsSection({
       ) : (
         <div className="operation-mini-empty">Dagilim olusmasi icin yurutme sonuclari bekleniyor.</div>
       )}
+    </article>
+  );
+
+  const renderConsentBreakdown = () => (
+    <article className="operation-consent-summary">
+      <span className="operation-kicker">Katilim onayi</span>
+      <div className="operation-consent-summary-metrics">
+        <div className="operation-consent-summary-item">
+          <span>Kabul</span>
+          <strong>{analytics?.consentBreakdown.find((item) => item.key === "katilmayi-kabul-etti")?.count ?? 0}</strong>
+        </div>
+        <div className="operation-consent-summary-item is-danger">
+          <span>Red</span>
+          <strong>{analytics?.consentBreakdown.find((item) => item.key === "katilmayi-reddetti")?.count ?? 0}</strong>
+        </div>
+      </div>
     </article>
   );
 
@@ -368,64 +500,65 @@ export function OperationAnalyticsSection({
 
   const renderQuestionInsights = () => (
     <div className="operation-question-stack">
-      {questionGroups.length > 0 ? (
-        <div className="operation-question-group-stack">
-          {questionGroups.map((group) => (
-            <article
-              key={group.groupCode}
-              className="operation-chart-card operation-chart-card-grouped"
-              ref={setChartCopyRef(`group-${group.groupCode}`)}
-            >
-              <div className="operation-chart-head">
-                <div>
-                  <span className="operation-kicker">{group.chartKind === "GROUPED_MULTI_CHOICE" ? "Coklu secim tablosu" : "Tablo dagilimi"}</span>
-                  <h3>{group.groupTitle}</h3>
-                </div>
-                <div className="operation-chart-head-actions">
-                  <span className="operation-live-pill">{group.rows.length} satir</span>
-                  <button
-                    type="button"
-                    className="operation-chart-copy-button"
-                    onClick={() => handleCopyChart(`group-${group.groupCode}`)}
-                    data-chart-copy-ignore="true"
-                  >
-                    <span className="operation-chart-copy-icon" aria-hidden="true">
-                      <svg viewBox="0 0 20 20" fill="none">
-                        <rect x="6" y="3" width="10" height="13" rx="2" />
-                        <rect x="3" y="6" width="10" height="11" rx="2" />
-                      </svg>
-                    </span>
-                    <span>
-                      {copyingKey === `group-${group.groupCode}`
-                        ? "Kopyalaniyor..."
-                        : copyFeedback[`group-${group.groupCode}`] ?? "Grafigi kopyala"}
-                    </span>
-                  </button>
-                </div>
-              </div>
-              <div className="operation-question-stat-row operation-question-stat-row-grouped">
-                {group.optionSetCode ? <span className="operation-inline-filter-pill is-type">{group.optionSetCode}</span> : null}
-              </div>
-              {group.series.some((item) => item.data.some((value) => value > 0))
-                ? renderGroupedChoiceVisualization(group)
-                : <div className="operation-mini-empty">{group.emptyStateMessage ?? "Bu tablo icin grafik olusacak kadar veri yok."}</div>}
-            </article>
-          ))}
-        </div>
-      ) : null}
-      {questionSummaries.length > 0 ? (
+      {orderedQuestionItems.length > 0 ? (
         <div className="operation-question-grid">
-          {questionSummaries.map((summary) => {
+          {orderedQuestionItems.map((item) => {
+            if (item.kind === "group") {
+              const group = item.group;
+              return (
+                <article
+                  key={item.key}
+                  className="operation-chart-card operation-chart-card-grouped"
+                  ref={setChartCopyRef(`group-${group.groupCode}`)}
+                >
+                  <div className="operation-chart-head">
+                    <div>
+                      <span className="operation-kicker">{group.chartKind === "GROUPED_MULTI_CHOICE" ? "Coklu secim tablosu" : "Tablo dagilimi"}</span>
+                      <h3>{group.groupTitle}</h3>
+                    </div>
+                    <div className="operation-chart-head-actions">
+                      <span className="operation-live-pill">{group.rows.length} satir</span>
+                      <button
+                        type="button"
+                        className="operation-chart-copy-button"
+                        onClick={() => handleCopyChart(`group-${group.groupCode}`)}
+                        data-chart-copy-ignore="true"
+                      >
+                        <span className="operation-chart-copy-icon" aria-hidden="true">
+                          <svg viewBox="0 0 20 20" fill="none">
+                            <rect x="6" y="3" width="10" height="13" rx="2" />
+                            <rect x="3" y="6" width="10" height="11" rx="2" />
+                          </svg>
+                        </span>
+                        <span>
+                          {copyingKey === `group-${group.groupCode}`
+                            ? "Kopyalaniyor..."
+                            : copyFeedback[`group-${group.groupCode}`] ?? "Grafigi kopyala"}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="operation-question-stat-row operation-question-stat-row-grouped">
+                    {group.optionSetCode ? <span className="operation-inline-filter-pill is-type">{group.optionSetCode}</span> : null}
+                  </div>
+                  {group.series.some((series) => series.data.some((value) => value > 0))
+                    ? renderGroupedChoiceVisualization(group)
+                    : <div className="operation-mini-empty">{group.emptyStateMessage ?? "Bu tablo icin grafik olusacak kadar veri yok."}</div>}
+                </article>
+              );
+            }
+
+            const summary = item.summary;
             const presentation = getQuestionChartPresentation(summary);
-            const hasBreakdownData = summary.breakdown.some((item) => item.count > 0);
-            const hasSpecialAnswerData = summary.specialAnswerBreakdown.some((item) => item.count > 0);
+            const hasBreakdownData = summary.breakdown.some((breakdownItem) => breakdownItem.count > 0);
+            const hasSpecialAnswerData = summary.specialAnswerBreakdown.some((breakdownItem) => breakdownItem.count > 0);
             const hasSampleData = summary.sampleResponses.length > 0;
             const hasData = hasBreakdownData || hasSpecialAnswerData || hasSampleData;
             const shouldRenderSummaryChart = summary.chartKind !== "OPEN_ENDED" && (hasBreakdownData || hasSpecialAnswerData);
 
             return (
               <article
-                key={summary.questionId}
+                key={item.key}
                 className="operation-question-card"
                 ref={setChartCopyRef(`question-${summary.questionId}`)}
               >
@@ -482,26 +615,44 @@ export function OperationAnalyticsSection({
                   </div>
                 ) : null}
                 {summary.sampleResponses.length > 0 ? (
-                  <>
-                    <div className="operation-question-section-head">
-                      <strong>Ham cevaplar</strong>
-                      <span>Tum alinan acik cevaplar</span>
-                    </div>
-                    <div className={`operation-open-response-list${summary.sampleResponses.length > 8 ? " is-scrollable" : ""}`}>
-                      {summary.sampleResponses.map((response, index) => (
-                        <div key={`${summary.questionId}-sample-${index}`} className="operation-open-response-item">
-                          {response}
-                        </div>
-                      ))}
-                    </div>
-                  </>
+                  <div className={`operation-open-response-list${summary.sampleResponses.length > 8 ? " is-scrollable" : ""}`}>
+                    {summary.sampleResponses.map((response, index) => (
+                      <div key={`${summary.questionId}-sample-${index}`} className="operation-open-response-item">
+                        {(() => {
+                          const sampleKey = buildSampleResponseKey(summary.questionId, response.callJobId);
+                          const initialValue = response.responseText ?? "";
+                          const draftValue = sampleResponseDrafts[sampleKey] ?? initialValue;
+                          const isSaving = sampleResponseSavingKeys[sampleKey] ?? false;
+                          const statusMessage = sampleResponseStatus[sampleKey] ?? null;
+                          const isEditable = canSaveSampleResponse(response.callJobId);
+
+                          return (
+                            <>
+                              <textarea
+                                className="operation-open-response-editor"
+                                value={draftValue}
+                                onChange={(event) => handleSampleResponseChange(sampleKey, event.target.value)}
+                                onBlur={() => void handleSampleResponseBlur(sampleKey, response.callJobId, summary.questionId, initialValue)}
+                                rows={Math.max(2, Math.min(6, Math.ceil(((draftValue ?? "").length || 1) / 96)))}
+                                readOnly={!isEditable}
+                              />
+                              <div className="operation-open-response-status">
+                                <span>{isEditable && isSaving ? "Kaydediliyor..." : ""}</span>
+                                {statusMessage ? <strong>{statusMessage}</strong> : null}
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ))}
+                  </div>
                 ) : null}
               </article>
             );
           })}
         </div>
       ) : (
-        questionGroups.length > 0 ? null : <div className="operation-mini-empty">Bu ankette henuz soru bazli gosterilecek cevap verisi yok.</div>
+        <div className="operation-mini-empty">Bu ankette henuz soru bazli gosterilecek cevap verisi yok.</div>
       )}
     </div>
   );
@@ -594,7 +745,10 @@ export function OperationAnalyticsSection({
   );
 
   const renderOverview = () => (
-    renderQuestionInsights()
+    <div className="operation-analytics-stack">
+      {renderConsentBreakdown()}
+      {renderQuestionInsights()}
+    </div>
   );
 
   const renderHealthMetrics = () => (
@@ -1103,4 +1257,12 @@ export function OperationAnalyticsSection({
       </div>
     </SectionCard>
   );
+}
+
+function buildSampleResponseKey(questionId: string, callJobId: string) {
+  return `${questionId}:${callJobId}`;
+}
+
+function canSaveSampleResponse(callJobId: string) {
+  return Boolean(callJobId) && !callJobId.startsWith("legacy-");
 }

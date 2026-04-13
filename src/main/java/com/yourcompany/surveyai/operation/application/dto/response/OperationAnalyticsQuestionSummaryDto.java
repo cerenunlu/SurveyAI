@@ -20,6 +20,6 @@ public record OperationAnalyticsQuestionSummaryDto(
         String emptyStateMessage,
         List<OperationAnalyticsBreakdownItemDto> breakdown,
         List<OperationAnalyticsBreakdownItemDto> specialAnswerBreakdown,
-        List<String> sampleResponses
+        List<OperationAnalyticsSampleResponseDto> sampleResponses
 ) {
 }

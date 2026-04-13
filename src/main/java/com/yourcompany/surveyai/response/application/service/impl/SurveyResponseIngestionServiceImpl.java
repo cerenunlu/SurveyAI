@@ -1,6 +1,7 @@
 package com.yourcompany.surveyai.response.application.service.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.call.application.provider.ProviderWebhookEvent;
 import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
@@ -15,6 +16,7 @@ import com.yourcompany.surveyai.response.domain.entity.SurveyResponse;
 import com.yourcompany.surveyai.response.domain.enums.SurveyResponseStatus;
 import com.yourcompany.surveyai.response.repository.SurveyAnswerRepository;
 import com.yourcompany.surveyai.response.repository.SurveyResponseRepository;
+import com.yourcompany.surveyai.operation.support.OperationContactPhoneResolver;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestionOption;
 import com.yourcompany.surveyai.survey.domain.enums.QuestionType;
@@ -82,7 +84,7 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
             response.setStartedAt(firstNonNull(mappedResult.startedAt(), callAttempt.getConnectedAt(), callAttempt.getDialedAt(), OffsetDateTime.now()));
             response.setCompletedAt(mappedResult.completedAt());
             response.setTranscriptText(mappedResult.transcriptText());
-            response.setTranscriptJson(firstNonBlank(mappedResult.transcriptJson(), "{}"));
+            response.setTranscriptJson(mergeTopLevelJsonObjects(response.getTranscriptJson(), mappedResult.transcriptJson()));
             response.setAiSummaryText(mappedResult.aiSummaryText());
             SurveyResponse savedResponse = surveyResponseRepository.save(response);
 
@@ -195,7 +197,7 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
         response.setOperation(callAttempt.getOperation());
         response.setOperationContact(callAttempt.getOperationContact());
         response.setCallAttempt(callAttempt);
-        response.setRespondentPhone(callAttempt.getOperationContact().getPhoneNumber());
+        response.setRespondentPhone(OperationContactPhoneResolver.resolveDisplayPhoneNumber(callAttempt.getOperationContact()));
         response.setStartedAt(firstNonNull(callAttempt.getConnectedAt(), callAttempt.getDialedAt(), OffsetDateTime.now()));
         response.setCompletionPercent(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
         response.setStatus(SurveyResponseStatus.PARTIAL);
@@ -370,6 +372,32 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException error) {
             return firstNonBlank(transcriptJson, "{}");
+        }
+    }
+
+    private String mergeTopLevelJsonObjects(String existingJson, String incomingJson) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        mergeJsonObjectInto(payload, existingJson);
+        mergeJsonObjectInto(payload, incomingJson);
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException error) {
+            return firstNonBlank(incomingJson, existingJson, "{}");
+        }
+    }
+
+    private void mergeJsonObjectInto(Map<String, Object> payload, String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(rawJson);
+            if (!root.isObject()) {
+                return;
+            }
+            Map<String, Object> values = objectMapper.convertValue(root, Map.class);
+            payload.putAll(values);
+        } catch (Exception ignored) {
         }
     }
 

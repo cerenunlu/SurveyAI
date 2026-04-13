@@ -21,12 +21,14 @@ import com.yourcompany.surveyai.response.domain.entity.SurveyResponse;
 import com.yourcompany.surveyai.response.domain.enums.SurveyResponseStatus;
 import com.yourcompany.surveyai.response.repository.SurveyAnswerRepository;
 import com.yourcompany.surveyai.response.repository.SurveyResponseRepository;
+import com.yourcompany.surveyai.survey.application.support.TurkeyGeoDataService;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestionOption;
 import com.yourcompany.surveyai.survey.domain.enums.QuestionType;
 import com.yourcompany.surveyai.survey.repository.SurveyQuestionOptionRepository;
 import com.yourcompany.surveyai.survey.repository.SurveyQuestionRepository;
+import com.yourcompany.surveyai.operation.support.OperationContactPhoneResolver;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.Normalizer;
@@ -56,12 +58,11 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             "he", "she", "him", "her", "it", "that", "this", "ya", "ve", "ama", "fakat"
     );
     private static final String CONSENT_STATE_KEY = "openingConsentState";
+    private static final String CONSENT_PROMPT_DELIVERED_KEY = "openingConsentPromptDelivered";
+    private static final String GREETING_RECEIVED_KEY = "openingGreetingReceived";
     private static final String CONSENT_PENDING = "PENDING";
     private static final String CONSENT_GRANTED = "GRANTED";
     private static final String CONSENT_DECLINED = "DECLINED";
-    private static final String PICKUP_STATE_KEY = "pickupState";
-    private static final String PICKUP_PENDING = "PENDING";
-    private static final String PICKUP_CONFIRMED = "CONFIRMED";
     private static final Map<String, Integer> NUMBER_WORDS = Map.ofEntries(
             Map.entry("bir", 1),
             Map.entry("one", 1),
@@ -127,6 +128,19 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     );
     private static final Set<String> YES_WORDS = Set.of("evet", "olur", "tabii", "tabi", "yes", "yeah", "yep", "dogru", "buyurun", "sorabilirsiniz", "dinliyorum", "uygun");
     private static final Set<String> NO_WORDS = Set.of("hayir", "yok", "istemiyorum", "no", "nope", "degil", "uygun degil", "mesgul", "musait degil");
+    private static final Set<String> OPENING_GREETING_WORDS = Set.of(
+            "alo", "merhaba", "selam", "efendim", "buyurun", "buyrun", "dinliyorum", "hello", "hi", "hey"
+    );
+    private static final Set<String> CIVIC_OPEN_ENDED_HINTS = Set.of(
+            "sehir", "kent", "izmir", "belediye", "milletvekili", "milletvekillerinden",
+            "sorun", "sorunlari", "beklenti", "oncelik", "oncelikli", "ulasim", "trafik", "altyapi", "hizmet"
+    );
+    private static final Set<String> TRANSPORT_OPEN_ENDED_HINTS = Set.of(
+            "ulasim", "trafik", "yol", "metro", "otobus", "altyapi", "toplu tasima"
+    );
+    private static final Set<String> SUSPICIOUS_CIVIC_ASR_TOKENS = Set.of(
+            "sehzadin", "sehradin", "sehzade", "şehirin", "sehirin"
+    );
     private static final Map<String, List<String>> DEFAULT_SPECIAL_ANSWERS = Map.ofEntries(
             Map.entry("bilmiyorum", List.of(
                     "bilmiyorum",
@@ -163,6 +177,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     private final SurveyQuestionRepository surveyQuestionRepository;
     private final SurveyQuestionOptionRepository surveyQuestionOptionRepository;
     private final ObjectMapper objectMapper;
+    private final TurkeyGeoDataService turkeyGeoDataService;
 
     public CallInterviewOrchestrationServiceImpl(
             CallAttemptRepository callAttemptRepository,
@@ -170,7 +185,8 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             SurveyAnswerRepository surveyAnswerRepository,
             SurveyQuestionRepository surveyQuestionRepository,
             SurveyQuestionOptionRepository surveyQuestionOptionRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            TurkeyGeoDataService turkeyGeoDataService
     ) {
         this.callAttemptRepository = callAttemptRepository;
         this.surveyResponseRepository = surveyResponseRepository;
@@ -178,6 +194,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         this.surveyQuestionRepository = surveyQuestionRepository;
         this.surveyQuestionOptionRepository = surveyQuestionOptionRepository;
         this.objectMapper = objectMapper;
+        this.turkeyGeoDataService = turkeyGeoDataService;
     }
 
     @Override
@@ -185,11 +202,10 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         SessionContext context = loadSessionContext(request.callAttemptId(), request.providerCallId());
         SurveyResponse response = ensureSurveyResponse(context.callAttempt());
         response.setStatus(SurveyResponseStatus.PARTIAL);
-        initializePickupState(response, context.survey());
         initializeOpeningConsentState(response, context.survey());
         surveyResponseRepository.save(response);
-        if (isPickupPending(context.survey(), response)) {
-            return buildPickupPhaseResponse(context, response, null);
+        if (requiresOpeningGreeting(context.survey()) && !isOpeningGreetingReceived(response)) {
+            return buildConsentPhaseResponse(context, response, null);
         }
         if (isOpeningConsentPending(context.survey(), response)) {
             return buildConsentPhaseResponse(context, response, null);
@@ -201,11 +217,10 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     public InterviewOrchestrationResponse getCurrentQuestion(InterviewSessionRequest request) {
         SessionContext context = loadSessionContext(request.callAttemptId(), request.providerCallId());
         SurveyResponse response = ensureSurveyResponse(context.callAttempt());
-        initializePickupState(response, context.survey());
         initializeOpeningConsentState(response, context.survey());
         surveyResponseRepository.save(response);
-        if (isPickupPending(context.survey(), response)) {
-            return buildPickupPhaseResponse(context, response, null);
+        if (requiresOpeningGreeting(context.survey()) && !isOpeningGreetingReceived(response)) {
+            return buildConsentPhaseResponse(context, response, null);
         }
         if (isOpeningConsentPending(context.survey(), response)) {
             return buildConsentPhaseResponse(context, response, null);
@@ -217,7 +232,6 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     public InterviewOrchestrationResponse submitAnswer(InterviewAnswerRequest request) {
         SessionContext context = loadSessionContext(request.callAttemptId(), request.providerCallId());
         SurveyResponse response = ensureSurveyResponse(context.callAttempt());
-        initializePickupState(response, context.survey());
         initializeOpeningConsentState(response, context.survey());
 
         if (request.signal() == InterviewConversationSignal.STOP_REQUEST) {
@@ -229,10 +243,10 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return buildTerminalResponse(context, response, buildClosingPrompt(context.survey()), flowState);
         }
 
-        if (isPickupPending(context.survey(), response)) {
-            InterviewOrchestrationResponse pickupResponse = handlePickupPhase(context, response, request);
+        if (requiresOpeningGreeting(context.survey()) && !isOpeningGreetingReceived(response)) {
+            InterviewOrchestrationResponse greetingResponse = handleOpeningGreeting(context, response, request);
             surveyResponseRepository.save(response);
-            return pickupResponse;
+            return greetingResponse;
         }
 
         if (isOpeningConsentPending(context.survey(), response)) {
@@ -266,15 +280,16 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             );
         }
 
-        NormalizedAnswer normalizedAnswer = normalizeAnswer(
-                cursor.question(),
-                context.optionsByQuestionId().getOrDefault(cursor.question().getId(), List.of()),
-                request
-        );
         SurveyAnswer answer = context.answersByQuestionId().get(cursor.question().getId());
         if (answer == null) {
             answer = createSurveyAnswer(response, cursor.question());
         }
+        NormalizedAnswer normalizedAnswer = normalizeAnswer(
+                cursor.question(),
+                context.optionsByQuestionId().getOrDefault(cursor.question().getId(), List.of()),
+                request,
+                answer
+        );
 
         applyNormalizedAnswer(answer, cursor.question(), normalizedAnswer, cursor.retryCount() + 1);
         SurveyAnswer savedAnswer = surveyAnswerRepository.save(answer);
@@ -383,7 +398,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         response.setOperation(callAttempt.getOperation());
         response.setOperationContact(callAttempt.getOperationContact());
         response.setCallAttempt(callAttempt);
-        response.setRespondentPhone(callAttempt.getOperationContact().getPhoneNumber());
+        response.setRespondentPhone(OperationContactPhoneResolver.resolveDisplayPhoneNumber(callAttempt.getOperationContact()));
         response.setStartedAt(callAttempt.getConnectedAt() != null ? callAttempt.getConnectedAt() : OffsetDateTime.now());
         response.setCompletionPercent(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
         response.setStatus(SurveyResponseStatus.PARTIAL);
@@ -396,6 +411,11 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             SurveyResponse response,
             InterviewAnswerRequest request
     ) {
+        if (!isOpeningConsentPromptDelivered(response)) {
+            updateOpeningConsentPromptDelivered(response, true);
+            return buildConsentPhaseResponse(context, response, buildOpeningConsentRepeatPrompt(context.survey()));
+        }
+
         if (request.signal() == InterviewConversationSignal.REPEAT_REQUEST) {
             return buildConsentPhaseResponse(context, response, buildOpeningConsentRepeatPrompt(context.survey()));
         }
@@ -426,23 +446,18 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         return buildConsentPhaseResponse(context, response, buildOpeningConsentClarificationPrompt(context.survey()));
     }
 
-    private InterviewOrchestrationResponse handlePickupPhase(
+    private InterviewOrchestrationResponse handleOpeningGreeting(
             SessionContext context,
             SurveyResponse response,
             InterviewAnswerRequest request
     ) {
-        if (request.signal() == InterviewConversationSignal.REPEAT_REQUEST) {
-            return buildPickupPhaseResponse(context, response, buildPickupPrompt(context.survey()));
+        if (!isOpeningGreetingLike(request)) {
+            return buildConsentPhaseResponse(context, response, null);
         }
 
-        String rawInput = trimToNull(request.utteranceText());
-        String sanitizedInput = sanitizeUtterance(rawInput);
-        if (request.signal() == InterviewConversationSignal.NO_INPUT || sanitizedInput == null || isLikelyAsrArtifact(rawInput, sanitizedInput)) {
-            return buildPickupPhaseResponse(context, response, buildPickupPrompt(context.survey()));
-        }
-
-        updatePickupState(response, PICKUP_CONFIRMED);
+        updateOpeningGreetingReceived(response, true);
         if (isOpeningConsentPending(context.survey(), response)) {
+            updateOpeningConsentPromptDelivered(response, true);
             return buildConsentPhaseResponse(context, response, buildOpeningConsentRepeatPrompt(context.survey()));
         }
         return buildProgressResponse(context, response, buildOpeningLeadIn(context), resolveFlowState(context));
@@ -496,13 +511,21 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         if (answer.isValid()) {
             return true;
         }
-        return !question.isRequired() && answer.getRetryCount() != null && answer.getRetryCount() > 0;
+        return !question.isRequired()
+                && answer.getRetryCount() != null
+                && answer.getRetryCount() > 0
+                && canTreatInvalidOptionalAnswerAsSatisfied(question);
+    }
+
+    private boolean canTreatInvalidOptionalAnswerAsSatisfied(SurveyQuestion question) {
+        return question.getQuestionType() == QuestionType.OPEN_ENDED;
     }
 
     private NormalizedAnswer normalizeAnswer(
             SurveyQuestion question,
             List<SurveyQuestionOption> options,
-            InterviewAnswerRequest request
+            InterviewAnswerRequest request,
+            SurveyAnswer existingAnswer
     ) {
         InterviewConversationSignal signal = request.signal() == null ? InterviewConversationSignal.ANSWER : request.signal();
         String rawInput = trimToNull(request.utteranceText());
@@ -516,12 +539,81 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return NormalizedAnswer.validSpecial(raw, specialAnswer.code(), specialAnswer.label());
         }
 
+        if (question.getQuestionType() == QuestionType.OPEN_ENDED) {
+            String clarificationLabel = extractSingleClarificationLabel(existingAnswer);
+            if (clarificationLabel != null) {
+                if (looksLikeClarificationAffirmation(raw)) {
+                    return NormalizedAnswer.validText(raw, clarificationLabel, List.of(clarificationLabel));
+                }
+                if (looksLikeClarificationRejection(raw)) {
+                    return NormalizedAnswer.invalidWithClarification(
+                            "Named entity answer requires clarification",
+                            raw,
+                            isTurkish(question.getSurvey())
+                                    ? "Hayirsa lütfen kisinin adini tekrar soyleyin."
+                                    : "If no, please say the person's name again."
+                    );
+                }
+            }
+        }
+
         return switch (question.getQuestionType()) {
-            case OPEN_ENDED -> NormalizedAnswer.validText(raw);
+            case OPEN_ENDED -> normalizeOpenEnded(question, raw);
             case RATING -> normalizeRating(question, raw);
             case SINGLE_CHOICE -> normalizeSingleChoice(question, options, raw);
             case MULTI_CHOICE -> normalizeMultiChoice(question, options, raw);
         };
+    }
+
+    private boolean looksLikeClarificationAffirmation(String raw) {
+        String normalized = normalize(raw);
+        if (normalized.isBlank()) {
+            return false;
+        }
+        return containsAnyPhrase(normalized,
+                "evet",
+                "aynen",
+                "dogru",
+                "dogru o",
+                "evet o",
+                "o",
+                "begeniyorum",
+                "beniyorum",
+                "seviyorum");
+    }
+
+    private boolean looksLikeClarificationRejection(String raw) {
+        String normalized = normalize(raw);
+        if (normalized.isBlank()) {
+            return false;
+        }
+        return containsAnyPhrase(normalized,
+                "hayir",
+                "degil",
+                "o degil",
+                "begenmiyorum",
+                "benmiyorum",
+                "sevmiyorum");
+    }
+
+    private String extractSingleClarificationLabel(SurveyAnswer answer) {
+        String clarificationPrompt = answer == null ? null : extractClarificationPrompt(answer);
+        if (clarificationPrompt == null) {
+            return null;
+        }
+
+        String trimmed = clarificationPrompt.trim();
+        String suffix = " mi demek istediniz?";
+        if (trimmed.endsWith(suffix)) {
+            return trimToNull(trimmed.substring(0, trimmed.length() - suffix.length()));
+        }
+
+        String englishPrefix = "Did you mean ";
+        if (trimmed.startsWith(englishPrefix) && trimmed.endsWith("?")) {
+            return trimToNull(trimmed.substring(englishPrefix.length(), trimmed.length() - 1));
+        }
+
+        return null;
     }
 
     private NormalizedAnswer normalizeSingleChoice(SurveyQuestion question, List<SurveyQuestionOption> options, String raw) {
@@ -581,6 +673,156 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return NormalizedAnswer.invalid("Rating answer must be between " + min + " and " + max, raw);
         }
         return NormalizedAnswer.validNumber(raw, BigDecimal.valueOf(parsed));
+    }
+
+    private NormalizedAnswer normalizeOpenEnded(SurveyQuestion question, String raw) {
+        String correctedRaw = applyQuestionAwareOpenEndedCorrections(question, raw);
+        if (shouldAskToRepeatOpenEnded(question, raw, correctedRaw)) {
+            return NormalizedAnswer.invalidWithClarification(
+                    "Open-ended answer requires clarification",
+                    raw,
+                    localized(
+                            question.getSurvey(),
+                            "Yanitinizi kisa ve net bir sekilde bir kez daha soyler misiniz?",
+                            "Could you please repeat your answer briefly and clearly?"
+                    )
+            );
+        }
+
+        TurkeyGeoDataService.GeoScope geoScope = extractGeoScope(question);
+        if (geoScope == null) {
+            return normalizeOpenEndedEntity(question, raw, correctedRaw);
+        }
+
+        TurkeyGeoDataService.GeoMatchResult match = turkeyGeoDataService.match(correctedRaw, geoScope);
+        if (match.candidate() != null && match.confident()) {
+            List<String> normalizedValues = new ArrayList<>();
+            normalizedValues.add(match.candidate().label());
+            if (match.candidate().cityCode() != null) {
+                normalizedValues.add(match.candidate().cityCode());
+            }
+            if (match.candidate().districtName() != null) {
+                normalizedValues.add(match.candidate().districtName());
+            }
+            return NormalizedAnswer.validText(raw, match.candidate().label(), normalizedValues.stream().distinct().toList());
+        }
+
+        if (match.candidate() != null && !match.clarificationLabels().isEmpty() && match.score() >= 0.58d) {
+            return NormalizedAnswer.invalidWithClarification(
+                    "Geo answer requires clarification",
+                    raw,
+                    buildClarificationPrompt(question.getSurvey(), match.clarificationLabels())
+            );
+        }
+
+        return normalizeOpenEndedEntity(question, raw, correctedRaw);
+    }
+
+    private NormalizedAnswer normalizeOpenEndedEntity(SurveyQuestion question, String raw, String candidateText) {
+        List<AutoEntityEntry> entries = extractAutoEntityEntries(question);
+        if (entries.isEmpty()) {
+            return buildOpenEndedFreeTextAnswer(raw, candidateText);
+        }
+
+        String normalizedCandidate = normalize(candidateText);
+        List<AutoEntityScore> scored = new ArrayList<>();
+        for (AutoEntityEntry entry : entries) {
+            double score = scoreEntityAliases(normalizedCandidate, entry.aliases());
+            if (score > 0.30d) {
+                scored.add(new AutoEntityScore(entry, score));
+            }
+        }
+        scored.sort((left, right) -> Double.compare(right.score(), left.score()));
+        if (scored.isEmpty()) {
+            return buildOpenEndedFreeTextAnswer(raw, candidateText);
+        }
+
+        AutoEntityScore best = scored.getFirst();
+        AutoEntityScore second = scored.size() > 1 ? scored.get(1) : null;
+        if (best.score() >= 0.93d || (best.score() >= 0.82d && (second == null || best.score() - second.score() >= 0.12d))) {
+            return NormalizedAnswer.validText(raw, best.entry().label(), List.of(best.entry().label()));
+        }
+        if (best.score() >= 0.58d) {
+            List<String> labels = scored.stream().map(item -> item.entry().label()).distinct().limit(3).toList();
+            return NormalizedAnswer.invalidWithClarification(
+                    "Named entity answer requires clarification",
+                    raw,
+                    buildClarificationPrompt(question.getSurvey(), labels)
+            );
+        }
+        return buildOpenEndedFreeTextAnswer(raw, candidateText);
+    }
+
+    private NormalizedAnswer buildOpenEndedFreeTextAnswer(String raw, String candidateText) {
+        String sanitizedCandidate = trimToNull(candidateText);
+        if (sanitizedCandidate == null) {
+            return NormalizedAnswer.validText(raw);
+        }
+        String sanitizedRaw = trimToNull(raw);
+        if (sanitizedRaw != null && normalize(sanitizedRaw).equals(normalize(sanitizedCandidate))) {
+            return NormalizedAnswer.validText(raw);
+        }
+        List<String> normalizedValues = new ArrayList<>();
+        normalizedValues.add(sanitizedCandidate);
+        if (sanitizedRaw != null) {
+            normalizedValues.add(sanitizedRaw);
+        }
+        return NormalizedAnswer.validText(raw, sanitizedCandidate, normalizedValues.stream().distinct().toList());
+    }
+
+    private String applyQuestionAwareOpenEndedCorrections(SurveyQuestion question, String raw) {
+        String corrected = raw;
+        if (isCivicOpenEndedContext(question)) {
+            corrected = replacePattern(corrected,
+                    "(?iu)\\b(?:şehzad[ıi]n|sehzad[ıi]n|sehradin|şehirin|sehirin)\\s+sorunlar[ıi]yla\\b",
+                    "şehrin sorunlarıyla");
+            corrected = replacePattern(corrected,
+                    "(?iu)\\b(?:şehzad[ıi]n|sehzad[ıi]n|sehradin|şehirin|sehirin)\\s+sorunlar[ıi]\\b",
+                    "şehrin sorunları");
+            corrected = replacePattern(corrected, "(?iu)\\b(?:şehzad[ıi]n|sehzad[ıi]n|sehradin|şehirin|sehirin)\\b", "şehrin");
+        }
+        if (isTransportOpenEndedContext(question)) {
+            corrected = replacePattern(corrected, "(?iu)\\balt\\s+yap[ıi]\\b", "altyapı");
+            corrected = replacePattern(corrected, "(?iu)\\b(?:ulaş[ıi]n|ulasin)\\b", "ulaşım");
+        }
+        return corrected;
+    }
+
+    private boolean shouldAskToRepeatOpenEnded(SurveyQuestion question, String raw, String correctedRaw) {
+        if (!isCivicOpenEndedContext(question)) {
+            return false;
+        }
+        if (!normalize(raw).equals(normalize(correctedRaw))) {
+            return false;
+        }
+        String normalized = normalize(raw);
+        for (String token : SUSPICIOUS_CIVIC_ASR_TOKENS) {
+            if (normalized.contains(normalize(token))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isCivicOpenEndedContext(SurveyQuestion question) {
+        return containsAnyPhrase(normalize(buildOpenEndedContext(question)), CIVIC_OPEN_ENDED_HINTS.toArray(String[]::new));
+    }
+
+    private boolean isTransportOpenEndedContext(SurveyQuestion question) {
+        return containsAnyPhrase(normalize(buildOpenEndedContext(question)), TRANSPORT_OPEN_ENDED_HINTS.toArray(String[]::new));
+    }
+
+    private String buildOpenEndedContext(SurveyQuestion question) {
+        StringBuilder builder = new StringBuilder();
+        appendPromptSentence(builder, question.getSurvey() == null ? null : question.getSurvey().getName());
+        appendPromptSentence(builder, question.getCode());
+        appendPromptSentence(builder, question.getTitle());
+        appendPromptSentence(builder, question.getDescription());
+        return builder.toString();
+    }
+
+    private String replacePattern(String value, String regex, String replacement) {
+        return Pattern.compile(regex).matcher(value).replaceAll(replacement);
     }
 
     private SurveyQuestionOption matchYesNoOption(List<SurveyQuestionOption> options, String raw) {
@@ -679,16 +921,22 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     }
 
     private Map<String, List<String>> extractOptionAliases(SurveyQuestion question) {
-        if (question.getSettingsJson() == null || question.getSettingsJson().isBlank()) {
-            return Map.of();
+        Map<String, List<String>> aliases = new LinkedHashMap<>();
+        mergeOptionAliases(question.getSettingsJson(), "aliases", aliases);
+        mergeOptionAliases(question.getSettingsJson(), "autoAliases", aliases);
+        return aliases;
+    }
+
+    private void mergeOptionAliases(String settingsJson, String fieldName, Map<String, List<String>> aliases) {
+        if (settingsJson == null || settingsJson.isBlank()) {
+            return;
         }
         try {
-            JsonNode root = objectMapper.readTree(question.getSettingsJson());
-            JsonNode aliasesNode = root.get("aliases");
+            JsonNode root = objectMapper.readTree(settingsJson);
+            JsonNode aliasesNode = root.get(fieldName);
             if (aliasesNode == null || !aliasesNode.isObject()) {
-                return Map.of();
+                return;
             }
-            Map<String, List<String>> aliases = new LinkedHashMap<>();
             aliasesNode.fields().forEachRemaining(entry -> {
                 if (!entry.getValue().isArray()) {
                     return;
@@ -701,12 +949,13 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
                     }
                 });
                 if (!values.isEmpty()) {
-                    aliases.put(normalize(entry.getKey()), List.copyOf(values));
+                    String key = normalize(entry.getKey());
+                    List<String> merged = new ArrayList<>(aliases.getOrDefault(key, List.of()));
+                    merged.addAll(values);
+                    aliases.put(key, merged.stream().distinct().toList());
                 }
             });
-            return aliases;
         } catch (Exception ignored) {
-            return Map.of();
         }
     }
 
@@ -837,6 +1086,8 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
                 continue;
             }
 
+            bestScore = Math.max(bestScore, scorePhraseSimilarity(normalizedCandidate, normalizedOption));
+
             Set<String> optionTokens = semanticTokens(normalizedOption);
             if (optionTokens.isEmpty()) {
                 continue;
@@ -852,6 +1103,99 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             bestScore = Math.max(bestScore, (coverage * 0.72d) + (utteranceShare * 0.28d));
         }
         return bestScore;
+    }
+
+    private List<AutoEntityEntry> extractAutoEntityEntries(SurveyQuestion question) {
+        if (question.getSettingsJson() == null || question.getSettingsJson().isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(question.getSettingsJson());
+            JsonNode entriesNode = root.path("autoEntityLexicon").path("entries");
+            if (!entriesNode.isArray()) {
+                return List.of();
+            }
+            List<AutoEntityEntry> entries = new ArrayList<>();
+            entriesNode.forEach(item -> {
+                String label = trimToNull(item.path("label").asText(null));
+                JsonNode aliasesNode = item.get("aliases");
+                if (label == null || aliasesNode == null || !aliasesNode.isArray()) {
+                    return;
+                }
+                List<String> aliases = new ArrayList<>();
+                aliasesNode.forEach(aliasNode -> {
+                    String alias = trimToNull(aliasNode.asText(null));
+                    if (alias != null) {
+                        aliases.add(alias);
+                    }
+                });
+                if (!aliases.isEmpty()) {
+                    entries.add(new AutoEntityEntry(label, List.copyOf(aliases)));
+                }
+            });
+            return List.copyOf(entries);
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    private double scoreEntityAliases(String normalizedCandidate, List<String> aliases) {
+        double best = 0d;
+        for (String alias : aliases) {
+            String normalizedAlias = normalize(alias);
+            if (normalizedAlias.isBlank()) {
+                continue;
+            }
+            if (normalizedCandidate.equals(normalizedAlias)) {
+                return 1d;
+            }
+            if (normalizedCandidate.contains(normalizedAlias) || normalizedAlias.contains(normalizedCandidate)) {
+                best = Math.max(best, 0.96d);
+            }
+            best = Math.max(best, scorePhraseSimilarity(normalizedCandidate, normalizedAlias));
+        }
+        return best;
+    }
+
+    private double scorePhraseSimilarity(String left, String right) {
+        if (left == null || right == null || left.isBlank() || right.isBlank()) {
+            return 0d;
+        }
+        if (left.equals(right)) {
+            return 1d;
+        }
+        Set<String> leftTokens = semanticTokens(left);
+        Set<String> rightTokens = semanticTokens(right);
+        Set<String> shared = new LinkedHashSet<>(leftTokens);
+        shared.retainAll(rightTokens);
+        Set<String> union = new LinkedHashSet<>(leftTokens);
+        union.addAll(rightTokens);
+        double tokenScore = union.isEmpty() ? 0d : (double) shared.size() / union.size();
+        int maxLength = Math.max(left.length(), right.length());
+        double editScore = maxLength == 0 ? 1d : 1d - ((double) levenshtein(left, right) / maxLength);
+        return (tokenScore * 0.45d) + (editScore * 0.55d);
+    }
+
+    private int levenshtein(String left, String right) {
+        int[] previous = new int[right.length() + 1];
+        int[] current = new int[right.length() + 1];
+        for (int index = 0; index <= right.length(); index += 1) {
+            previous[index] = index;
+        }
+        for (int i = 1; i <= left.length(); i += 1) {
+            current[0] = i;
+            for (int j = 1; j <= right.length(); j += 1) {
+                int cost = left.charAt(i - 1) == right.charAt(j - 1) ? 0 : 1;
+                current[j] = Math.min(
+                        Math.min(current[j - 1] + 1, previous[j] + 1),
+                        previous[j - 1] + cost
+                );
+            }
+            int[] swap = previous;
+            previous = current;
+            current = swap;
+        }
+        return previous[right.length()];
     }
 
     private Set<String> semanticTokens(String value) {
@@ -1260,14 +1604,6 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     }
 
     private InterviewOrchestrationResponse buildConsentPhaseResponse(
-            SessionContext context,
-            SurveyResponse response,
-            String prompt
-    ) {
-        return buildResponse(context, response, null, prompt, false);
-    }
-
-    private InterviewOrchestrationResponse buildPickupPhaseResponse(
             SessionContext context,
             SurveyResponse response,
             String prompt
@@ -2008,22 +2344,53 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         return null;
     }
 
-    private String buildPickupPrompt(Survey survey) {
-        return localized(survey, "Alo?", "Hello?");
+    private boolean requiresOpeningGreeting(Survey survey) {
+        return trimToNull(survey.getIntroPrompt()) != null;
     }
 
-    private void initializePickupState(SurveyResponse response, Survey survey) {
-        if (requiresPickupHandshake(survey) && readPickupState(response) == null) {
-            updatePickupState(response, PICKUP_PENDING);
+    private boolean isOpeningGreetingLike(InterviewAnswerRequest request) {
+        InterviewConversationSignal signal = request.signal() == null ? InterviewConversationSignal.ANSWER : request.signal();
+        if (signal == InterviewConversationSignal.NO_INPUT) {
+            return false;
+        }
+        if (signal == InterviewConversationSignal.IDENTITY_REQUEST) {
+            return true;
+        }
+
+        String rawInput = trimToNull(request.utteranceText());
+        String normalized = normalize(rawInput);
+        if (normalized.isBlank()) {
+            return false;
+        }
+        if (containsAnyPhrase(normalized, "kim ariyor", "kimle gorusuyorum", "kimsiniz", "buyurun", "dinliyorum")) {
+            return true;
+        }
+        for (String token : normalized.split("\\s+")) {
+            if (OPENING_GREETING_WORDS.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isOpeningGreetingReceived(SurveyResponse response) {
+        try {
+            JsonNode root = readTranscriptJson(response.getTranscriptJson());
+            return root.path(GREETING_RECEIVED_KEY).asBoolean(false);
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
-    private boolean isPickupPending(Survey survey, SurveyResponse response) {
-        return requiresPickupHandshake(survey) && PICKUP_PENDING.equals(readPickupState(response));
-    }
-
-    private boolean requiresPickupHandshake(Survey survey) {
-        return trimToNull(survey.getIntroPrompt()) != null;
+    private void updateOpeningGreetingReceived(SurveyResponse response, boolean received) {
+        try {
+            JsonNode root = readTranscriptJson(response.getTranscriptJson());
+            Map<String, Object> payload = objectMapper.convertValue(root, Map.class);
+            payload.put(GREETING_RECEIVED_KEY, received);
+            response.setTranscriptJson(objectMapper.writeValueAsString(payload));
+        } catch (Exception ignored) {
+            response.setTranscriptJson("{\"" + GREETING_RECEIVED_KEY + "\":" + received + "}");
+        }
     }
 
     private void initializeOpeningConsentState(SurveyResponse response, Survey survey) {
@@ -2098,16 +2465,13 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         return null;
     }
 
-    private String readPickupState(SurveyResponse response) {
+    private boolean isOpeningConsentPromptDelivered(SurveyResponse response) {
         try {
             JsonNode root = readTranscriptJson(response.getTranscriptJson());
-            if (root.hasNonNull(PICKUP_STATE_KEY)) {
-                return trimToNull(root.get(PICKUP_STATE_KEY).asText());
-            }
+            return root.path(CONSENT_PROMPT_DELIVERED_KEY).asBoolean(false);
         } catch (Exception ignored) {
-            return null;
+            return false;
         }
-        return null;
     }
 
     private void updateOpeningConsentState(SurveyResponse response, String state) {
@@ -2121,14 +2485,14 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         }
     }
 
-    private void updatePickupState(SurveyResponse response, String state) {
+    private void updateOpeningConsentPromptDelivered(SurveyResponse response, boolean delivered) {
         try {
             JsonNode root = readTranscriptJson(response.getTranscriptJson());
             Map<String, Object> payload = objectMapper.convertValue(root, Map.class);
-            payload.put(PICKUP_STATE_KEY, state);
+            payload.put(CONSENT_PROMPT_DELIVERED_KEY, delivered);
             response.setTranscriptJson(objectMapper.writeValueAsString(payload));
         } catch (Exception ignored) {
-            response.setTranscriptJson("{\"" + PICKUP_STATE_KEY + "\":\"" + state + "\"}");
+            response.setTranscriptJson("{\"" + CONSENT_PROMPT_DELIVERED_KEY + "\":" + delivered + "}");
         }
     }
 
@@ -2234,6 +2598,51 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return fallback;
         }
         return fallback;
+    }
+
+    private TurkeyGeoDataService.GeoScope extractGeoScope(SurveyQuestion question) {
+        if (question.getSettingsJson() == null || question.getSettingsJson().isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(question.getSettingsJson());
+            JsonNode autoLexicon = root.path("autoLexicon");
+            if (!autoLexicon.isObject() || !"geo".equalsIgnoreCase(autoLexicon.path("type").asText())) {
+                return null;
+            }
+
+            String granularityValue = trimToNull(autoLexicon.path("granularity").asText(null));
+            if (granularityValue == null) {
+                return null;
+            }
+
+            TurkeyGeoDataService.GeoGranularity granularity = TurkeyGeoDataService.GeoGranularity.valueOf(granularityValue);
+            Set<String> cityCodes = new LinkedHashSet<>();
+            JsonNode cityCodesNode = autoLexicon.get("cityCodes");
+            if (cityCodesNode != null && cityCodesNode.isArray()) {
+                cityCodesNode.forEach(item -> {
+                    String value = trimToNull(item.asText(null));
+                    if (value != null) {
+                        cityCodes.add(value);
+                    }
+                });
+            }
+
+            Set<String> districtNames = new LinkedHashSet<>();
+            JsonNode districtNamesNode = autoLexicon.get("districtNames");
+            if (districtNamesNode != null && districtNamesNode.isArray()) {
+                districtNamesNode.forEach(item -> {
+                    String value = trimToNull(item.asText(null));
+                    if (value != null) {
+                        districtNames.add(value);
+                    }
+                });
+            }
+
+            return new TurkeyGeoDataService.GeoScope(granularity, Set.copyOf(cityCodes), Set.copyOf(districtNames));
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private String normalize(String value) {
@@ -2362,6 +2771,10 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return new NormalizedAnswer(true, rawText, rawText, null, null, List.of(rawText), null, null, null);
         }
 
+        private static NormalizedAnswer validText(String rawText, String answerText, List<String> normalizedValues) {
+            return new NormalizedAnswer(true, rawText, answerText, null, null, normalizedValues, null, null, null);
+        }
+
         private static NormalizedAnswer validNumber(String rawText, BigDecimal numberValue) {
             return new NormalizedAnswer(true, rawText, numberValue.toPlainString(), numberValue, null, List.of(numberValue.toPlainString()), null, null, null);
         }
@@ -2390,6 +2803,18 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     private record SemanticOptionDecision(
             SurveyQuestionOption matchedOption,
             String clarificationPrompt
+    ) {
+    }
+
+    private record AutoEntityEntry(
+            String label,
+            List<String> aliases
+    ) {
+    }
+
+    private record AutoEntityScore(
+            AutoEntityEntry entry,
+            double score
     ) {
     }
 

@@ -8,8 +8,17 @@ import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
 import { KeyValueList } from "@/components/ui/KeyValueList";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { fetchOperationById, fetchOperationCallJobDetail, redialOperationCallJob } from "@/lib/operations";
-import { CallJobAttempt, CallJobDetail, Operation } from "@/lib/types";
+import { fetchOperationById, fetchOperationCallJobDetail, redialOperationCallJob, updateOperationCallJobSurveyResponse } from "@/lib/operations";
+import { CallJobAttempt, CallJobDetail, CallJobSurveyResponseAnswer, Operation } from "@/lib/types";
+
+type SurveyAnswerDraft = {
+  questionId: string;
+  questionType: CallJobSurveyResponseAnswer["questionType"];
+  answerText: string;
+  answerNumber: string;
+  selectedOptionId: string;
+  selectedOptionIds: string[];
+};
 
 export default function OperationJobDetailPage() {
   const params = useParams<{ id: string; jobId: string }>();
@@ -23,6 +32,11 @@ export default function OperationJobDetailPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const [retryErrorMessage, setRetryErrorMessage] = useState<string | null>(null);
+  const [answerDrafts, setAnswerDrafts] = useState<SurveyAnswerDraft[]>([]);
+  const [initialAnswerSignature, setInitialAnswerSignature] = useState("");
+  const [isSavingAnswers, setIsSavingAnswers] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [isMissing, setIsMissing] = useState(false);
 
   const pageHeader = useMemo(
@@ -78,6 +92,12 @@ export default function OperationJobDetailPage() {
     return () => controller.abort();
   }, [callJobId, operationId]);
 
+  useEffect(() => {
+    const nextDrafts = createAnswerDrafts(detail?.surveyResponse?.answers ?? []);
+    setAnswerDrafts(nextDrafts);
+    setInitialAnswerSignature(serializeAnswerDrafts(nextDrafts));
+  }, [detail?.surveyResponse]);
+
   if (isMissing) {
     notFound();
   }
@@ -102,6 +122,46 @@ export default function OperationJobDetailPage() {
     }
   }
 
+  function updateAnswerDraft(questionId: string, updater: (draft: SurveyAnswerDraft) => SurveyAnswerDraft) {
+    setAnswerDrafts((current) => current.map((draft) => (
+      draft.questionId === questionId ? updater(draft) : draft
+    )));
+  }
+
+  async function handleSaveAnswers() {
+    if (!detail?.surveyResponse) {
+      return;
+    }
+
+    try {
+      setIsSavingAnswers(true);
+      setSaveErrorMessage(null);
+      setSaveSuccessMessage(null);
+
+      const nextDetail = await updateOperationCallJobSurveyResponse(
+        operationId,
+        callJobId,
+        answerDrafts.map((draft) => ({
+          questionId: draft.questionId,
+          answerText: normalizeDraftText(draft.answerText),
+          answerNumber: draft.answerNumber.trim() ? Number(draft.answerNumber) : null,
+          selectedOptionId: draft.selectedOptionId || null,
+          selectedOptionIds: draft.selectedOptionIds,
+        })),
+      );
+
+      setDetail(nextDetail);
+      const nextDrafts = createAnswerDrafts(nextDetail.surveyResponse?.answers ?? []);
+      setAnswerDrafts(nextDrafts);
+      setInitialAnswerSignature(serializeAnswerDrafts(nextDrafts));
+      setSaveSuccessMessage("Yanitlar guncellendi. Analitikler yeni degerlere gore hesaplanacak.");
+    } catch (error) {
+      setSaveErrorMessage(error instanceof Error ? error.message : "Yanitlar kaydedilemedi.");
+    } finally {
+      setIsSavingAnswers(false);
+    }
+  }
+
   const responseStatus = detail?.surveyResponse?.status ?? (detail?.partialResponseDataExists ? "Kismi veri var" : "Yanıt yok");
   const responseDetail = detail?.surveyResponse
     ? detail.surveyResponse.usableResponse
@@ -110,6 +170,7 @@ export default function OperationJobDetailPage() {
     : detail?.partialResponseDataExists
       ? "Transcript veya kisitli veri mevcut, ama bagli bir survey_response secilemiyor."
       : "Bu is icin henuz survey_response kaydi yok.";
+  const hasUnsavedAnswerChanges = serializeAnswerDrafts(answerDrafts) !== initialAnswerSignature;
 
   return (
     <PageContainer>
@@ -211,6 +272,148 @@ export default function OperationJobDetailPage() {
                   { label: "Son hata", value: detail.lastErrorMessage ?? "Kayitli hata yok" },
                 ]}
               />
+            </SectionCard>
+
+            <SectionCard
+              title="Cevap editoru"
+              description="Agent'in yanlis yorumladigi cevaplari transcripti kontrol ederek burada duzeltebilirsiniz."
+              action={detail.surveyResponse ? (
+                <button
+                  type="button"
+                  className="button-primary compact-button"
+                  disabled={isSavingAnswers || !hasUnsavedAnswerChanges}
+                  onClick={() => void handleSaveAnswers()}
+                >
+                  {isSavingAnswers ? "Yanitlar kaydediliyor..." : "Yanitlari kaydet"}
+                </button>
+              ) : null}
+            >
+              {saveErrorMessage ? (
+                <div className="operation-inline-message is-danger compact">
+                  <strong>Yanitlar kaydedilemedi</strong>
+                  <span>{saveErrorMessage}</span>
+                </div>
+              ) : null}
+
+              {saveSuccessMessage ? (
+                <div className="operation-inline-message is-accent compact">
+                  <strong>Yanitlar guncellendi</strong>
+                  <span>{saveSuccessMessage}</span>
+                </div>
+              ) : null}
+
+              {!detail.surveyResponse ? (
+                <div className="operation-empty-state">
+                  <strong>Duzenlenebilir bir response kaydi yok</strong>
+                  <p>Bu job icin once survey response olusmali. Transcript varsa yine de asagida inceleyebilirsiniz.</p>
+                </div>
+              ) : (
+                <div className="call-job-answer-editor-list">
+                  {detail.surveyResponse.answers.map((answer) => {
+                    const draft = answerDrafts.find((item) => item.questionId === answer.questionId) ?? createAnswerDraft(answer);
+
+                    return (
+                      <article key={answer.questionId} className="call-job-answer-editor-card">
+                        <div className="call-job-answer-editor-head">
+                          <div>
+                            <strong>Soru {answer.questionOrder}: {answer.questionTitle}</strong>
+                            <span>
+                              {answer.questionCode} · {formatQuestionType(answer.questionType)}
+                              {answer.required ? " · zorunlu" : " · opsiyonel"}
+                            </span>
+                          </div>
+                          <span className={answer.valid ? "operation-readiness-pill is-ready" : "operation-readiness-pill is-blocked"}>
+                            {answer.manuallyEdited ? "Manuel duzeltildi" : answer.valid ? "Gecerli" : "Kontrol gerekli"}
+                          </span>
+                        </div>
+
+                        <div className="detail-row">
+                          <span>Mevcut yorum</span>
+                          <strong>{answer.displayValue}</strong>
+                        </div>
+
+                        {answer.invalidReason ? (
+                          <div className="operation-inline-message is-danger compact">
+                            <strong>Mevcut invalid reason</strong>
+                            <span>{answer.invalidReason}</span>
+                          </div>
+                        ) : null}
+
+                        {answer.questionType === "OPEN_ENDED" ? (
+                          <label className="call-job-answer-field">
+                            <span>Yeni cevap</span>
+                            <textarea
+                              value={draft.answerText}
+                              onChange={(event) => updateAnswerDraft(answer.questionId, (current) => ({
+                                ...current,
+                                answerText: event.target.value,
+                              }))}
+                              rows={4}
+                            />
+                          </label>
+                        ) : null}
+
+                        {answer.questionType === "RATING" ? (
+                          <label className="call-job-answer-field">
+                            <span>Yeni puan</span>
+                            <input
+                              type="number"
+                              value={draft.answerNumber}
+                              onChange={(event) => updateAnswerDraft(answer.questionId, (current) => ({
+                                ...current,
+                                answerNumber: event.target.value,
+                              }))}
+                            />
+                          </label>
+                        ) : null}
+
+                        {answer.questionType === "SINGLE_CHOICE" ? (
+                          <label className="call-job-answer-field">
+                            <span>Secenek</span>
+                            <select
+                              value={draft.selectedOptionId}
+                              onChange={(event) => updateAnswerDraft(answer.questionId, (current) => ({
+                                ...current,
+                                selectedOptionId: event.target.value,
+                              }))}
+                            >
+                              <option value="">Secin</option>
+                              {answer.options.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+
+                        {answer.questionType === "MULTI_CHOICE" ? (
+                          <div className="call-job-answer-field">
+                            <span>Secenekler</span>
+                            <div className="call-job-answer-checkboxes">
+                              {answer.options.map((option) => (
+                                <label key={option.id} className="call-job-answer-checkbox">
+                                  <input
+                                    type="checkbox"
+                                    checked={draft.selectedOptionIds.includes(option.id)}
+                                    onChange={(event) => updateAnswerDraft(answer.questionId, (current) => ({
+                                      ...current,
+                                      selectedOptionIds: event.target.checked
+                                        ? [...current.selectedOptionIds, option.id]
+                                        : current.selectedOptionIds.filter((item) => item !== option.id),
+                                    }))}
+                                  />
+                                  <span>{option.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </SectionCard>
 
             <SectionCard
@@ -381,5 +584,51 @@ function formatAttemptStatus(attempt: CallJobAttempt): string {
       return "Iptal edildi";
     default:
       return attempt.status;
+  }
+}
+
+function createAnswerDrafts(answers: CallJobSurveyResponseAnswer[]): SurveyAnswerDraft[] {
+  return answers.map(createAnswerDraft);
+}
+
+function createAnswerDraft(answer: CallJobSurveyResponseAnswer): SurveyAnswerDraft {
+  return {
+    questionId: answer.questionId,
+    questionType: answer.questionType,
+    answerText: answer.answerText ?? "",
+    answerNumber: answer.answerNumber === null ? "" : String(answer.answerNumber),
+    selectedOptionId: answer.selectedOptionId ?? "",
+    selectedOptionIds: [...answer.selectedOptionIds],
+  };
+}
+
+function serializeAnswerDrafts(drafts: SurveyAnswerDraft[]): string {
+  return JSON.stringify(drafts.map((draft) => ({
+    questionId: draft.questionId,
+    questionType: draft.questionType,
+    answerText: draft.answerText.trim(),
+    answerNumber: draft.answerNumber.trim(),
+    selectedOptionId: draft.selectedOptionId,
+    selectedOptionIds: [...draft.selectedOptionIds].sort(),
+  })));
+}
+
+function normalizeDraftText(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function formatQuestionType(questionType: CallJobSurveyResponseAnswer["questionType"]): string {
+  switch (questionType) {
+    case "OPEN_ENDED":
+      return "Acik uc"
+    case "RATING":
+      return "Puan"
+    case "SINGLE_CHOICE":
+      return "Tek secim"
+    case "MULTI_CHOICE":
+      return "Coklu secim"
+    default:
+      return questionType;
   }
 }

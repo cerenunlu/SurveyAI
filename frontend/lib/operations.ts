@@ -1,7 +1,7 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import { CallJob, CallJobAttempt, CallJobDetail, CallJobSurveyResponse, Operation, OperationAnalytics, OperationAnalyticsAudienceBreakdown, OperationAnalyticsBreakdownItem, OperationAnalyticsInsightItem, OperationAnalyticsQuestionGroupRow, OperationAnalyticsQuestionGroupSeries, OperationAnalyticsQuestionGroupSummary, OperationAnalyticsQuestionSummary, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
+import { CallJob, CallJobAttempt, CallJobDetail, CallJobSurveyResponse, CallJobSurveyResponseAnswer, CallJobSurveyResponseAnswerOption, Operation, OperationAnalytics, OperationAnalyticsAudienceBreakdown, OperationAnalyticsBreakdownItem, OperationAnalyticsInsightItem, OperationAnalyticsQuestionGroupRow, OperationAnalyticsQuestionGroupSeries, OperationAnalyticsQuestionGroupSummary, OperationAnalyticsQuestionSummary, OperationAnalyticsSampleResponse, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
 
 type ApiErrorResponse = {
   code?: string;
@@ -120,6 +120,35 @@ type CallJobSurveyResponseApiResponse = {
   completedAt: string | null;
   aiSummaryText: string | null;
   transcriptText: string | null;
+  answers?: CallJobSurveyResponseAnswerApiResponse[];
+};
+
+type CallJobSurveyResponseAnswerOptionApiResponse = {
+  id: string;
+  code: string;
+  label: string;
+  value: string;
+  optionOrder: number;
+};
+
+type CallJobSurveyResponseAnswerApiResponse = {
+  answerId: string | null;
+  questionId: string;
+  questionCode: string;
+  questionOrder: number;
+  questionTitle: string;
+  questionType: CallJobSurveyResponseAnswer["questionType"];
+  required: boolean;
+  answerText: string | null;
+  answerNumber: number | null;
+  selectedOptionId: string | null;
+  selectedOptionIds: string[] | null;
+  valid: boolean;
+  invalidReason: string | null;
+  rawInputText: string | null;
+  displayValue: string;
+  manuallyEdited: boolean;
+  options: CallJobSurveyResponseAnswerOptionApiResponse[];
 };
 
 type CallJobAttemptApiResponse = {
@@ -196,7 +225,14 @@ type OperationAnalyticsQuestionSummaryApiResponse = {
   emptyStateMessage: string | null;
   breakdown: OperationAnalyticsBreakdownItemApiResponse[];
   specialAnswerBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
-  sampleResponses: string[];
+  sampleResponses: Array<OperationAnalyticsSampleResponseApiResponse | string>;
+};
+
+type OperationAnalyticsSampleResponseApiResponse = {
+  callJobId: string;
+  respondentName: string;
+  capturedAt: string | null;
+  responseText: string;
 };
 
 type OperationAnalyticsQuestionGroupRowApiResponse = {
@@ -276,6 +312,7 @@ type OperationAnalyticsApiResponse = {
   insightSummary: string | null;
   insightItems: OperationAnalyticsInsightItemApiResponse[];
   outcomeBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
+  consentBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
   audienceBreakdowns: OperationAnalyticsAudienceBreakdownApiResponse[];
   questionSummaries: OperationAnalyticsQuestionSummaryApiResponse[];
   questionGroups: OperationAnalyticsQuestionGroupSummaryApiResponse[];
@@ -373,6 +410,31 @@ export async function redialOperationCallJob(
   return mapCallJobDetailDto(response);
 }
 
+export async function updateOperationCallJobSurveyResponse(
+  operationId: string,
+  callJobId: string,
+  answers: Array<{
+    questionId: string;
+    answerText?: string | null;
+    answerNumber?: number | null;
+    selectedOptionId?: string | null;
+    selectedOptionIds?: string[];
+  }>,
+  companyId?: string,
+): Promise<CallJobDetail> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const response = await fetchJson<CallJobDetailApiResponse>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/jobs/${callJobId}/survey-response?companyId=${resolvedCompanyId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ answers }),
+    },
+    "call job survey response update",
+  );
+
+  return mapCallJobDetailDto(response);
+}
+
 export async function fetchCompanyOperations(
   companyId?: string,
   init?: RequestInit,
@@ -459,6 +521,7 @@ export async function fetchOperationAnalytics(
       tone: item.tone,
     })),
     outcomeBreakdown: (response.outcomeBreakdown ?? []).map(mapAnalyticsBreakdown),
+    consentBreakdown: (response.consentBreakdown ?? []).map(mapAnalyticsBreakdown),
     audienceBreakdowns: (response.audienceBreakdowns ?? []).map((item): OperationAnalyticsAudienceBreakdown => ({
       key: item.key,
       label: item.label,
@@ -483,7 +546,23 @@ export async function fetchOperationAnalytics(
       emptyStateMessage: item.emptyStateMessage,
       breakdown: (item.breakdown ?? []).map(mapAnalyticsBreakdown),
       specialAnswerBreakdown: (item.specialAnswerBreakdown ?? []).map(mapAnalyticsBreakdown),
-      sampleResponses: item.sampleResponses ?? [],
+      sampleResponses: (item.sampleResponses ?? []).map((sample, sampleIndex): OperationAnalyticsSampleResponse => {
+        if (typeof sample === "string") {
+          return {
+            callJobId: `legacy-${item.questionId}-${sampleIndex}`,
+            respondentName: "Katilimci",
+            capturedAt: null,
+            responseText: sample,
+          };
+        }
+
+        return {
+          callJobId: sample.callJobId,
+          respondentName: sample.respondentName,
+          capturedAt: sample.capturedAt ? formatDateTime(sample.capturedAt) : null,
+          responseText: sample.responseText ?? "",
+        };
+      }),
     })),
     questionGroups: (response.questionGroups ?? []).map((item): OperationAnalyticsQuestionGroupSummary => ({
       groupCode: item.groupCode,
@@ -933,6 +1012,39 @@ function mapCallJobSurveyResponse(dto: CallJobSurveyResponseApiResponse | null):
     completedAt: formatDateTime(dto.completedAt),
     aiSummaryText: dto.aiSummaryText,
     transcriptText: dto.transcriptText,
+    answers: (dto.answers ?? []).map(mapCallJobSurveyResponseAnswer),
+  };
+}
+
+function mapCallJobSurveyResponseAnswer(dto: CallJobSurveyResponseAnswerApiResponse): CallJobSurveyResponseAnswer {
+  return {
+    answerId: dto.answerId,
+    questionId: dto.questionId,
+    questionCode: dto.questionCode,
+    questionOrder: dto.questionOrder,
+    questionTitle: dto.questionTitle,
+    questionType: dto.questionType,
+    required: dto.required,
+    answerText: dto.answerText,
+    answerNumber: dto.answerNumber,
+    selectedOptionId: dto.selectedOptionId,
+    selectedOptionIds: dto.selectedOptionIds ?? [],
+    valid: dto.valid,
+    invalidReason: dto.invalidReason,
+    rawInputText: dto.rawInputText,
+    displayValue: dto.displayValue,
+    manuallyEdited: dto.manuallyEdited,
+    options: (dto.options ?? []).map(mapCallJobSurveyResponseAnswerOption),
+  };
+}
+
+function mapCallJobSurveyResponseAnswerOption(dto: CallJobSurveyResponseAnswerOptionApiResponse): CallJobSurveyResponseAnswerOption {
+  return {
+    id: dto.id,
+    code: dto.code,
+    label: dto.label,
+    value: dto.value,
+    optionOrder: dto.optionOrder,
   };
 }
 

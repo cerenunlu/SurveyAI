@@ -36,6 +36,7 @@ surveyai:
     allowed-origins: ${SURVEYAI_WEB_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
   dev:
     provider-result-simulator-enabled: false
+    allow-duplicate-operation-contact-phone-numbers: ${SURVEYAI_DEV_ALLOW_DUPLICATE_OPERATION_CONTACT_PHONE_NUMBERS:false}
   calling:
     active-provider: ${SURVEYAI_CALLING_ACTIVE_PROVIDER:ELEVENLABS}
     mock:

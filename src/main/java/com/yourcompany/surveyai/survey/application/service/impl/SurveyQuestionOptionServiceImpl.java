@@ -8,6 +8,7 @@ import com.yourcompany.surveyai.survey.application.dto.request.CreateSurveyQuest
 import com.yourcompany.surveyai.survey.application.dto.request.UpdateSurveyQuestionOptionRequest;
 import com.yourcompany.surveyai.survey.application.dto.response.SurveyQuestionOptionResponseDto;
 import com.yourcompany.surveyai.survey.application.service.SurveyQuestionOptionService;
+import com.yourcompany.surveyai.survey.application.support.SurveyQuestionAutoLexiconService;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestionOption;
@@ -34,6 +35,7 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
     private final SurveyAnswerRepository surveyAnswerRepository;
     private final CompanyRepository companyRepository;
     private final Validator validator;
+    private final SurveyQuestionAutoLexiconService surveyQuestionAutoLexiconService;
 
     public SurveyQuestionOptionServiceImpl(
             SurveyRepository surveyRepository,
@@ -41,7 +43,8 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
             SurveyQuestionOptionRepository surveyQuestionOptionRepository,
             SurveyAnswerRepository surveyAnswerRepository,
             CompanyRepository companyRepository,
-            Validator validator
+            Validator validator,
+            SurveyQuestionAutoLexiconService surveyQuestionAutoLexiconService
     ) {
         this.surveyRepository = surveyRepository;
         this.surveyQuestionRepository = surveyQuestionRepository;
@@ -49,6 +52,7 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
         this.surveyAnswerRepository = surveyAnswerRepository;
         this.companyRepository = companyRepository;
         this.validator = validator;
+        this.surveyQuestionAutoLexiconService = surveyQuestionAutoLexiconService;
     }
 
     @Override
@@ -69,8 +73,9 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
         option.setCompany(question.getCompany());
         option.setSurveyQuestion(question);
         applyOptionFields(option, request);
-
-        return toDto(surveyQuestionOptionRepository.save(option));
+        SurveyQuestionOption savedOption = surveyQuestionOptionRepository.save(option);
+        refreshQuestionAutoLexicon(questionId);
+        return toDto(savedOption);
     }
 
     @Override
@@ -91,7 +96,9 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
         ensureOptionOrderAvailable(questionId, request.getOptionOrder(), optionId);
 
         applyOptionFields(option, request);
-        return toDto(surveyQuestionOptionRepository.save(option));
+        SurveyQuestionOption savedOption = surveyQuestionOptionRepository.save(option);
+        refreshQuestionAutoLexicon(questionId);
+        return toDto(savedOption);
     }
 
     @Override
@@ -106,6 +113,7 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
         }
 
         surveyQuestionOptionRepository.delete(option);
+        refreshQuestionAutoLexicon(questionId);
     }
 
     @Override
@@ -229,6 +237,15 @@ public class SurveyQuestionOptionServiceImpl implements SurveyQuestionOptionServ
                 option.getCreatedAt(),
                 option.getUpdatedAt()
         );
+    }
+
+    private void refreshQuestionAutoLexicon(UUID questionId) {
+        surveyQuestionRepository.findById(questionId).ifPresent(question -> {
+            List<SurveyQuestionOption> options = surveyQuestionOptionRepository
+                    .findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(questionId);
+            question.setSettingsJson(surveyQuestionAutoLexiconService.rebuildSettingsJson(question, options));
+            surveyQuestionRepository.save(question);
+        });
     }
 
     private String requireTrimmed(String value, String message) {

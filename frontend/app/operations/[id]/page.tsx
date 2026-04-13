@@ -33,6 +33,7 @@ import {
   pauseOperation,
   resumeOperation,
   startOperation,
+  updateOperationCallJobSurveyResponse,
   type CallJobPage,
   type OperationContactSummary,
 } from "@/lib/operations";
@@ -81,7 +82,7 @@ const jobColumns: TableColumn<CallJob>[] = [
     render: (job) => (
       <div>
         <div className="table-title">
-          {`${job.answerCount ?? 0} soruya cevap verdi`}
+          {buildJobResultTitle(job)}
         </div>
         <div className="table-subtitle">{job.lastErrorMessage ?? job.lastResultSummary ?? "Durum ozeti"}</div>
       </div>
@@ -379,6 +380,29 @@ export default function OperationDetailPage() {
   const refreshAfterMutation = useCallback(async () => {
     await loadOperationWorkspace();
   }, [loadOperationWorkspace]);
+
+  const handleSaveInlineSampleResponse = useCallback(async ({
+    callJobId,
+    questionId,
+    responseText,
+  }: {
+    callJobId: string;
+    questionId: string;
+    responseText: string;
+  }) => {
+    if (!operationId) {
+      return;
+    }
+
+    await updateOperationCallJobSurveyResponse(operationId, callJobId, [
+      {
+        questionId,
+        answerText: responseText,
+      },
+    ]);
+
+    await refreshAfterMutation();
+  }, [operationId, refreshAfterMutation]);
 
   const handleStartOperation = useCallback(async () => {
     if (!operationId || !operation) {
@@ -728,13 +752,17 @@ export default function OperationDetailPage() {
         ) : null}
 
         {activeTab === "analysis" ? (
-          <OperationAnalyticsSection
-            operation={operation}
-            analytics={analytics}
-            contactCount={contactCount}
-            isLoading={isAnalyticsLoading}
-            view="overview"
-          />
+          <>
+            <OperationAnalyticsSection
+              operation={operation}
+              analytics={analytics}
+              contactCount={contactCount}
+              isLoading={isAnalyticsLoading}
+              view="overview"
+              onSaveSampleResponse={handleSaveInlineSampleResponse}
+            />
+
+          </>
         ) : activeTab === "jobs" ? (
           <section className="panel-card operation-detail-content-stack operation-jobs-panel">
             <div className="operation-list-toolbar operation-list-toolbar-compact">
@@ -1032,6 +1060,22 @@ export default function OperationDetailPage() {
   );
 }
 
+function buildJobResultTitle(job: CallJob): string {
+  if ((job.answerCount ?? 0) > 0) {
+    return `${job.answerCount ?? 0} soruya cevap verdi`;
+  }
+
+  if (job.status === "Failed") {
+    return job.lastResultSummary ?? "Cagri basarisiz oldu";
+  }
+
+  if (job.status === "Completed") {
+    return "Gecerli cevap kaydi yok";
+  }
+
+  return "Henuz cevap yok";
+}
+
 function createImportSummaryFromRows(rows: ImportPreviewRow[], ignoredRows: number): ImportSummary {
   const validRows = rows.filter((row) => row.isValid).length;
   const invalidRows = rows.length - validRows;
@@ -1088,3 +1132,4 @@ function getCallJobsEmptyState(
     description: "Bu operasyon için henüz görüntülenecek bir kayıt bulunmuyor.",
   };
 }
+

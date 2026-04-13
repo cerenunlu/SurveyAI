@@ -34,7 +34,7 @@ public record CallJobDetailResponseDto(
         boolean partialResponseDataExists,
         String transcriptSummary,
         String transcriptText,
-        CallJobSurveyResponseSummaryDto surveyResponse,
+        CallJobSurveyResponseDto surveyResponse,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
         List<CallJobAttemptResponseDto> attempts

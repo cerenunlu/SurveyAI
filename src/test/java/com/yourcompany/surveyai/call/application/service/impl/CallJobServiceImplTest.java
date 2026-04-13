@@ -10,6 +10,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yourcompany.surveyai.call.application.dto.request.UpdateCallJobSurveyResponseAnswerRequest;
+import com.yourcompany.surveyai.call.application.dto.request.UpdateCallJobSurveyResponseRequest;
 import com.yourcompany.surveyai.call.application.dto.response.CallJobDetailResponseDto;
 import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
@@ -32,6 +35,11 @@ import com.yourcompany.surveyai.response.domain.enums.SurveyResponseStatus;
 import com.yourcompany.surveyai.response.repository.SurveyAnswerRepository;
 import com.yourcompany.surveyai.response.repository.SurveyResponseRepository;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
+import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
+import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestionOption;
+import com.yourcompany.surveyai.survey.domain.enums.QuestionType;
+import com.yourcompany.surveyai.survey.repository.SurveyQuestionOptionRepository;
+import com.yourcompany.surveyai.survey.repository.SurveyQuestionRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -51,7 +59,10 @@ class CallJobServiceImplTest {
     private final OperationRepository operationRepository = mock(OperationRepository.class);
     private final SurveyResponseRepository surveyResponseRepository = mock(SurveyResponseRepository.class);
     private final SurveyAnswerRepository surveyAnswerRepository = mock(SurveyAnswerRepository.class);
+    private final SurveyQuestionRepository surveyQuestionRepository = mock(SurveyQuestionRepository.class);
+    private final SurveyQuestionOptionRepository surveyQuestionOptionRepository = mock(SurveyQuestionOptionRepository.class);
     private final CallJobDispatcher callJobDispatcher = mock(CallJobDispatcher.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private CallJobServiceImpl service;
 
@@ -64,11 +75,16 @@ class CallJobServiceImplTest {
                 operationRepository,
                 surveyResponseRepository,
                 surveyAnswerRepository,
-                callJobDispatcher
+                surveyQuestionRepository,
+                surveyQuestionOptionRepository,
+                callJobDispatcher,
+                objectMapper
         );
 
         when(callJobRepository.save(any(CallJob.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(operationContactRepository.save(any(OperationContact.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(surveyAnswerRepository.save(any(SurveyAnswer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(surveyResponseRepository.save(any(SurveyResponse.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -85,7 +101,7 @@ class CallJobServiceImplTest {
         SurveyAnswer validAnswer = fixture.buildAnswer(surveyResponse, true);
         SurveyAnswer invalidAnswer = fixture.buildAnswer(surveyResponse, false);
 
-        mockJobContext(fixture.callJob);
+        mockJobContext(fixture);
         when(callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(fixture.callJob.getId()))
                 .thenReturn(List.of(latestAttempt, firstAttempt));
         when(surveyResponseRepository.findAllByCallAttempt_IdInAndDeletedAtIsNull(List.of(latestAttempt.getId(), firstAttempt.getId())))
@@ -113,6 +129,8 @@ class CallJobServiceImplTest {
         assertThat(detail.attempts().get(1).surveyResponse().usableResponse()).isTrue();
         assertThat(detail.attempts().get(1).surveyResponse().validAnswerCount()).isEqualTo(1);
         assertThat(detail.transcriptSummary()).isEqualTo("Vatandas memnuniyetini belirtti.");
+        assertThat(detail.surveyResponse().answers()).hasSize(2);
+        assertThat(detail.surveyResponse().answers().get(0).questionCode()).isEqualTo("Q1");
     }
 
     @Test
@@ -152,6 +170,103 @@ class CallJobServiceImplTest {
     }
 
     @Test
+    void listOperationCallJobs_surfacesBusyReasonWhenNoAnswerExists() {
+        Fixture fixture = new Fixture();
+        fixture.callJob.setStatus(CallJobStatus.FAILED);
+        CallAttempt busyAttempt = fixture.buildAttempt(1, CallAttemptStatus.BUSY, "provider-1");
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(fixture.operation.getId(), fixture.company.getId()))
+                .thenReturn(Optional.of(fixture.operation));
+        when(callJobRepository.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(fixture.callJob)));
+        when(callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(fixture.callJob.getId()))
+                .thenReturn(List.of(busyAttempt));
+        when(surveyResponseRepository.findAllByCallAttempt_IdInAndDeletedAtIsNull(List.of(busyAttempt.getId())))
+                .thenReturn(List.of());
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(any()))
+                .thenReturn(List.of());
+
+        var page = service.listOperationCallJobs(
+                fixture.company.getId(),
+                fixture.operation.getId(),
+                0,
+                25,
+                null,
+                List.of(),
+                "updatedAt",
+                "desc"
+        );
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).answerCount()).isZero();
+        assertThat(page.items().get(0).lastResultSummary()).isEqualTo("Hat mesgul.");
+    }
+
+    @Test
+    void updateOperationCallJobSurveyResponse_persistsManualEditsAndRefreshesAnswerSummary() {
+        Fixture fixture = new Fixture();
+        CallAttempt completedAttempt = fixture.buildAttempt(1, CallAttemptStatus.COMPLETED, "provider-1");
+        SurveyResponse surveyResponse = fixture.buildSurveyResponse(completedAttempt, SurveyResponseStatus.PARTIAL);
+        surveyResponse.setCompletionPercent(BigDecimal.valueOf(50));
+
+        SurveyAnswer commentAnswer = fixture.buildAnswer(surveyResponse, true);
+        commentAnswer.setSurveyQuestion(fixture.commentQuestion);
+        commentAnswer.setAnswerType(QuestionType.OPEN_ENDED);
+        commentAnswer.setAnswerText("Eski yorum");
+        commentAnswer.setRawInputText("Eski yorum");
+
+        SurveyAnswer sentimentAnswer = fixture.buildAnswer(surveyResponse, false);
+        sentimentAnswer.setSurveyQuestion(fixture.sentimentQuestion);
+        sentimentAnswer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        sentimentAnswer.setAnswerText("Belirsiz");
+        sentimentAnswer.setRawInputText("Belirsiz");
+        sentimentAnswer.setInvalidReason("Secenek eslestirilemedi");
+
+        List<SurveyAnswer> persistedAnswers = new ArrayList<>(List.of(commentAnswer, sentimentAnswer));
+
+        mockJobContext(fixture);
+        when(callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(fixture.callJob.getId()))
+                .thenReturn(List.of(completedAttempt));
+        when(surveyResponseRepository.findAllByCallAttempt_IdInAndDeletedAtIsNull(List.of(completedAttempt.getId())))
+                .thenReturn(List.of(surveyResponse));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(List.of(surveyResponse.getId())))
+                .thenReturn(List.copyOf(persistedAnswers));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdAndDeletedAtIsNull(surveyResponse.getId()))
+                .thenAnswer(invocation -> List.copyOf(persistedAnswers));
+
+        UpdateCallJobSurveyResponseAnswerRequest commentUpdate = new UpdateCallJobSurveyResponseAnswerRequest();
+        commentUpdate.setQuestionId(fixture.commentQuestion.getId());
+        commentUpdate.setAnswerText("Belediye hizmetleri hizlandi");
+
+        UpdateCallJobSurveyResponseAnswerRequest sentimentUpdate = new UpdateCallJobSurveyResponseAnswerRequest();
+        sentimentUpdate.setQuestionId(fixture.sentimentQuestion.getId());
+        sentimentUpdate.setSelectedOptionId(fixture.positiveOption.getId());
+
+        UpdateCallJobSurveyResponseRequest request = new UpdateCallJobSurveyResponseRequest();
+        request.setAnswers(List.of(commentUpdate, sentimentUpdate));
+
+        CallJobDetailResponseDto detail = service.updateOperationCallJobSurveyResponse(
+                fixture.company.getId(),
+                fixture.operation.getId(),
+                fixture.callJob.getId(),
+                request
+        );
+
+        assertThat(detail.surveyResponse()).isNotNull();
+        assertThat(detail.surveyResponse().status()).isEqualTo(SurveyResponseStatus.COMPLETED);
+        assertThat(detail.surveyResponse().validAnswerCount()).isEqualTo(2);
+        assertThat(detail.surveyResponse().completionPercent()).isEqualByComparingTo("100.00");
+        assertThat(detail.surveyResponse().answers())
+                .extracting(answer -> answer.questionCode() + ":" + answer.displayValue())
+                .contains("Q1:Belediye hizmetleri hizlandi", "Q2:Memnun");
+        assertThat(detail.surveyResponse().answers())
+                .allMatch(answer -> answer.manuallyEdited());
+        assertThat(sentimentAnswer.getSelectedOption()).isEqualTo(fixture.positiveOption);
+        assertThat(sentimentAnswer.isValid()).isTrue();
+        assertThat(commentAnswer.getAnswerText()).isEqualTo("Belediye hizmetleri hizlandi");
+    }
+
+    @Test
     void retryOperationCallJob_dispatchesNewAttemptForEligibleFailedJob() {
         Fixture fixture = new Fixture();
         CallAttempt failedAttempt = fixture.buildAttempt(1, CallAttemptStatus.FAILED, "provider-1");
@@ -160,7 +275,7 @@ class CallJobServiceImplTest {
         List<CallAttempt> attempts = new ArrayList<>();
         attempts.add(failedAttempt);
 
-        mockJobContext(fixture.callJob);
+        mockJobContext(fixture);
         when(callAttemptRepository.findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(fixture.callJob.getId()))
                 .thenReturn(Optional.of(failedAttempt));
         when(callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(fixture.callJob.getId()))
@@ -210,7 +325,7 @@ class CallJobServiceImplTest {
         CallAttempt completedAttempt = fixture.buildAttempt(1, CallAttemptStatus.COMPLETED, "provider-1");
         attempts.add(completedAttempt);
 
-        mockJobContext(fixture.callJob);
+        mockJobContext(fixture);
         when(callAttemptRepository.findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(fixture.callJob.getId()))
                 .thenReturn(Optional.of(completedAttempt));
         when(callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(fixture.callJob.getId()))
@@ -248,7 +363,7 @@ class CallJobServiceImplTest {
         Fixture fixture = new Fixture();
         fixture.callJob.setStatus(CallJobStatus.IN_PROGRESS);
 
-        mockJobContext(fixture.callJob);
+        mockJobContext(fixture);
         when(callAttemptRepository.findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(fixture.callJob.getId()))
                 .thenReturn(Optional.of(fixture.buildAttempt(1, CallAttemptStatus.IN_PROGRESS, "provider-1")));
 
@@ -272,7 +387,7 @@ class CallJobServiceImplTest {
 
         CallAttempt completedAttempt = fixture.buildAttempt(1, CallAttemptStatus.COMPLETED, "provider-1");
 
-        mockJobContext(fixture.callJob);
+        mockJobContext(fixture);
         when(callAttemptRepository.findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(fixture.callJob.getId()))
                 .thenReturn(Optional.of(completedAttempt));
         when(callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(fixture.callJob.getId()))
@@ -335,7 +450,7 @@ class CallJobServiceImplTest {
 
         CallAttempt queuedAttempt = fixture.buildAttempt(1, CallAttemptStatus.FAILED, "provider-1");
 
-        mockJobContext(fixture.callJob);
+        mockJobContext(fixture);
         when(callAttemptRepository.findTopByCallJob_IdAndDeletedAtIsNullOrderByAttemptNumberDesc(fixture.callJob.getId()))
                 .thenReturn(Optional.of(queuedAttempt));
         when(callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(fixture.callJob.getId()))
@@ -380,7 +495,8 @@ class CallJobServiceImplTest {
         assertThat(detail.rawStatus()).isEqualTo(CallJobStatus.QUEUED);
     }
 
-    private void mockJobContext(CallJob callJob) {
+    private void mockJobContext(Fixture fixture) {
+        CallJob callJob = fixture.callJob;
         when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(callJob.getOperation().getId(), callJob.getCompany().getId()))
                 .thenReturn(Optional.of(callJob.getOperation()));
         when(callJobRepository.findByIdAndOperation_IdAndCompany_IdAndDeletedAtIsNull(
@@ -388,6 +504,11 @@ class CallJobServiceImplTest {
                 callJob.getOperation().getId(),
                 callJob.getCompany().getId()
         )).thenReturn(Optional.of(callJob));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(fixture.commentQuestion, fixture.sentimentQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(fixture.commentQuestion.getId(), fixture.sentimentQuestion.getId())
+        )).thenReturn(List.of(fixture.positiveOption, fixture.negativeOption));
     }
 
     private static class Fixture {
@@ -396,6 +517,10 @@ class CallJobServiceImplTest {
         private final Operation operation = new Operation();
         private final OperationContact contact = new OperationContact();
         private final CallJob callJob = new CallJob();
+        private final SurveyQuestion commentQuestion = new SurveyQuestion();
+        private final SurveyQuestion sentimentQuestion = new SurveyQuestion();
+        private final SurveyQuestionOption positiveOption = new SurveyQuestionOption();
+        private final SurveyQuestionOption negativeOption = new SurveyQuestionOption();
 
         private Fixture() {
             company.setId(UUID.randomUUID());
@@ -403,6 +528,46 @@ class CallJobServiceImplTest {
             survey.setId(UUID.randomUUID());
             survey.setCompany(company);
             survey.setName("Vatandas Memnuniyeti");
+
+            commentQuestion.setId(UUID.randomUUID());
+            commentQuestion.setCompany(company);
+            commentQuestion.setSurvey(survey);
+            commentQuestion.setCode("Q1");
+            commentQuestion.setQuestionOrder(1);
+            commentQuestion.setQuestionType(QuestionType.OPEN_ENDED);
+            commentQuestion.setTitle("Gorusunuz nedir?");
+            commentQuestion.setRequired(true);
+            commentQuestion.setBranchConditionJson("{}");
+            commentQuestion.setSettingsJson("{}");
+
+            sentimentQuestion.setId(UUID.randomUUID());
+            sentimentQuestion.setCompany(company);
+            sentimentQuestion.setSurvey(survey);
+            sentimentQuestion.setCode("Q2");
+            sentimentQuestion.setQuestionOrder(2);
+            sentimentQuestion.setQuestionType(QuestionType.SINGLE_CHOICE);
+            sentimentQuestion.setTitle("Genel memnuniyetiniz");
+            sentimentQuestion.setRequired(true);
+            sentimentQuestion.setBranchConditionJson("{}");
+            sentimentQuestion.setSettingsJson("{}");
+
+            positiveOption.setId(UUID.randomUUID());
+            positiveOption.setCompany(company);
+            positiveOption.setSurveyQuestion(sentimentQuestion);
+            positiveOption.setOptionOrder(1);
+            positiveOption.setOptionCode("POSITIVE");
+            positiveOption.setLabel("Memnun");
+            positiveOption.setValue("memnun");
+            positiveOption.setActive(true);
+
+            negativeOption.setId(UUID.randomUUID());
+            negativeOption.setCompany(company);
+            negativeOption.setSurveyQuestion(sentimentQuestion);
+            negativeOption.setOptionOrder(2);
+            negativeOption.setOptionCode("NEGATIVE");
+            negativeOption.setLabel("Memnun degil");
+            negativeOption.setValue("memnun_degil");
+            negativeOption.setActive(true);
 
             operation.setId(UUID.randomUUID());
             operation.setCompany(company);
@@ -471,6 +636,8 @@ class CallJobServiceImplTest {
             answer.setId(UUID.randomUUID());
             answer.setCompany(company);
             answer.setSurveyResponse(response);
+            answer.setSurveyQuestion(commentQuestion);
+            answer.setAnswerType(QuestionType.OPEN_ENDED);
             answer.setValid(valid);
             answer.setRetryCount(0);
             answer.setAnswerJson("{}");

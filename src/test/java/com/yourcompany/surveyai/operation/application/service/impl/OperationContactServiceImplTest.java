@@ -47,7 +47,8 @@ class OperationContactServiceImplTest {
                 operationContactRepository,
                 callJobRepository,
                 callJobDispatcher,
-                validator
+                validator,
+                false
         );
 
         when(operationContactRepository.saveAllAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -99,6 +100,86 @@ class OperationContactServiceImplTest {
         assertThat(response).hasSize(1);
         verify(callJobRepository, never()).saveAll(any());
         verify(callJobDispatcher, never()).dispatchNextPreparedJob(any());
+    }
+
+    @Test
+    void uploadContacts_runningOperation_withMultipleContacts_createsPendingJobsForEachAndTriggersSingleDispatch() {
+        Fixture fixture = new Fixture(OperationStatus.RUNNING);
+
+        OperationContactInput first = new OperationContactInput();
+        first.setName("Ayse Demir");
+        first.setPhoneNumber("905551112233");
+
+        OperationContactInput second = new OperationContactInput();
+        second.setName("Mehmet Kaya");
+        second.setPhoneNumber("905551112244");
+
+        UploadOperationContactsRequest request = new UploadOperationContactsRequest();
+        request.setContacts(List.of(first, second));
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(fixture.operation.getId(), fixture.company.getId()))
+                .thenReturn(Optional.of(fixture.operation));
+        when(operationContactRepository.findAllByOperation_IdAndCompany_IdAndPhoneNumberInAndDeletedAtIsNull(
+                fixture.operation.getId(),
+                fixture.company.getId(),
+                List.of("905551112233", "905551112244")
+        )).thenReturn(List.of());
+
+        var response = service.uploadContacts(fixture.company.getId(), fixture.operation.getId(), request);
+
+        assertThat(response).hasSize(2);
+        verify(callJobRepository).saveAll(argThat(jobs -> {
+            List<CallJob> savedJobs = new java.util.ArrayList<>();
+            jobs.forEach(savedJobs::add);
+            return savedJobs.size() == 2
+                    && savedJobs.stream().allMatch(job -> job.getStatus() == CallJobStatus.PENDING)
+                    && savedJobs.stream().allMatch(job -> job.getOperation().getId().equals(fixture.operation.getId()))
+                    && savedJobs.stream().map(job -> job.getOperationContact().getPhoneNumber()).toList()
+                    .containsAll(List.of("905551112233", "905551112244"));
+        }));
+        verify(callJobDispatcher).dispatchNextPreparedJob(fixture.operation.getId());
+    }
+
+    @Test
+    void uploadContacts_devFlagEnabled_allowsDuplicatePhoneNumbersWithinSamePayload() {
+        service = new OperationContactServiceImpl(
+                operationRepository,
+                operationContactRepository,
+                callJobRepository,
+                callJobDispatcher,
+                validator,
+                true
+        );
+
+        Fixture fixture = new Fixture(OperationStatus.RUNNING);
+
+        OperationContactInput first = new OperationContactInput();
+        first.setName("Ayse Demir");
+        first.setPhoneNumber("905551112233");
+
+        OperationContactInput second = new OperationContactInput();
+        second.setName("Mehmet Kaya");
+        second.setPhoneNumber("905551112233");
+
+        UploadOperationContactsRequest request = new UploadOperationContactsRequest();
+        request.setContacts(List.of(first, second));
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(fixture.operation.getId(), fixture.company.getId()))
+                .thenReturn(Optional.of(fixture.operation));
+
+        var response = service.uploadContacts(fixture.company.getId(), fixture.operation.getId(), request);
+
+        assertThat(response).hasSize(2);
+        assertThat(response).extracting("phoneNumber").containsExactly("905551112233", "905551112233");
+        verify(callJobRepository).saveAll(argThat(jobs -> {
+            List<CallJob> savedJobs = new java.util.ArrayList<>();
+            jobs.forEach(savedJobs::add);
+            return savedJobs.size() == 2
+                    && savedJobs.stream().map(job -> job.getOperationContact().getPhoneNumber()).distinct().count() == 2
+                    && savedJobs.stream().allMatch(job -> !job.getOperationContact().getPhoneNumber().equals("905551112233"))
+                    && savedJobs.stream().allMatch(job -> job.getOperationContact().getMetadataJson().contains("\"originalPhoneNumber\":\"905551112233\""));
+        }));
+        verify(callJobDispatcher).dispatchNextPreparedJob(fixture.operation.getId());
     }
 
     private static UploadOperationContactsRequest buildRequest(String name, String phoneNumber) {

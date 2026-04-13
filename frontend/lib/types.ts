@@ -182,6 +182,35 @@ export type CallJobSurveyResponse = {
   completedAt: string;
   aiSummaryText: string | null;
   transcriptText: string | null;
+  answers: CallJobSurveyResponseAnswer[];
+};
+
+export type CallJobSurveyResponseAnswerOption = {
+  id: string;
+  code: string;
+  label: string;
+  value: string;
+  optionOrder: number;
+};
+
+export type CallJobSurveyResponseAnswer = {
+  answerId: string | null;
+  questionId: string;
+  questionCode: string;
+  questionOrder: number;
+  questionTitle: string;
+  questionType: "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING";
+  required: boolean;
+  answerText: string | null;
+  answerNumber: number | null;
+  selectedOptionId: string | null;
+  selectedOptionIds: string[];
+  valid: boolean;
+  invalidReason: string | null;
+  rawInputText: string | null;
+  displayValue: string;
+  manuallyEdited: boolean;
+  options: CallJobSurveyResponseAnswerOption[];
 };
 
 export type CallJobAttempt = {
@@ -310,7 +339,14 @@ export type OperationAnalyticsQuestionSummary = {
   emptyStateMessage: string | null;
   breakdown: OperationAnalyticsBreakdownItem[];
   specialAnswerBreakdown: OperationAnalyticsBreakdownItem[];
-  sampleResponses: string[];
+  sampleResponses: OperationAnalyticsSampleResponse[];
+};
+
+export type OperationAnalyticsSampleResponse = {
+  callJobId: string;
+  respondentName: string;
+  capturedAt: string | null;
+  responseText: string;
 };
 
 export type OperationAnalyticsQuestionGroupRow = {
@@ -381,6 +417,7 @@ export type OperationAnalytics = {
   insightSummary: string | null;
   insightItems: OperationAnalyticsInsightItem[];
   outcomeBreakdown: OperationAnalyticsBreakdownItem[];
+  consentBreakdown: OperationAnalyticsBreakdownItem[];
   audienceBreakdowns: OperationAnalyticsAudienceBreakdown[];
   questionSummaries: OperationAnalyticsQuestionSummary[];
   questionGroups: OperationAnalyticsQuestionGroupSummary[];

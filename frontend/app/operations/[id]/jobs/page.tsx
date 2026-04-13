@@ -53,7 +53,7 @@ const jobColumns: TableColumn<CallJob>[] = [
     render: (job) => (
       <div>
         <div className="table-title">
-          {`${job.answerCount ?? 0} soruya cevap verdi`}
+          {buildJobResultTitle(job)}
         </div>
         <div className="table-subtitle">{job.lastErrorMessage ?? job.lastResultSummary ?? "Durum ozeti"}</div>
       </div>
@@ -304,6 +304,22 @@ export default function OperationJobsPage() {
       </SectionCard>
     </PageContainer>
   );
+}
+
+function buildJobResultTitle(job: CallJob): string {
+  if ((job.answerCount ?? 0) > 0) {
+    return `${job.answerCount ?? 0} soruya cevap verdi`;
+  }
+
+  if (job.status === "Failed") {
+    return job.lastResultSummary ?? "Cagri basarisiz oldu";
+  }
+
+  if (job.status === "Completed") {
+    return "Gecerli cevap kaydi yok";
+  }
+
+  return "Henuz cevap yok";
 }
 
 function getEmptyState(

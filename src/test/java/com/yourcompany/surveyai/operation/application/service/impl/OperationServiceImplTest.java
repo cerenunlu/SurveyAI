@@ -8,8 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yourcompany.surveyai.auth.application.RequestAuthContext;
+import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
+import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
+import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.common.domain.entity.Company;
@@ -247,6 +250,7 @@ class OperationServiceImplTest {
                 .extracting(item -> item.respondedContactCount())
                 .containsExactly(2L, 2L, 2L);
         assertThat(response.questionSummaries().get(2).sampleResponses())
+                .extracting(item -> item.responseText())
                 .containsExactly("Temsilci oldukca yardimciydi ve surec kolay ilerledi.");
     }
 
@@ -522,6 +526,7 @@ class OperationServiceImplTest {
                 .extracting(item -> item.label() + ":" + item.count())
                 .containsExactly("Ulasim:2", "Ekonomi:1");
         assertThat(response.questionSummaries().getFirst().sampleResponses())
+                .extracting(item -> item.responseText())
                 .containsExactly(
                         "Trafik artik cekilmiyor.",
                         "Issizlik en buyuk problem.",
@@ -790,6 +795,7 @@ class OperationServiceImplTest {
                 .containsExactly("4:1");
         assertThat(response.questionSummaries().get(1).answeredCount()).isEqualTo(1);
         assertThat(response.questionSummaries().get(1).sampleResponses())
+                .extracting(item -> item.responseText())
                 .containsExactly("Süreç hızlı ve anlaşılırdı.");
     }
 
@@ -1207,12 +1213,30 @@ class OperationServiceImplTest {
             int completionPercent,
             OffsetDateTime completedAt
     ) {
+        OperationContact contact = buildContact(operation);
+        CallJob callJob = buildCallJob(operation, CallJobStatus.COMPLETED);
+        callJob.setOperationContact(contact);
+
+        CallAttempt callAttempt = new CallAttempt();
+        callAttempt.setId(UUID.randomUUID());
+        callAttempt.setCompany(operation.getCompany());
+        callAttempt.setCallJob(callJob);
+        callAttempt.setOperation(operation);
+        callAttempt.setOperationContact(contact);
+        callAttempt.setAttemptNumber(1);
+        callAttempt.setProvider(CallProvider.ELEVENLABS);
+        callAttempt.setStatus(CallAttemptStatus.COMPLETED);
+        callAttempt.setConnectedAt(completedAt.minusMinutes(6));
+        callAttempt.setEndedAt(completedAt);
+        callAttempt.setRawProviderPayload("{}");
+
         SurveyResponse response = new SurveyResponse();
         response.setId(UUID.randomUUID());
         response.setCompany(operation.getCompany());
         response.setSurvey(operation.getSurvey());
         response.setOperation(operation);
-        response.setOperationContact(buildContact(operation));
+        response.setOperationContact(contact);
+        response.setCallAttempt(callAttempt);
         response.setStatus(status);
         response.setRespondentPhone(phoneNumber);
         response.setCompletionPercent(BigDecimal.valueOf(completionPercent));

@@ -105,6 +105,7 @@ class ProviderWebhookIngestionServiceImplTest {
         assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.COMPLETED);
         assertThat(attempt.getCallJob().getStatus()).isEqualTo(CallJobStatus.COMPLETED);
         assertThat(attempt.getOperationContact().getStatus()).isEqualTo(OperationContactStatus.COMPLETED);
+        verify(callJobDispatcher).dispatchNextPreparedJob(attempt.getCallJob().getOperation().getId());
     }
 
     @Test
@@ -183,6 +184,86 @@ class ProviderWebhookIngestionServiceImplTest {
         assertThat(applied).isEqualTo(1);
         verify(surveyResponseIngestionService).ingest(any(), any());
         assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.COMPLETED);
+    }
+
+    @Test
+    void ingest_doesNotPersistSurveyResultForBusyTranscriptWebhook() {
+        CallAttempt attempt = buildAttempt();
+        attempt.setProvider(CallProvider.ELEVENLABS);
+        attempt.setProviderCallId("conv_busy");
+
+        when(callAttemptRepository.findByIdAndDeletedAtIsNull(attempt.getId()))
+                .thenReturn(Optional.of(attempt));
+
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        Enumeration<String> headerNames = Collections.enumeration(Collections.emptyList());
+        when(request.getHeaderNames()).thenReturn(headerNames);
+
+        int applied = ingestionService.ingest(
+                CallProvider.ELEVENLABS,
+                """
+                {
+                  "type": "post_call_transcription",
+                  "event_timestamp": "2026-04-10T10:00:00Z",
+                  "data": {
+                    "status": "done",
+                    "metadata": {
+                      "body": {
+                        "call_status": "busy"
+                      }
+                    },
+                    "conversation_initiation_client_data": {
+                      "dynamic_variables": {
+                        "call_attempt_id": "%s",
+                        "call_job_id": "%s",
+                        "idempotency_key": "%s"
+                      }
+                    },
+                    "transcript": [
+                      {"role": "agent", "message": "Alo?"}
+                    ]
+                  }
+                }
+                """.formatted(attempt.getId(), attempt.getCallJob().getId(), attempt.getCallJob().getIdempotencyKey()),
+                request
+        );
+
+        assertThat(applied).isEqualTo(1);
+        assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.BUSY);
+        assertThat(attempt.getCallJob().getStatus()).isEqualTo(CallJobStatus.FAILED);
+        assertThat(attempt.getOperationContact().getStatus()).isEqualTo(OperationContactStatus.FAILED);
+        verify(surveyResponseIngestionService, never()).ingest(any(), any());
+    }
+
+    @Test
+    void ingest_terminalWebhook_triggersTransitionToNextPreparedJob() {
+        CallAttempt firstAttempt = buildAttempt();
+        UUID operationId = firstAttempt.getCallJob().getOperation().getId();
+
+        when(callAttemptRepository.findByProviderAndProviderCallIdAndDeletedAtIsNull(CallProvider.MOCK, firstAttempt.getProviderCallId()))
+                .thenReturn(Optional.of(firstAttempt));
+
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        Enumeration<String> headerNames = Collections.enumeration(Collections.emptyList());
+        when(request.getHeaderNames()).thenReturn(headerNames);
+
+        int applied = ingestionService.ingest(
+                CallProvider.MOCK,
+                """
+                {
+                  "providerCallId": "%s",
+                  "status": "FAILED",
+                  "occurredAt": "%s",
+                  "durationSeconds": 18
+                }
+                """.formatted(firstAttempt.getProviderCallId(), OffsetDateTime.now()),
+                request
+        );
+
+        assertThat(applied).isEqualTo(1);
+        assertThat(firstAttempt.getCallJob().getStatus()).isEqualTo(CallJobStatus.FAILED);
+        assertThat(firstAttempt.getOperationContact().getStatus()).isEqualTo(OperationContactStatus.FAILED);
+        verify(callJobDispatcher).dispatchNextPreparedJob(operationId);
     }
 
     private CallAttempt buildAttempt() {
