@@ -32,7 +32,9 @@ import com.yourcompany.surveyai.common.domain.entity.Company;
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
+import com.yourcompany.surveyai.operation.domain.enums.OperationStatus;
 import com.yourcompany.surveyai.operation.repository.OperationContactRepository;
+import com.yourcompany.surveyai.operation.repository.OperationRepository;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -46,6 +48,7 @@ class CallJobDispatcherImplTest {
     private final CallJobRepository callJobRepository = mock(CallJobRepository.class);
     private final CallAttemptRepository callAttemptRepository = mock(CallAttemptRepository.class);
     private final OperationContactRepository operationContactRepository = mock(OperationContactRepository.class);
+    private final OperationRepository operationRepository = mock(OperationRepository.class);
     private final ProviderExecutionObservationService providerExecutionObservationService = mock(ProviderExecutionObservationService.class);
 
     private final List<CallAttempt> savedAttempts = new ArrayList<>();
@@ -65,6 +68,7 @@ class CallJobDispatcherImplTest {
                 callJobRepository,
                 callAttemptRepository,
                 operationContactRepository,
+                operationRepository,
                 providerExecutionObservationService
         );
 
@@ -111,6 +115,7 @@ class CallJobDispatcherImplTest {
                 callJobRepository,
                 callAttemptRepository,
                 operationContactRepository,
+                operationRepository,
                 providerExecutionObservationService
         );
 
@@ -123,6 +128,67 @@ class CallJobDispatcherImplTest {
         assertThat(savedAttempts)
                 .singleElement()
                 .satisfies(attempt -> assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.FAILED));
+    }
+
+    @Test
+    void dispatchPreparedJobs_truncatesCallAttemptFailureReasonWhenProviderMessageIsTooLong() {
+        VoiceExecutionProperties properties = new VoiceExecutionProperties();
+        properties.setActiveProvider(CallProvider.MOCK);
+        properties.getMock().setEnabled(true);
+
+        String longMessage = "x".repeat(400);
+        dispatcher = new CallJobDispatcherImpl(
+                new CallProviderRegistry(List.of(new ThrowingProvider(longMessage))),
+                new VoiceProviderConfigurationResolver(properties),
+                callJobRepository,
+                callAttemptRepository,
+                operationContactRepository,
+                operationRepository,
+                providerExecutionObservationService
+        );
+
+        CallJob callJob = buildCallJob();
+
+        dispatcher.dispatchPreparedJobs(List.of(callJob));
+
+        assertThat(callJob.getLastErrorMessage()).hasSize(400);
+        assertThat(savedAttempts)
+                .singleElement()
+                .satisfies(attempt -> {
+                    assertThat(attempt.getFailureReason()).hasSize(255);
+                    assertThat(attempt.getFailureReason()).isEqualTo(longMessage.substring(0, 255));
+                });
+    }
+
+    @Test
+    void dispatchPreparedJobs_appliesTerminalInitialStatusSnapshot() {
+        VoiceExecutionProperties properties = new VoiceExecutionProperties();
+        properties.setActiveProvider(CallProvider.MOCK);
+        properties.getMock().setEnabled(true);
+
+        dispatcher = new CallJobDispatcherImpl(
+                new CallProviderRegistry(List.of(new SnapshotFailureProvider())),
+                new VoiceProviderConfigurationResolver(properties),
+                callJobRepository,
+                callAttemptRepository,
+                operationContactRepository,
+                operationRepository,
+                providerExecutionObservationService
+        );
+
+        CallJob callJob = buildCallJob();
+
+        dispatcher.dispatchPreparedJobs(List.of(callJob));
+
+        assertThat(callJob.getStatus()).isEqualTo(CallJobStatus.FAILED);
+        assertThat(callJob.getOperationContact().getStatus()).isEqualTo(OperationContactStatus.FAILED);
+        assertThat(savedAttempts)
+                .singleElement()
+                .satisfies(attempt -> {
+                    assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.FAILED);
+                    assertThat(attempt.getEndedAt()).isNotNull();
+                    assertThat(attempt.getProviderCallId()).isEqualTo("conv-failed");
+                });
     }
 
     private CallJob buildCallJob() {
@@ -138,6 +204,7 @@ class CallJobDispatcherImplTest {
         operation.setCompany(company);
         operation.setSurvey(survey);
         operation.setName("Dispatch Test");
+        operation.setStatus(OperationStatus.RUNNING);
 
         OperationContact contact = new OperationContact();
         contact.setId(UUID.randomUUID());
@@ -165,6 +232,16 @@ class CallJobDispatcherImplTest {
 
     private static class ThrowingProvider implements VoiceExecutionProvider {
 
+        private final String message;
+
+        private ThrowingProvider() {
+            this("boom");
+        }
+
+        private ThrowingProvider(String message) {
+            this.message = message;
+        }
+
         @Override
         public CallProvider getProvider() {
             return CallProvider.MOCK;
@@ -172,12 +249,64 @@ class CallJobDispatcherImplTest {
 
         @Override
         public ProviderDispatchResult dispatchCallJob(ProviderDispatchRequest request, com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration configuration) {
-            throw new IllegalStateException("boom");
+            throw new IllegalStateException(message);
         }
 
         @Override
         public ProviderCallStatusResult fetchCallStatus(ProviderCallStatusRequest request, com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration configuration) {
             throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ProviderCancelResult cancelCall(ProviderCancelRequest request, com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration configuration) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ProviderConfigurationValidationResult validateConfiguration(com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration configuration) {
+            return ProviderConfigurationValidationResult.success();
+        }
+
+        @Override
+        public boolean verifyWebhook(ProviderWebhookRequest request, com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration configuration) {
+            return true;
+        }
+
+        @Override
+        public List<ProviderWebhookEvent> parseWebhook(ProviderWebhookRequest request, com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration configuration) {
+            return List.of();
+        }
+    }
+
+    private static class SnapshotFailureProvider implements VoiceExecutionProvider {
+
+        @Override
+        public CallProvider getProvider() {
+            return CallProvider.MOCK;
+        }
+
+        @Override
+        public ProviderDispatchResult dispatchCallJob(ProviderDispatchRequest request, com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration configuration) {
+            return new ProviderDispatchResult(
+                    CallProvider.MOCK,
+                    "conv-failed",
+                    CallJobStatus.QUEUED,
+                    CallAttemptStatus.INITIATED,
+                    OffsetDateTime.now(),
+                    null,
+                    null,
+                    "{\"status\":\"queued\"}"
+            );
+        }
+
+        @Override
+        public ProviderCallStatusResult fetchCallStatus(ProviderCallStatusRequest request, com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration configuration) {
+            return new ProviderCallStatusResult(
+                    CallJobStatus.FAILED,
+                    CallAttemptStatus.FAILED,
+                    OffsetDateTime.now(),
+                    "{\"status\":\"failed\"}"
+            );
         }
 
         @Override

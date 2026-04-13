@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getNavigationItems } from "@/components/layout/navigation";
 import { PageHeaderProvider, useResolvedPageHeader } from "@/components/layout/PageHeaderContext";
-import { BellIcon, CollapseIcon, MenuIcon, SearchIcon } from "@/components/ui/Icons";
+import { ArrowLeftIcon, BellIcon, CollapseIcon, MenuIcon, SearchIcon } from "@/components/ui/Icons";
 import { useAuth } from "@/lib/auth";
 import { useLanguage, useTranslations } from "@/lib/i18n/LanguageContext";
 import type { Language } from "@/lib/i18n";
@@ -43,7 +43,8 @@ function AppShellFrame({ children }: { children: ReactNode }) {
   const isAuthRoute = pathname === "/login";
   const isDashboardHome = pathname === "/";
   const isSurveysRoute = pathname === "/surveys" || pathname.startsWith("/surveys/");
-  const isOperationsIndexRoute = pathname === "/operations";
+  const isOperationsRoute = pathname === "/operations" || pathname.startsWith("/operations/");
+  const shouldShowBackButton = !isDashboardHome;
 
   useEffect(() => {
     setIsUserMenuOpen(false);
@@ -72,6 +73,25 @@ function AppShellFrame({ children }: { children: ReactNode }) {
     );
   }
 
+  const handleGoBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+
+    if (isOperationsRoute) {
+      router.push("/operations");
+      return;
+    }
+
+    if (isSurveysRoute) {
+      router.push("/surveys");
+      return;
+    }
+
+    router.push("/");
+  };
+
   const currentMeta = (() => {
     let key = pageMetaKeys[pathname] ?? pageMetaKeys["/"];
 
@@ -95,6 +115,8 @@ function AppShellFrame({ children }: { children: ReactNode }) {
       subtitle: pageHeaderOverride?.subtitle ?? baseMeta.subtitle,
     };
   })();
+  const hasNodeSubtitle = typeof currentMeta.subtitle !== "string" && Boolean(currentMeta.subtitle);
+  const renderSubtitleInCenterSlot = isOperationsRoute && hasNodeSubtitle;
   const breadcrumbs = buildBreadcrumbs(pathname, currentMeta.title, navigationItems, t);
 
   async function handleLogout() {
@@ -256,24 +278,28 @@ function AppShellFrame({ children }: { children: ReactNode }) {
               "topbar",
               isDashboardHome ? "is-dashboard-topbar" : "",
               isSurveysRoute ? "is-surveys-topbar" : "",
-              isOperationsIndexRoute ? "is-operations-topbar" : "",
+                  isOperationsRoute ? "is-operations-topbar" : "",
             ]
               .filter(Boolean)
               .join(" ")}
           >
             <div className="header-cluster topbar-context">
+              {shouldShowBackButton ? (
+                <button type="button" className="button-secondary compact-button topbar-back-button" onClick={handleGoBack} aria-label="Geri">
+                  <ArrowLeftIcon className="nav-icon" />
+                </button>
+              ) : null}
               <button className="mobile-menu-button mobile-only" onClick={() => setIsMobileNavOpen(true)}>
                 <MenuIcon className="nav-icon" />
                 Gezinme
               </button>
-              <div className="brand-mark header-brand-mark" aria-hidden="true" />
               <div
                 className={[
                   "topbar-copy",
                   "topbar-copy-compact",
                   isDashboardHome ? "is-dashboard-copy" : "",
                   isSurveysRoute ? "is-surveys-copy" : "",
-                  isOperationsIndexRoute ? "is-operations-copy" : "",
+                  isOperationsRoute ? "is-operations-copy" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -293,9 +319,15 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                 <h1>{currentMeta.title}</h1>
                 {typeof currentMeta.subtitle === "string"
                   ? (currentMeta.subtitle ? <p>{currentMeta.subtitle}</p> : null)
-                  : (currentMeta.subtitle ? <div className="topbar-subtitle-slot">{currentMeta.subtitle}</div> : null)}
+                  : (!renderSubtitleInCenterSlot && currentMeta.subtitle ? <div className="topbar-subtitle-slot">{currentMeta.subtitle}</div> : null)}
               </div>
             </div>
+
+            {renderSubtitleInCenterSlot ? (
+              <div className="topbar-center-slot">
+                <div className="topbar-subtitle-slot">{currentMeta.subtitle}</div>
+              </div>
+            ) : null}
 
             {pageHeaderOverride?.action ? (
               <div className="topbar-actions page-header-actions">

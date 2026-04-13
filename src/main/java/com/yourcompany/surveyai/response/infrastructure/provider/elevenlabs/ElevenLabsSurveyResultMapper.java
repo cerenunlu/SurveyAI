@@ -30,6 +30,7 @@ import org.springframework.stereotype.Component;
 public class ElevenLabsSurveyResultMapper implements ProviderSurveyResultMapper {
 
     private static final Pattern QUESTION_RESPONSE_KEY_PATTERN = Pattern.compile("^survey_question_(\\d+)_response$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern VOICE_DIRECTION_PATTERN = Pattern.compile("\\[(?:[a-zA-Z_\\-]{2,20})]|\\((?:[a-zA-Z_\\-]{2,20})\\)");
     private static final Set<String> NON_ANSWER_KEYS = Set.of(
             "survey_completion_status",
             "survey_consent_given",
@@ -62,7 +63,7 @@ public class ElevenLabsSurveyResultMapper implements ProviderSurveyResultMapper 
                 completionPercent,
                 resolveStartedAt(data, callAttempt),
                 resolveCompletedAt(event, data),
-                firstNonBlank(event.transcriptText(), extractTranscriptText(data)),
+                firstNonBlank(sanitizeTranscriptText(event.transcriptText()), extractTranscriptText(data)),
                 buildTranscriptJson(data, analysis, event, unmappedFields),
                 firstNonBlank(text(analysis, "transcript_summary"), text(analysis, "summary")),
                 safeJson(data),
@@ -271,13 +272,13 @@ public class ElevenLabsSurveyResultMapper implements ProviderSurveyResultMapper 
             return null;
         }
         if (transcript.isTextual()) {
-            return transcript.asText();
+            return sanitizePromptForSpeech(transcript.asText());
         }
         if (transcript.isArray()) {
             StringBuilder builder = new StringBuilder();
             for (JsonNode item : transcript) {
                 String role = firstNonBlank(text(item, "role"), text(item, "speaker"));
-                String message = firstNonBlank(text(item, "message"), text(item, "text"));
+                String message = sanitizePromptForSpeech(firstNonBlank(text(item, "message"), text(item, "text")));
                 if (message == null) {
                     continue;
                 }
@@ -292,6 +293,34 @@ public class ElevenLabsSurveyResultMapper implements ProviderSurveyResultMapper 
             return builder.toString();
         }
         return safeJson(transcript);
+    }
+
+    private String sanitizePromptForSpeech(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isBlank()) {
+            return null;
+        }
+        String withoutDirections = VOICE_DIRECTION_PATTERN.matcher(trimmed).replaceAll(" ");
+        String normalizedWhitespace = withoutDirections.replaceAll("\\s+", " ").trim();
+        return normalizedWhitespace.isBlank() ? null : normalizedWhitespace;
+    }
+
+    private String sanitizeTranscriptText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String[] lines = value.split("\\R");
+        List<String> sanitizedLines = new ArrayList<>();
+        for (String line : lines) {
+            String sanitized = sanitizePromptForSpeech(line);
+            if (sanitized != null) {
+                sanitizedLines.add(sanitized);
+            }
+        }
+        return sanitizedLines.isEmpty() ? null : String.join("\n", sanitizedLines);
     }
 
     private JsonNode readTree(String rawJson) {

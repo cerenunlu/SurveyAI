@@ -36,28 +36,30 @@ surveyai:
     allowed-origins: ${SURVEYAI_WEB_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
   dev:
     provider-result-simulator-enabled: false
+    allow-duplicate-operation-contact-phone-numbers: ${SURVEYAI_DEV_ALLOW_DUPLICATE_OPERATION_CONTACT_PHONE_NUMBERS:false}
   calling:
-    active-provider: ${SURVEYAI_CALLING_ACTIVE_PROVIDER:MOCK}
+    active-provider: ${SURVEYAI_CALLING_ACTIVE_PROVIDER:ELEVENLABS}
     mock:
       enabled: ${SURVEYAI_CALLING_MOCK_ENABLED:true}
       base-url: mock://local
     elevenlabs:
-      enabled: ${SURVEYAI_CALLING_ELEVENLABS_ENABLED:false}
-      mode: ${ELEVENLABS_MODE:MOCK}
+      enabled: ${SURVEYAI_CALLING_ELEVENLABS_ENABLED:true}
+      mode: ${ELEVENLABS_MODE:LIVE}
       base-url: ${ELEVENLABS_BASE_URL:https://api.elevenlabs.io}
-      api-key: ${ELEVENLABS_API_KEY:}
-      agent-id: ${ELEVENLABS_AGENT_ID:}
-      phone-number-id: ${ELEVENLABS_PHONE_NUMBER_ID:}
-      webhook-secret: ${ELEVENLABS_WEBHOOK_SECRET:}
+      api-key: ${ELEVENLABS_API_KEY:sk_cdbd1b1252df5778fedafca1b73a0e89ebe4c2966c11cf7b}
+      agent-id: ${ELEVENLABS_AGENT_ID:agent_3901kn3zm0n2eb880f9xfy7m2t2t}
+      phone-number-id: ${ELEVENLABS_PHONE_NUMBER_ID:phnum_8301knk59pzbfxtbr9yz5wxgf72p}
+      webhook-secret: ${ELEVENLABS_WEBHOOK_SECRET:wsec_803d805492dd18e51606151e25decd9738d1e9db2293d5a412f676e33ec4bcd8}
       sandbox-mode: ${ELEVENLABS_SANDBOX_MODE:false}
       webhook-timestamp-tolerance-seconds: 300
       settings:
         call-recording-enabled: ${ELEVENLABS_CALL_RECORDING_ENABLED:false}
-        public-webhook-base-url: ${PUBLIC_WEBHOOK_BASE_URL:}
+        public-webhook-base-url: ${PUBLIC_WEBHOOK_BASE_URL:https://thurman-streaklike-fernanda.ngrok-free.dev}
         tool-api-secret: ${ELEVENLABS_TOOL_API_SECRET:${ELEVENLABS_WEBHOOK_SECRET:}}
-        agent-prompt-override-enabled: ${ELEVENLABS_AGENT_PROMPT_OVERRIDE_ENABLED:false}
-        agent-first-message-override-enabled: ${ELEVENLABS_AGENT_FIRST_MESSAGE_OVERRIDE_ENABLED:false}
-        agent-language-override-enabled: ${ELEVENLABS_AGENT_LANGUAGE_OVERRIDE_ENABLED:false}
+        agent-prompt-override-enabled: ${ELEVENLABS_AGENT_PROMPT_OVERRIDE_ENABLED:true}
+        agent-first-message-override-enabled: ${ELEVENLABS_AGENT_FIRST_MESSAGE_OVERRIDE_ENABLED:true}
+        agent-language-override-enabled: ${ELEVENLABS_AGENT_LANGUAGE_OVERRIDE_ENABLED:true}
+        status-reconciliation-grace-seconds: ${ELEVENLABS_STATUS_RECONCILIATION_GRACE_SECONDS:20}
 
 logging:
   level:

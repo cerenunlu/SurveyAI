@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 
 type SectionCardProps = {
-  title: ReactNode;
+  title?: ReactNode;
   description?: string;
   action?: ReactNode;
   eyebrow?: string;
@@ -14,7 +14,7 @@ export function SectionCard({ title, description, action, eyebrow, children }: S
       <div className="section-header">
         <div className="section-copy">
           {eyebrow ? <span className="section-eyebrow">{eyebrow}</span> : null}
-          <h2>{title}</h2>
+          {title ? <h2>{title}</h2> : null}
           {description ? <p>{description}</p> : null}
         </div>
         {action ? <div className="section-action">{action}</div> : null}

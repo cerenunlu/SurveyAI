@@ -9,6 +9,10 @@ import com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfigurationResolver;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.common.exception.UnauthorizedException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -43,12 +47,13 @@ public class ElevenLabsInterviewToolController {
     ) {
         validateToolSecret(toolSecret);
         InterviewSessionRequest effectiveRequest = request == null ? new InterviewSessionRequest(null, null, null) : request;
-        log.info(
-                "ElevenLabs tool hit. endpoint=start callAttemptId={} providerCallId={}",
+        InterviewOrchestrationResponse response = timedToolCall(
+                "start",
                 effectiveRequest.callAttemptId(),
-                effectiveRequest.providerCallId()
+                effectiveRequest.providerCallId(),
+                () -> callInterviewOrchestrationService.startInterview(effectiveRequest)
         );
-        return ResponseEntity.ok(callInterviewOrchestrationService.startInterview(effectiveRequest));
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/current-question")
@@ -58,12 +63,13 @@ public class ElevenLabsInterviewToolController {
     ) {
         validateToolSecret(toolSecret);
         InterviewSessionRequest effectiveRequest = request == null ? new InterviewSessionRequest(null, null, null) : request;
-        log.info(
-                "ElevenLabs tool hit. endpoint=current-question callAttemptId={} providerCallId={}",
+        InterviewOrchestrationResponse response = timedToolCall(
+                "current-question",
                 effectiveRequest.callAttemptId(),
-                effectiveRequest.providerCallId()
+                effectiveRequest.providerCallId(),
+                () -> callInterviewOrchestrationService.getCurrentQuestion(effectiveRequest)
         );
-        return ResponseEntity.ok(callInterviewOrchestrationService.getCurrentQuestion(effectiveRequest));
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/answer")
@@ -72,13 +78,14 @@ public class ElevenLabsInterviewToolController {
             @RequestBody InterviewAnswerRequest request
     ) {
         validateToolSecret(toolSecret);
-        log.info(
-                "ElevenLabs tool hit. endpoint=answer callAttemptId={} providerCallId={} signal={}",
+        InterviewOrchestrationResponse response = timedToolCall(
+                "answer",
                 request.callAttemptId(),
                 request.providerCallId(),
-                request.signal()
+                () -> callInterviewOrchestrationService.submitAnswer(request),
+                "signal=" + request.signal()
         );
-        return ResponseEntity.ok(callInterviewOrchestrationService.submitAnswer(request));
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/finish")
@@ -88,13 +95,78 @@ public class ElevenLabsInterviewToolController {
     ) {
         validateToolSecret(toolSecret);
         InterviewFinishRequest effectiveRequest = request == null ? new InterviewFinishRequest(null, null, null, null) : request;
-        log.info(
-                "ElevenLabs tool hit. endpoint=finish callAttemptId={} providerCallId={} requestedStatus={}",
+        InterviewOrchestrationResponse response = timedToolCall(
+                "finish",
                 effectiveRequest.callAttemptId(),
                 effectiveRequest.providerCallId(),
-                effectiveRequest.requestedStatus()
+                () -> callInterviewOrchestrationService.finishInterview(effectiveRequest),
+                "requestedStatus=" + effectiveRequest.requestedStatus()
         );
-        return ResponseEntity.ok(callInterviewOrchestrationService.finishInterview(effectiveRequest));
+        return ResponseEntity.ok(response);
+    }
+
+    private InterviewOrchestrationResponse timedToolCall(
+            String endpoint,
+            Object callAttemptId,
+            Object providerCallId,
+            Supplier<InterviewOrchestrationResponse> action,
+            String... extras
+    ) {
+        long startedAtNanos = System.nanoTime();
+        log.info(
+                "ElevenLabs tool hit. endpoint={} callAttemptId={} providerCallId={} {}",
+                endpoint,
+                callAttemptId,
+                providerCallId,
+                joinExtras(extras)
+        );
+        try {
+            InterviewOrchestrationResponse response = action.get();
+            long elapsedMs = (System.nanoTime() - startedAtNanos) / 1_000_000L;
+            log.info(
+                    "ElevenLabs tool completed. endpoint={} callAttemptId={} providerCallId={} elapsedMs={} completed={} endCall={} questionId={} promptLength={} closingLength={} {}",
+                    endpoint,
+                    response.callAttemptId(),
+                    providerCallId,
+                    elapsedMs,
+                    response.completed(),
+                    response.endCall(),
+                    response.question() == null ? null : response.question().id(),
+                    response.prompt() == null ? 0 : response.prompt().length(),
+                    response.closingMessage() == null ? 0 : response.closingMessage().length(),
+                    joinExtras(extras)
+            );
+            return response;
+        } catch (RuntimeException error) {
+            long elapsedMs = (System.nanoTime() - startedAtNanos) / 1_000_000L;
+            log.warn(
+                    "ElevenLabs tool failed. endpoint={} callAttemptId={} providerCallId={} elapsedMs={} error={} {}",
+                    endpoint,
+                    callAttemptId,
+                    providerCallId,
+                    elapsedMs,
+                    error.getMessage(),
+                    joinExtras(extras)
+            );
+            throw error;
+        }
+    }
+
+    private String joinExtras(String... extras) {
+        if (extras == null || extras.length == 0) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        for (String extra : extras) {
+            if (extra == null || extra.isBlank()) {
+                continue;
+            }
+            if (builder.length() > 0) {
+                builder.append(' ');
+            }
+            builder.append(extra);
+        }
+        return builder.toString();
     }
 
     private void validateToolSecret(String providedSecret) {
@@ -105,7 +177,42 @@ public class ElevenLabsInterviewToolController {
         }
 
         if (expectedSecret == null || expectedSecret.isBlank() || !expectedSecret.equals(providedSecret)) {
+            log.warn(
+                    "ElevenLabs tool authentication failed. expectedSecretPresent={} expectedSecretFingerprint={} providedSecretPresent={} providedSecretPreview={} providedSecretFingerprint={}",
+                    hasText(expectedSecret),
+                    fingerprint(expectedSecret),
+                    hasText(providedSecret),
+                    preview(providedSecret),
+                    fingerprint(providedSecret)
+            );
             throw new UnauthorizedException("Provider tool authentication failed");
+        }
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private String preview(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= 8
+                ? trimmed.charAt(0) + "***"
+                : trimmed.substring(0, 4) + "..." + trimmed.substring(trimmed.length() - 4);
+    }
+
+    private String fingerprint(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.trim().getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash, 0, 6);
+        } catch (Exception ignored) {
+            return "unavailable";
         }
     }
 }

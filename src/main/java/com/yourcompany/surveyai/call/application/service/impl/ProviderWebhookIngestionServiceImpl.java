@@ -6,10 +6,12 @@ import com.yourcompany.surveyai.call.application.provider.ProviderWebhookRequest
 import com.yourcompany.surveyai.call.application.provider.VoiceExecutionProvider;
 import com.yourcompany.surveyai.call.application.service.ProviderExecutionObservationService;
 import com.yourcompany.surveyai.call.application.service.ProviderWebhookIngestionService;
+import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfigurationResolver;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
+import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.call.domain.enums.ProviderExecutionOutcome;
@@ -29,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.EnumSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -38,6 +41,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookIngestionService {
 
     private static final Logger log = LoggerFactory.getLogger(ProviderWebhookIngestionServiceImpl.class);
+    private static final EnumSet<CallAttemptStatus> NON_RESPONSE_TERMINAL_ATTEMPTS = EnumSet.of(
+            CallAttemptStatus.NO_ANSWER,
+            CallAttemptStatus.BUSY,
+            CallAttemptStatus.VOICEMAIL,
+            CallAttemptStatus.CANCELLED
+    );
 
     private final CallProviderRegistry callProviderRegistry;
     private final VoiceProviderConfigurationResolver configurationResolver;
@@ -46,6 +55,7 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
     private final OperationContactRepository operationContactRepository;
     private final SurveyResponseIngestionService surveyResponseIngestionService;
     private final ProviderExecutionObservationService providerExecutionObservationService;
+    private final CallJobDispatcher callJobDispatcher;
 
     public ProviderWebhookIngestionServiceImpl(
             CallProviderRegistry callProviderRegistry,
@@ -54,7 +64,8 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
             CallJobRepository callJobRepository,
             OperationContactRepository operationContactRepository,
             SurveyResponseIngestionService surveyResponseIngestionService,
-            ProviderExecutionObservationService providerExecutionObservationService
+            ProviderExecutionObservationService providerExecutionObservationService,
+            CallJobDispatcher callJobDispatcher
     ) {
         this.callProviderRegistry = callProviderRegistry;
         this.configurationResolver = configurationResolver;
@@ -63,6 +74,7 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         this.operationContactRepository = operationContactRepository;
         this.surveyResponseIngestionService = surveyResponseIngestionService;
         this.providerExecutionObservationService = providerExecutionObservationService;
+        this.callJobDispatcher = callJobDispatcher;
     }
 
     @Override
@@ -164,6 +176,9 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
         if (shouldIngestSurveyResult(event)) {
             surveyResponseIngestionService.ingest(attempt, event);
         }
+        if (isTerminal(callJob.getStatus())) {
+            callJobDispatcher.dispatchNextPreparedJob(callJob.getOperation().getId());
+        }
         providerExecutionObservationService.recordWebhookOutcome(attempt, event, ProviderExecutionOutcome.ACCEPTED, "Webhook applied to internal state");
 
         log.info(
@@ -234,6 +249,9 @@ public class ProviderWebhookIngestionServiceImpl implements ProviderWebhookInges
     }
 
     private boolean shouldIngestSurveyResult(ProviderWebhookEvent event) {
+        if (event.attemptStatus() != null && NON_RESPONSE_TERMINAL_ATTEMPTS.contains(event.attemptStatus())) {
+            return false;
+        }
         return isTerminal(event.jobStatus())
                 || (event.transcriptText() != null && !event.transcriptText().isBlank());
     }

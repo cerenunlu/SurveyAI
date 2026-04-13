@@ -8,8 +8,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yourcompany.surveyai.auth.application.RequestAuthContext;
+import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
+import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
+import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.common.domain.entity.Company;
@@ -151,7 +154,7 @@ class OperationServiceImplTest {
                     assertThat(job.getScheduledFor()).isEqualTo(response.startedAt());
                     assertThat(job.getAvailableAt()).isEqualTo(response.startedAt());
                 });
-        verify(callJobDispatcher).dispatchPreparedJobs(savedJobs);
+        verify(callJobDispatcher).dispatchNextPreparedJob(operationId);
     }
 
     @Test
@@ -247,6 +250,7 @@ class OperationServiceImplTest {
                 .extracting(item -> item.respondedContactCount())
                 .containsExactly(2L, 2L, 2L);
         assertThat(response.questionSummaries().get(2).sampleResponses())
+                .extracting(item -> item.responseText())
                 .containsExactly("Temsilci oldukca yardimciydi ve surec kolay ilerledi.");
     }
 
@@ -382,6 +386,152 @@ class OperationServiceImplTest {
         assertThat(response.questionSummaries().getFirst().breakdown())
                 .extracting(item -> item.label() + ":" + item.count())
                 .containsExactly("Evet:1", "Hayir:0");
+    }
+
+    @Test
+    void getOperationAnalytics_includesSpecialAnswersInQuestionSummary() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion choiceQuestion = buildQuestion(
+                operation.getSurvey(),
+                "q-choice",
+                1,
+                QuestionType.SINGLE_CHOICE,
+                "Bu konuda fikriniz var mi?"
+        );
+        SurveyQuestionOption yesOption = buildOption(choiceQuestion, 1, "option_1", "Evet", "option_1");
+        SurveyQuestionOption noOption = buildOption(choiceQuestion, 2, "option_2", "Hayir", "option_2");
+
+        SurveyResponse completedResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112288",
+                100,
+                OffsetDateTime.now().minusMinutes(8)
+        );
+
+        SurveyAnswer specialAnswer = new SurveyAnswer();
+        specialAnswer.setId(UUID.randomUUID());
+        specialAnswer.setCompany(operation.getCompany());
+        specialAnswer.setSurveyResponse(completedResponse);
+        specialAnswer.setSurveyQuestion(choiceQuestion);
+        specialAnswer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        specialAnswer.setAnswerText("Bilmiyorum");
+        specialAnswer.setRawInputText("Bilmiyorum");
+        specialAnswer.setAnswerJson("""
+                {
+                  "specialAnswerCode": "bilmiyorum",
+                  "normalizedText": "Bilmiyorum"
+                }
+                """);
+        specialAnswer.setValid(true);
+        specialAnswer.setRetryCount(0);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(1L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(buildCallJob(operation, CallJobStatus.COMPLETED)));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(completedResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(choiceQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(choiceQuestion.getId())
+        )).thenReturn(List.of(yesOption, noOption));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(List.of(completedResponse.getId())))
+                .thenReturn(List.of(specialAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionSummaries()).hasSize(1);
+        assertThat(response.questionSummaries().getFirst().answeredCount()).isEqualTo(1);
+        assertThat(response.questionSummaries().getFirst().breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Evet:0", "Hayir:0");
+        assertThat(response.questionSummaries().getFirst().specialAnswerBreakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Bilmiyorum:1");
+    }
+
+    @Test
+    void getOperationAnalytics_groupsOpenEndedAnswersAutomaticallyAndKeepsRawSamples() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion openEndedQuestion = buildQuestion(
+                operation.getSurvey(),
+                "q-open",
+                1,
+                QuestionType.OPEN_ENDED,
+                "Bu sehirde en onemli sorun nedir?"
+        );
+
+        SurveyResponse firstResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112301",
+                100,
+                OffsetDateTime.now().minusMinutes(30)
+        );
+        SurveyResponse secondResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112302",
+                100,
+                OffsetDateTime.now().minusMinutes(20)
+        );
+        SurveyResponse thirdResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112303",
+                100,
+                OffsetDateTime.now().minusMinutes(10)
+        );
+
+        SurveyAnswer firstAnswer = buildOpenEndedAnswer(firstResponse, openEndedQuestion, "Ulasim cok kotu.");
+        SurveyAnswer secondAnswer = buildOpenEndedAnswer(thirdResponse, openEndedQuestion, "Trafik artik cekilmiyor.");
+        SurveyAnswer thirdAnswer = buildOpenEndedAnswer(secondResponse, openEndedQuestion, "Issizlik en buyuk problem.");
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(3L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(
+                        buildCallJob(operation, CallJobStatus.COMPLETED),
+                        buildCallJob(operation, CallJobStatus.COMPLETED),
+                        buildCallJob(operation, CallJobStatus.COMPLETED)
+                ));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(thirdResponse, secondResponse, firstResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(openEndedQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(openEndedQuestion.getId())
+        )).thenReturn(List.of());
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(
+                List.of(thirdResponse.getId(), secondResponse.getId(), firstResponse.getId())
+        )).thenReturn(List.of(firstAnswer, secondAnswer, thirdAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionSummaries()).hasSize(1);
+        assertThat(response.questionSummaries().getFirst().answeredCount()).isEqualTo(3);
+        assertThat(response.questionSummaries().getFirst().breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Ulasim:2", "Ekonomi:1");
+        assertThat(response.questionSummaries().getFirst().sampleResponses())
+                .extracting(item -> item.responseText())
+                .containsExactly(
+                        "Trafik artik cekilmiyor.",
+                        "Issizlik en buyuk problem.",
+                        "Ulasim cok kotu."
+                );
     }
 
     @Test
@@ -645,7 +795,340 @@ class OperationServiceImplTest {
                 .containsExactly("4:1");
         assertThat(response.questionSummaries().get(1).answeredCount()).isEqualTo(1);
         assertThat(response.questionSummaries().get(1).sampleResponses())
+                .extracting(item -> item.responseText())
                 .containsExactly("Süreç hızlı ve anlaşılırdı.");
+    }
+
+    @Test
+    void getOperationAnalytics_buildsGroupedChoiceChartsFromQuestionMetadata() {
+        Operation operation = buildOperation(OperationStatus.COMPLETED, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion politicianOne = buildQuestion(operation.getSurvey(), "B2_1", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal'i ne derece taniyorsunuz?");
+        politicianOne.setSettingsJson("""
+                {
+                  "groupCode": "B2",
+                  "groupTitle": "Siyasetcileri ne derece taniyorsunuz?",
+                  "rowLabel": "Levent Uysal",
+                  "rowKey": "levent_uysal",
+                  "optionSetCode": "familiarity_5"
+                }
+                """);
+        SurveyQuestion politicianTwo = buildQuestion(operation.getSurvey(), "B2_2", 2, QuestionType.SINGLE_CHOICE, "Ali Mahir Basarir'i ne derece taniyorsunuz?");
+        politicianTwo.setSettingsJson("""
+                {
+                  "groupCode": "B2",
+                  "groupTitle": "Siyasetcileri ne derece taniyorsunuz?",
+                  "rowLabel": "Ali Mahir Basarir",
+                  "rowKey": "ali_mahir_basarir",
+                  "optionSetCode": "familiarity_5"
+                }
+                """);
+
+        SurveyQuestionOption veryWellOne = buildOption(politicianOne, 1, "cok_iyi_taniyorum", "Cok iyi taniyorum", "cok_iyi_taniyorum");
+        SurveyQuestionOption knowOne = buildOption(politicianOne, 2, "taniyorum", "Taniyorum", "taniyorum");
+        SurveyQuestionOption littleOne = buildOption(politicianOne, 3, "biraz_taniyorum", "Biraz taniyorum", "biraz_taniyorum");
+        SurveyQuestionOption heardOne = buildOption(politicianOne, 4, "duydum_ama_tanimiyorum", "Duydum ama tanimiyorum", "duydum_ama_tanimiyorum");
+        SurveyQuestionOption neverOne = buildOption(politicianOne, 5, "hic_duymadim", "Hic duymadim", "hic_duymadim");
+
+        SurveyQuestionOption veryWellTwo = buildOption(politicianTwo, 1, "cok_iyi_taniyorum", "Cok iyi taniyorum", "cok_iyi_taniyorum");
+        SurveyQuestionOption knowTwo = buildOption(politicianTwo, 2, "taniyorum", "Taniyorum", "taniyorum");
+        SurveyQuestionOption littleTwo = buildOption(politicianTwo, 3, "biraz_taniyorum", "Biraz taniyorum", "biraz_taniyorum");
+        SurveyQuestionOption heardTwo = buildOption(politicianTwo, 4, "duydum_ama_tanimiyorum", "Duydum ama tanimiyorum", "duydum_ama_tanimiyorum");
+        SurveyQuestionOption neverTwo = buildOption(politicianTwo, 5, "hic_duymadim", "Hic duymadim", "hic_duymadim");
+
+        SurveyResponse firstResponse = buildSurveyResponse(operation, SurveyResponseStatus.COMPLETED, "905551112233", 100, OffsetDateTime.now().minusHours(2));
+        SurveyResponse secondResponse = buildSurveyResponse(operation, SurveyResponseStatus.COMPLETED, "905551112244", 100, OffsetDateTime.now().minusHours(1));
+
+        SurveyAnswer firstRowOne = buildChoiceAnswer(firstResponse, politicianOne, knowOne);
+        SurveyAnswer firstRowTwo = buildChoiceAnswer(firstResponse, politicianTwo, neverTwo);
+        SurveyAnswer secondRowOne = buildChoiceAnswer(secondResponse, politicianOne, heardOne);
+        SurveyAnswer secondRowTwo = buildChoiceAnswer(secondResponse, politicianTwo, knowTwo);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(2L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(
+                        buildCallJob(operation, CallJobStatus.COMPLETED),
+                        buildCallJob(operation, CallJobStatus.COMPLETED)
+                ));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(secondResponse, firstResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(politicianOne, politicianTwo));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(politicianOne.getId(), politicianTwo.getId())
+        )).thenReturn(List.of(
+                veryWellOne, knowOne, littleOne, heardOne, neverOne,
+                veryWellTwo, knowTwo, littleTwo, heardTwo, neverTwo
+        ));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(
+                List.of(secondResponse.getId(), firstResponse.getId())
+        )).thenReturn(List.of(firstRowOne, firstRowTwo, secondRowOne, secondRowTwo));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionGroups()).hasSize(1);
+        assertThat(response.questionGroups().getFirst().groupCode()).isEqualTo("B2");
+        assertThat(response.questionGroups().getFirst().groupTitle()).isEqualTo("Siyasetcileri ne derece taniyorsunuz?");
+        assertThat(response.questionGroups().getFirst().rows())
+                .extracting(item -> item.rowLabel() + ":" + item.answeredCount())
+                .containsExactly("Levent Uysal:2", "Ali Mahir Basarir:2");
+        assertThat(response.questionGroups().getFirst().series())
+                .extracting(item -> item.label() + ":" + item.data())
+                .containsExactly(
+                        "Cok iyi taniyorum:[0, 0]",
+                        "Taniyorum:[1, 1]",
+                        "Biraz taniyorum:[0, 0]",
+                        "Duydum ama tanimiyorum:[1, 0]",
+                        "Hic duymadim:[0, 1]"
+                );
+    }
+
+    @Test
+    void getOperationAnalytics_buildsGroupedChartsForRatingMatrixQuestions() {
+        Operation operation = buildOperation(OperationStatus.COMPLETED, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion trust = buildQuestion(operation.getSurvey(), "C1_1", 1, QuestionType.RATING, "Guvenilirlik");
+        trust.setSettingsJson("""
+                {
+                  "groupCode": "C1",
+                  "groupTitle": "Bir siyasetci icin hangi ozellikler onemlidir?",
+                  "rowLabel": "Guvenilirlik",
+                  "rowKey": "guvenilirlik"
+                }
+                """);
+        SurveyQuestion leadership = buildQuestion(operation.getSurvey(), "C1_2", 2, QuestionType.RATING, "Liderlik");
+        leadership.setSettingsJson("""
+                {
+                  "groupCode": "C1",
+                  "groupTitle": "Bir siyasetci icin hangi ozellikler onemlidir?",
+                  "rowLabel": "Liderlik",
+                  "rowKey": "liderlik"
+                }
+                """);
+
+        SurveyQuestionOption veryImportantTrust = buildOption(trust, 1, "cok_onemli", "Cok onemli", "5");
+        SurveyQuestionOption importantTrust = buildOption(trust, 2, "onemli", "Onemli", "4");
+        SurveyQuestionOption veryImportantLeadership = buildOption(leadership, 1, "cok_onemli", "Cok onemli", "5");
+        SurveyQuestionOption importantLeadership = buildOption(leadership, 2, "onemli", "Onemli", "4");
+
+        SurveyResponse firstResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551111111",
+                100,
+                OffsetDateTime.now().minusMinutes(30)
+        );
+        SurveyResponse secondResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905552222222",
+                100,
+                OffsetDateTime.now().minusMinutes(10)
+        );
+
+        SurveyAnswer firstTrust = buildRatingAnswer(firstResponse, trust, 5);
+        SurveyAnswer firstLeadership = buildRatingAnswer(firstResponse, leadership, 4);
+        SurveyAnswer secondTrust = buildRatingAnswer(secondResponse, trust, 4);
+        SurveyAnswer secondLeadership = buildRatingAnswer(secondResponse, leadership, 5);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(2L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(
+                        buildCallJob(operation, CallJobStatus.COMPLETED),
+                        buildCallJob(operation, CallJobStatus.COMPLETED)
+                ));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(secondResponse, firstResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(trust, leadership));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(trust.getId(), leadership.getId())
+        )).thenReturn(List.of(
+                veryImportantTrust, importantTrust,
+                veryImportantLeadership, importantLeadership
+        ));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(
+                List.of(secondResponse.getId(), firstResponse.getId())
+        )).thenReturn(List.of(firstTrust, firstLeadership, secondTrust, secondLeadership));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionGroups()).hasSize(1);
+        assertThat(response.questionGroups().getFirst().groupCode()).isEqualTo("C1");
+        assertThat(response.questionGroups().getFirst().rows())
+                .extracting(item -> item.rowLabel() + ":" + item.answeredCount())
+                .containsExactly("Guvenilirlik:2", "Liderlik:2");
+        assertThat(response.questionGroups().getFirst().series())
+                .extracting(item -> item.label() + ":" + item.data())
+                .containsExactly(
+                        "Cok onemli:[1, 1]",
+                        "Onemli:[1, 1]"
+                );
+    }
+
+    @Test
+    void getOperationAnalytics_matchesGroupedChoiceAnswersUsingTurkishAliasesAndPunctuation() {
+        Operation operation = buildOperation(OperationStatus.COMPLETED, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion politicianOne = buildQuestion(operation.getSurvey(), "B2_1", 1, QuestionType.SINGLE_CHOICE, "Levent Uysal");
+        politicianOne.setSettingsJson("""
+                {
+                  "groupCode": "B2",
+                  "groupTitle": "Siyasetcileri ne derece taniyorsunuz?",
+                  "rowLabel": "Levent Uysal",
+                  "rowKey": "levent_uysal",
+                  "aliases": {
+                    "Tan?m?yorum": ["Tanımıyorum", "Tanımıyorum.", "tanimiyorum"]
+                  }
+                }
+                """);
+        SurveyQuestion politicianTwo = buildQuestion(operation.getSurvey(), "B2_2", 2, QuestionType.SINGLE_CHOICE, "Ali Mahir Basarir");
+        politicianTwo.setSettingsJson("""
+                {
+                  "groupCode": "B2",
+                  "groupTitle": "Siyasetcileri ne derece taniyorsunuz?",
+                  "rowLabel": "Ali Mahir Basarir",
+                  "rowKey": "ali_mahir_basarir",
+                  "aliases": {
+                    "Tan?m?yorum": ["Tanımıyorum", "Tanımıyorum.", "tanimiyorum"]
+                  }
+                }
+                """);
+
+        SurveyQuestionOption knowOne = buildOption(politicianOne, 1, "option_1", "Tanıyorum", "taniyorum");
+        SurveyQuestionOption unknownOne = buildOption(politicianOne, 2, "option_3", "Tan?m?yorum", "tanimiyorum");
+        SurveyQuestionOption knowTwo = buildOption(politicianTwo, 1, "option_1", "Tanıyorum", "taniyorum");
+        SurveyQuestionOption unknownTwo = buildOption(politicianTwo, 2, "option_3", "Tan?m?yorum", "tanimiyorum");
+
+        SurveyResponse completedResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112233",
+                100,
+                OffsetDateTime.now().minusMinutes(20)
+        );
+
+        SurveyAnswer firstAnswer = new SurveyAnswer();
+        firstAnswer.setId(UUID.randomUUID());
+        firstAnswer.setCompany(operation.getCompany());
+        firstAnswer.setSurveyResponse(completedResponse);
+        firstAnswer.setSurveyQuestion(politicianOne);
+        firstAnswer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        firstAnswer.setAnswerText("Tanımıyorum.");
+        firstAnswer.setRawInputText("Tanımıyorum.");
+        firstAnswer.setAnswerJson("{\"normalizedText\":\"Tanımıyorum.\"}");
+        firstAnswer.setValid(true);
+        firstAnswer.setRetryCount(0);
+
+        SurveyAnswer secondAnswer = new SurveyAnswer();
+        secondAnswer.setId(UUID.randomUUID());
+        secondAnswer.setCompany(operation.getCompany());
+        secondAnswer.setSurveyResponse(completedResponse);
+        secondAnswer.setSurveyQuestion(politicianTwo);
+        secondAnswer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        secondAnswer.setAnswerText("Tanıyorum.");
+        secondAnswer.setRawInputText("Tanıyorum.");
+        secondAnswer.setAnswerJson("{\"normalizedText\":\"Tanıyorum.\"}");
+        secondAnswer.setValid(true);
+        secondAnswer.setRetryCount(0);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(1L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(buildCallJob(operation, CallJobStatus.COMPLETED)));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(completedResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(politicianOne, politicianTwo));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(politicianOne.getId(), politicianTwo.getId())
+        )).thenReturn(List.of(knowOne, unknownOne, knowTwo, unknownTwo));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(List.of(completedResponse.getId())))
+                .thenReturn(List.of(firstAnswer, secondAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionGroups()).hasSize(1);
+        assertThat(response.questionGroups().getFirst().series())
+                .extracting(item -> item.label() + ":" + item.data())
+                .containsExactly(
+                        "Tanıyorum:[0, 1]",
+                        "Tan?m?yorum:[1, 0]"
+                );
+    }
+
+    @Test
+    void getOperationAnalytics_matchesChoiceAnswersAfterRemovingIntensityModifiers() {
+        Operation operation = buildOperation(OperationStatus.COMPLETED, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion favorabilityQuestion = buildQuestion(
+                operation.getSurvey(),
+                "q-like",
+                1,
+                QuestionType.SINGLE_CHOICE,
+                "Adayi ne derece begeniyorsunuz?"
+        );
+        SurveyQuestionOption positiveOption = buildOption(favorabilityQuestion, 1, "option_1", "Beğeniyorum", "begeniyorum");
+        SurveyQuestionOption negativeOption = buildOption(favorabilityQuestion, 2, "option_2", "Beğenmiyorum", "begenmiyorum");
+
+        SurveyResponse completedResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112244",
+                100,
+                OffsetDateTime.now().minusMinutes(10)
+        );
+
+        SurveyAnswer answer = new SurveyAnswer();
+        answer.setId(UUID.randomUUID());
+        answer.setCompany(operation.getCompany());
+        answer.setSurveyResponse(completedResponse);
+        answer.setSurveyQuestion(favorabilityQuestion);
+        answer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        answer.setAnswerText("Çok beğeniyorum.");
+        answer.setRawInputText("Çok beğeniyorum.");
+        answer.setAnswerJson("{\"normalizedText\":\"Çok beğeniyorum.\"}");
+        answer.setValid(true);
+        answer.setRetryCount(0);
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(1L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(buildCallJob(operation, CallJobStatus.COMPLETED)));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(completedResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(favorabilityQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(favorabilityQuestion.getId())
+        )).thenReturn(List.of(positiveOption, negativeOption));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(List.of(completedResponse.getId())))
+                .thenReturn(List.of(answer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionSummaries()).hasSize(1);
+        assertThat(response.questionSummaries().getFirst().breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Beğeniyorum:1", "Beğenmiyorum:0");
     }
 
     private Operation buildOperation(OperationStatus status, SurveyStatus surveyStatus) {
@@ -730,12 +1213,30 @@ class OperationServiceImplTest {
             int completionPercent,
             OffsetDateTime completedAt
     ) {
+        OperationContact contact = buildContact(operation);
+        CallJob callJob = buildCallJob(operation, CallJobStatus.COMPLETED);
+        callJob.setOperationContact(contact);
+
+        CallAttempt callAttempt = new CallAttempt();
+        callAttempt.setId(UUID.randomUUID());
+        callAttempt.setCompany(operation.getCompany());
+        callAttempt.setCallJob(callJob);
+        callAttempt.setOperation(operation);
+        callAttempt.setOperationContact(contact);
+        callAttempt.setAttemptNumber(1);
+        callAttempt.setProvider(CallProvider.ELEVENLABS);
+        callAttempt.setStatus(CallAttemptStatus.COMPLETED);
+        callAttempt.setConnectedAt(completedAt.minusMinutes(6));
+        callAttempt.setEndedAt(completedAt);
+        callAttempt.setRawProviderPayload("{}");
+
         SurveyResponse response = new SurveyResponse();
         response.setId(UUID.randomUUID());
         response.setCompany(operation.getCompany());
         response.setSurvey(operation.getSurvey());
         response.setOperation(operation);
-        response.setOperationContact(buildContact(operation));
+        response.setOperationContact(contact);
+        response.setCallAttempt(callAttempt);
         response.setStatus(status);
         response.setRespondentPhone(phoneNumber);
         response.setCompletionPercent(BigDecimal.valueOf(completionPercent));

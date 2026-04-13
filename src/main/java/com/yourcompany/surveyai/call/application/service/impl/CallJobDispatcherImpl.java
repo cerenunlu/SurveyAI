@@ -19,10 +19,17 @@ import com.yourcompany.surveyai.call.repository.CallAttemptRepository;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.common.exception.ValidationException;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
+import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
+import com.yourcompany.surveyai.operation.domain.enums.OperationStatus;
 import com.yourcompany.surveyai.operation.repository.OperationContactRepository;
+import com.yourcompany.surveyai.operation.repository.OperationRepository;
 import java.time.OffsetDateTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,13 +39,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class CallJobDispatcherImpl implements CallJobDispatcher {
 
     private static final Logger log = LoggerFactory.getLogger(CallJobDispatcherImpl.class);
+    private static final int CALL_ATTEMPT_FAILURE_REASON_MAX_LENGTH = 255;
 
     private final CallProviderRegistry callProviderRegistry;
     private final VoiceProviderConfigurationResolver configurationResolver;
     private final CallJobRepository callJobRepository;
     private final CallAttemptRepository callAttemptRepository;
     private final OperationContactRepository operationContactRepository;
+    private final OperationRepository operationRepository;
     private final ProviderExecutionObservationService providerExecutionObservationService;
+
+    private static final Set<CallJobStatus> DISPATCHABLE_JOB_STATUSES = EnumSet.of(
+            CallJobStatus.PENDING,
+            CallJobStatus.RETRY
+    );
+
+    private static final Set<CallJobStatus> ACTIVE_JOB_STATUSES = EnumSet.of(
+            CallJobStatus.QUEUED,
+            CallJobStatus.IN_PROGRESS
+    );
 
     public CallJobDispatcherImpl(
             CallProviderRegistry callProviderRegistry,
@@ -46,6 +65,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
             CallJobRepository callJobRepository,
             CallAttemptRepository callAttemptRepository,
             OperationContactRepository operationContactRepository,
+            OperationRepository operationRepository,
             ProviderExecutionObservationService providerExecutionObservationService
     ) {
         this.callProviderRegistry = callProviderRegistry;
@@ -53,6 +73,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
         this.callJobRepository = callJobRepository;
         this.callAttemptRepository = callAttemptRepository;
         this.operationContactRepository = operationContactRepository;
+        this.operationRepository = operationRepository;
         this.providerExecutionObservationService = providerExecutionObservationService;
     }
 
@@ -73,6 +94,33 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
         for (CallJob callJob : callJobs) {
             dispatchSingleJob(callJob, provider, configuration);
         }
+    }
+
+    @Override
+    @Transactional
+    public Optional<CallJob> dispatchNextPreparedJob(UUID operationId) {
+        Optional<Operation> operationOptional = operationRepository.findById(operationId);
+        if (operationOptional.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Operation operation = operationOptional.get();
+        if (operation.getDeletedAt() != null || operation.getStatus() != OperationStatus.RUNNING) {
+            return Optional.empty();
+        }
+
+        if (callJobRepository.existsByOperation_IdAndStatusInAndDeletedAtIsNull(operationId, ACTIVE_JOB_STATUSES)) {
+            return Optional.empty();
+        }
+
+        Optional<CallJob> nextJob = callJobRepository
+                .findFirstByOperation_IdAndStatusInAndAvailableAtBeforeAndDeletedAtIsNullOrderByScheduledForAscCreatedAtAsc(
+                        operationId,
+                        DISPATCHABLE_JOB_STATUSES,
+                        OffsetDateTime.now().plusSeconds(1)
+                );
+        nextJob.ifPresent(callJob -> dispatchPreparedJobs(List.of(callJob)));
+        return nextJob;
     }
 
     private void dispatchSingleJob(
@@ -110,7 +158,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
             callAttempt.setProviderCallId(result.providerCallId());
             callAttempt.setStatus(result.attemptStatus() != null ? result.attemptStatus() : CallAttemptStatus.INITIATED);
             callAttempt.setDialedAt(result.occurredAt() != null ? result.occurredAt() : OffsetDateTime.now());
-            callAttempt.setFailureReason(result.errorMessage());
+            callAttempt.setFailureReason(trimToMaxLength(result.errorMessage(), CALL_ATTEMPT_FAILURE_REASON_MAX_LENGTH));
             callAttempt.setRawProviderPayload(result.rawPayload() != null ? result.rawPayload() : "{}");
             callAttemptRepository.save(callAttempt);
             providerExecutionObservationService.recordDispatchAccepted(callJob, callAttempt, result);
@@ -118,7 +166,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
 
             OperationContact contact = callJob.getOperationContact();
             contact.setLastCallAt(callAttempt.getDialedAt());
-            contact.setStatus(mapContactStatus(result.jobStatus()));
+            contact.setStatus(mapContactStatus(callJob.getStatus()));
             operationContactRepository.save(contact);
 
             log.info(
@@ -129,7 +177,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
                     callAttempt.getId(),
                     result.providerCallId(),
                     callAttempt.getDialedAt(),
-                    result.jobStatus(),
+                    callJob.getStatus(),
                     callAttempt.getStatus()
             );
         } catch (RuntimeException error) {
@@ -155,7 +203,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
         callJobRepository.save(callJob);
         callAttempt.setStatus(CallAttemptStatus.FAILED);
         callAttempt.setDialedAt(OffsetDateTime.now());
-        callAttempt.setFailureReason(error.getMessage());
+        callAttempt.setFailureReason(trimToMaxLength(error.getMessage(), CALL_ATTEMPT_FAILURE_REASON_MAX_LENGTH));
         callAttempt.setRawProviderPayload("{\"dispatchError\":true}");
         callAttemptRepository.save(callAttempt);
         providerExecutionObservationService.recordDispatchFailed(
@@ -202,6 +250,7 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
                     statusResult,
                     "Initial provider status snapshot captured after dispatch acceptance"
             );
+            applyStatusSnapshot(callJob, callAttempt, statusResult);
             log.info(
                     "Initial provider status snapshot. provider={} callJobId={} callAttemptId={} providerCallId={} jobStatus={} attemptStatus={}",
                     provider.getProvider(),
@@ -229,6 +278,38 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
         }
     }
 
+    private void applyStatusSnapshot(CallJob callJob, CallAttempt callAttempt, ProviderCallStatusResult statusResult) {
+        if (statusResult == null || statusResult.jobStatus() == null) {
+            return;
+        }
+
+        callJob.setStatus(statusResult.jobStatus());
+        if (statusResult.rawPayload() != null && callAttempt.getRawProviderPayload() != null
+                && !statusResult.rawPayload().equals(callAttempt.getRawProviderPayload())) {
+            callAttempt.setRawProviderPayload(statusResult.rawPayload());
+        }
+        if (statusResult.attemptStatus() != null) {
+            callAttempt.setStatus(statusResult.attemptStatus());
+        }
+        if (statusResult.occurredAt() != null && callAttempt.getConnectedAt() == null
+                && statusResult.attemptStatus() == CallAttemptStatus.IN_PROGRESS) {
+            callAttempt.setConnectedAt(statusResult.occurredAt());
+        }
+        if (isTerminal(statusResult.jobStatus())) {
+            callAttempt.setEndedAt(statusResult.occurredAt() != null ? statusResult.occurredAt() : OffsetDateTime.now());
+        }
+
+        callJobRepository.save(callJob);
+        callAttemptRepository.save(callAttempt);
+
+        OperationContact contact = callJob.getOperationContact();
+        contact.setStatus(mapContactStatus(statusResult.jobStatus()));
+        if (statusResult.occurredAt() != null) {
+            contact.setLastCallAt(statusResult.occurredAt());
+        }
+        operationContactRepository.save(contact);
+    }
+
     private CallAttempt createPendingAttempt(CallJob callJob, com.yourcompany.surveyai.call.domain.enums.CallProvider provider) {
         int nextAttemptNumber = (callJob.getAttemptCount() == null ? 0 : callJob.getAttemptCount()) + 1;
         CallAttempt callAttempt = new CallAttempt();
@@ -250,5 +331,19 @@ public class CallJobDispatcherImpl implements CallJobDispatcher {
             case RETRY -> OperationContactStatus.RETRY;
             case FAILED, DEAD_LETTER, CANCELLED -> OperationContactStatus.FAILED;
         };
+    }
+
+    private boolean isTerminal(CallJobStatus status) {
+        return status == CallJobStatus.COMPLETED
+                || status == CallJobStatus.FAILED
+                || status == CallJobStatus.DEAD_LETTER
+                || status == CallJobStatus.CANCELLED;
+    }
+
+    private String trimToMaxLength(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 }

@@ -4,6 +4,9 @@ import com.yourcompany.surveyai.call.application.provider.CallProviderRegistry;
 import com.yourcompany.surveyai.call.application.provider.ProviderConfigurationValidationResult;
 import com.yourcompany.surveyai.call.application.provider.VoiceExecutionProvider;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -54,7 +57,7 @@ public class VoiceProviderStartupDiagnostics implements ApplicationRunner {
             boolean firstMessageOverrideEnabled = isEnabled(configuration, "agent-first-message-override-enabled");
             boolean languageOverrideEnabled = isEnabled(configuration, "agent-language-override-enabled");
             log.info(
-                    "ElevenLabs runtime config. baseUrl={} outboundEndpoint={} authHeaderType={} apiKeyPresent={} apiKeySuffix={} agentIdPresent={} phoneNumberIdPresent={} webhookBaseUrlPresent={} toolApiSecretPresent={} promptOverrideEnabled={} firstMessageOverrideEnabled={} languageOverrideEnabled={}",
+                    "ElevenLabs runtime config. baseUrl={} outboundEndpoint={} authHeaderType={} apiKeyPresent={} apiKeySuffix={} agentIdPresent={} phoneNumberIdPresent={} webhookBaseUrlPresent={} toolApiSecretPresent={} toolApiSecretPreview={} toolApiSecretFingerprint={} promptOverrideEnabled={} firstMessageOverrideEnabled={} languageOverrideEnabled={}",
                     configuration.baseUrl(),
                     resolveOutboundEndpoint(configuration.baseUrl()),
                     "xi-api-key",
@@ -64,6 +67,8 @@ public class VoiceProviderStartupDiagnostics implements ApplicationRunner {
                     hasText(configuration.phoneNumberId()),
                     hasText(publicWebhookBaseUrl),
                     hasText(toolApiSecret),
+                    redactSecret(toolApiSecret),
+                    fingerprint(toolApiSecret),
                     promptOverrideEnabled,
                     firstMessageOverrideEnabled,
                     languageOverrideEnabled
@@ -103,7 +108,7 @@ public class VoiceProviderStartupDiagnostics implements ApplicationRunner {
             return null;
         }
         String normalizedBase = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-        return normalizedBase + "/v1/convai/twilio/outbound-call";
+        return normalizedBase + "/v1/convai/sip-trunk/outbound-call";
     }
 
     private boolean hasText(String value) {
@@ -121,5 +126,28 @@ public class VoiceProviderStartupDiagnostics implements ApplicationRunner {
         }
         String trimmed = value.trim();
         return trimmed.length() <= 4 ? "****" : "..." + trimmed.substring(trimmed.length() - 4);
+    }
+
+    private String redactSecret(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= 8
+                ? trimmed.charAt(0) + "***"
+                : trimmed.substring(0, 4) + "..." + trimmed.substring(trimmed.length() - 4);
+    }
+
+    private String fingerprint(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.trim().getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash, 0, 6);
+        } catch (Exception ignored) {
+            return "unavailable";
+        }
     }
 }

@@ -487,6 +487,12 @@ export default function SurveyDetailPage() {
     () => survey && survey.status !== "Archived" ? (
       <div className="survey-header-action-cluster">
         <div className="survey-header-action-buttons">
+          {survey.status === "Draft" ? (
+            <Link href={`/surveys/${survey.id}/edit`} className="button-secondary compact-button survey-header-button">
+              <SurveyIcon className="nav-icon" />
+              Duzenle
+            </Link>
+          ) : null}
           <button
             type="button"
             className="button-primary compact-button survey-header-button"

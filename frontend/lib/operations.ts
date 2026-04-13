@@ -1,7 +1,7 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { requireCompanyId, requireCurrentUserId } from "@/lib/auth";
 import { fetchCompanySurveys } from "@/lib/surveys";
-import { CallJob, CallJobAttempt, CallJobDetail, CallJobSurveyResponse, Operation, OperationAnalytics, OperationAnalyticsAudienceBreakdown, OperationAnalyticsBreakdownItem, OperationAnalyticsInsightItem, OperationAnalyticsQuestionSummary, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
+import { CallJob, CallJobAttempt, CallJobDetail, CallJobSurveyResponse, CallJobSurveyResponseAnswer, CallJobSurveyResponseAnswerOption, Operation, OperationAnalytics, OperationAnalyticsAudienceBreakdown, OperationAnalyticsBreakdownItem, OperationAnalyticsInsightItem, OperationAnalyticsQuestionGroupRow, OperationAnalyticsQuestionGroupSeries, OperationAnalyticsQuestionGroupSummary, OperationAnalyticsQuestionSummary, OperationAnalyticsSampleResponse, OperationAnalyticsTrendPoint, OperationContact } from "@/lib/types";
 
 type ApiErrorResponse = {
   code?: string;
@@ -95,6 +95,7 @@ type CallJobApiResponse = {
   maxAttempts: number;
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
+  answerCount: number;
   lastResultSummary: string | null;
   createdAt: string;
   updatedAt: string;
@@ -119,6 +120,35 @@ type CallJobSurveyResponseApiResponse = {
   completedAt: string | null;
   aiSummaryText: string | null;
   transcriptText: string | null;
+  answers?: CallJobSurveyResponseAnswerApiResponse[];
+};
+
+type CallJobSurveyResponseAnswerOptionApiResponse = {
+  id: string;
+  code: string;
+  label: string;
+  value: string;
+  optionOrder: number;
+};
+
+type CallJobSurveyResponseAnswerApiResponse = {
+  answerId: string | null;
+  questionId: string;
+  questionCode: string;
+  questionOrder: number;
+  questionTitle: string;
+  questionType: CallJobSurveyResponseAnswer["questionType"];
+  required: boolean;
+  answerText: string | null;
+  answerNumber: number | null;
+  selectedOptionId: string | null;
+  selectedOptionIds: string[] | null;
+  valid: boolean;
+  invalidReason: string | null;
+  rawInputText: string | null;
+  displayValue: string;
+  manuallyEdited: boolean;
+  options: CallJobSurveyResponseAnswerOptionApiResponse[];
 };
 
 type CallJobAttemptApiResponse = {
@@ -163,6 +193,7 @@ type CallJobDetailApiResponse = {
   failed: boolean;
   failureReason: string | null;
   retryable: boolean;
+  redialable: boolean;
   partialResponseDataExists: boolean;
   transcriptSummary: string | null;
   transcriptText: string | null;
@@ -193,7 +224,43 @@ type OperationAnalyticsQuestionSummaryApiResponse = {
   averageRating: number | null;
   emptyStateMessage: string | null;
   breakdown: OperationAnalyticsBreakdownItemApiResponse[];
-  sampleResponses: string[];
+  specialAnswerBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
+  sampleResponses: Array<OperationAnalyticsSampleResponseApiResponse | string>;
+};
+
+type OperationAnalyticsSampleResponseApiResponse = {
+  callJobId: string;
+  respondentName: string;
+  capturedAt: string | null;
+  responseText: string;
+};
+
+type OperationAnalyticsQuestionGroupRowApiResponse = {
+  questionId: string;
+  questionCode: string;
+  questionOrder: number;
+  rowKey: string;
+  rowLabel: string;
+  answeredCount: number;
+  responseRate: number;
+};
+
+type OperationAnalyticsQuestionGroupSeriesApiResponse = {
+  key: string;
+  label: string;
+  data: number[];
+};
+
+type OperationAnalyticsQuestionGroupSummaryApiResponse = {
+  groupCode: string;
+  groupTitle: string;
+  chartKind: OperationAnalyticsQuestionGroupSummary["chartKind"];
+  optionSetCode: string | null;
+  respondedContactCount: number;
+  answeredRowCount: number;
+  emptyStateMessage: string | null;
+  rows: OperationAnalyticsQuestionGroupRowApiResponse[];
+  series: OperationAnalyticsQuestionGroupSeriesApiResponse[];
 };
 
 type OperationAnalyticsInsightItemApiResponse = {
@@ -237,6 +304,7 @@ type OperationAnalyticsApiResponse = {
   invalidResponses: number;
   completionRate: number;
   responseRate: number;
+  personResponseRate: number;
   contactReachRate: number;
   participationRate: number;
   averageCompletionPercent: number;
@@ -244,8 +312,10 @@ type OperationAnalyticsApiResponse = {
   insightSummary: string | null;
   insightItems: OperationAnalyticsInsightItemApiResponse[];
   outcomeBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
+  consentBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
   audienceBreakdowns: OperationAnalyticsAudienceBreakdownApiResponse[];
   questionSummaries: OperationAnalyticsQuestionSummaryApiResponse[];
+  questionGroups: OperationAnalyticsQuestionGroupSummaryApiResponse[];
   responseTrend: OperationAnalyticsTrendPointApiResponse[];
 };
 
@@ -318,6 +388,48 @@ export async function retryOperationCallJob(
       method: "POST",
     },
     "call job retry",
+  );
+
+  return mapCallJobDetailDto(response);
+}
+
+export async function redialOperationCallJob(
+  operationId: string,
+  callJobId: string,
+  companyId?: string,
+): Promise<CallJobDetail> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const response = await fetchJson<CallJobDetailApiResponse>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/jobs/${callJobId}/redial?companyId=${resolvedCompanyId}`,
+    {
+      method: "POST",
+    },
+    "call job redial",
+  );
+
+  return mapCallJobDetailDto(response);
+}
+
+export async function updateOperationCallJobSurveyResponse(
+  operationId: string,
+  callJobId: string,
+  answers: Array<{
+    questionId: string;
+    answerText?: string | null;
+    answerNumber?: number | null;
+    selectedOptionId?: string | null;
+    selectedOptionIds?: string[];
+  }>,
+  companyId?: string,
+): Promise<CallJobDetail> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const response = await fetchJson<CallJobDetailApiResponse>(
+    `${API_BASE_URL}/api/v1/operations/${operationId}/jobs/${callJobId}/survey-response?companyId=${resolvedCompanyId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ answers }),
+    },
+    "call job survey response update",
   );
 
   return mapCallJobDetailDto(response);
@@ -396,6 +508,7 @@ export async function fetchOperationAnalytics(
     invalidResponses: response.invalidResponses,
     completionRate: response.completionRate,
     responseRate: response.responseRate,
+    personResponseRate: response.personResponseRate ?? response.responseRate,
     contactReachRate: response.contactReachRate,
     participationRate: response.participationRate,
     averageCompletionPercent: response.averageCompletionPercent,
@@ -408,6 +521,7 @@ export async function fetchOperationAnalytics(
       tone: item.tone,
     })),
     outcomeBreakdown: (response.outcomeBreakdown ?? []).map(mapAnalyticsBreakdown),
+    consentBreakdown: (response.consentBreakdown ?? []).map(mapAnalyticsBreakdown),
     audienceBreakdowns: (response.audienceBreakdowns ?? []).map((item): OperationAnalyticsAudienceBreakdown => ({
       key: item.key,
       label: item.label,
@@ -431,7 +545,47 @@ export async function fetchOperationAnalytics(
       averageRating: item.averageRating,
       emptyStateMessage: item.emptyStateMessage,
       breakdown: (item.breakdown ?? []).map(mapAnalyticsBreakdown),
-      sampleResponses: item.sampleResponses ?? [],
+      specialAnswerBreakdown: (item.specialAnswerBreakdown ?? []).map(mapAnalyticsBreakdown),
+      sampleResponses: (item.sampleResponses ?? []).map((sample, sampleIndex): OperationAnalyticsSampleResponse => {
+        if (typeof sample === "string") {
+          return {
+            callJobId: `legacy-${item.questionId}-${sampleIndex}`,
+            respondentName: "Katilimci",
+            capturedAt: null,
+            responseText: sample,
+          };
+        }
+
+        return {
+          callJobId: sample.callJobId,
+          respondentName: sample.respondentName,
+          capturedAt: sample.capturedAt ? formatDateTime(sample.capturedAt) : null,
+          responseText: sample.responseText ?? "",
+        };
+      }),
+    })),
+    questionGroups: (response.questionGroups ?? []).map((item): OperationAnalyticsQuestionGroupSummary => ({
+      groupCode: item.groupCode,
+      groupTitle: item.groupTitle,
+      chartKind: item.chartKind,
+      optionSetCode: item.optionSetCode,
+      respondedContactCount: item.respondedContactCount ?? respondedContacts,
+      answeredRowCount: item.answeredRowCount ?? 0,
+      emptyStateMessage: item.emptyStateMessage,
+      rows: (item.rows ?? []).map((row): OperationAnalyticsQuestionGroupRow => ({
+        questionId: row.questionId,
+        questionCode: row.questionCode,
+        questionOrder: row.questionOrder,
+        rowKey: row.rowKey,
+        rowLabel: row.rowLabel,
+        answeredCount: row.answeredCount,
+        responseRate: row.responseRate,
+      })),
+      series: (item.series ?? []).map((series): OperationAnalyticsQuestionGroupSeries => ({
+        key: series.key,
+        label: series.label,
+        data: series.data ?? [],
+      })),
     })),
     responseTrend: (response.responseTrend ?? []).map((item): OperationAnalyticsTrendPoint => ({
       label: formatAnalyticsDate(item.label),
@@ -449,6 +603,36 @@ export async function startOperation(
     fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations/${operationId}/start?companyId=${resolvedCompanyId}`, {
       method: "POST",
     }, "operation start"),
+    fetchCompanySurveys(resolvedCompanyId),
+  ]);
+
+  return mapOperationDtoToOperation(operationResponse, surveys);
+}
+
+export async function pauseOperation(
+  operationId: string,
+  companyId?: string,
+): Promise<Operation> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const [operationResponse, surveys] = await Promise.all([
+    fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations/${operationId}/pause?companyId=${resolvedCompanyId}`, {
+      method: "POST",
+    }, "operation pause"),
+    fetchCompanySurveys(resolvedCompanyId),
+  ]);
+
+  return mapOperationDtoToOperation(operationResponse, surveys);
+}
+
+export async function resumeOperation(
+  operationId: string,
+  companyId?: string,
+): Promise<Operation> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  const [operationResponse, surveys] = await Promise.all([
+    fetchJson<OperationApiResponse>(`${API_BASE_URL}/api/v1/operations/${operationId}/resume?companyId=${resolvedCompanyId}`, {
+      method: "POST",
+    }, "operation resume"),
     fetchCompanySurveys(resolvedCompanyId),
   ]);
 
@@ -518,7 +702,7 @@ export async function fetchOperationCallJobsPage(
     page?: number;
     size?: number;
     query?: string;
-    status?: CallJob["status"] | "All";
+    statuses?: Array<CallJob["status"] | "All">;
     sortBy?: "createdAt" | "updatedAt";
     direction?: "asc" | "desc";
     init?: RequestInit;
@@ -536,9 +720,11 @@ export async function fetchOperationCallJobsPage(
     searchParams.set("query", options.query.trim());
   }
 
-  const status = mapCallJobStatusToApi(options?.status);
-  if (status) {
-    searchParams.set("status", status);
+  const statuses = (options?.statuses ?? [])
+    .map((status) => mapCallJobStatusToApi(status))
+    .filter((status): status is CallJobApiStatus => status !== null);
+  for (const status of statuses) {
+    searchParams.append("status", status);
   }
 
   const response = await fetchJson<CallJobPageApiResponse>(
@@ -748,6 +934,7 @@ function mapCallJobDtoToCallJob(dto: CallJobApiResponse): CallJob {
     maxAttempts: dto.maxAttempts,
     lastErrorCode: dto.lastErrorCode,
     lastErrorMessage: dto.lastErrorMessage,
+    answerCount: typeof dto.answerCount === "number" ? dto.answerCount : 0,
     lastResultSummary: dto.lastResultSummary,
     createdAt: formatDateTime(dto.createdAt),
     updatedAt: formatDateTime(dto.updatedAt),
@@ -779,6 +966,7 @@ function mapCallJobDetailDto(dto: CallJobDetailApiResponse): CallJobDetail {
     failed: dto.failed,
     failureReason: dto.failureReason,
     retryable: dto.retryable,
+    redialable: dto.redialable,
     partialResponseDataExists: dto.partialResponseDataExists,
     transcriptSummary: dto.transcriptSummary,
     transcriptText: dto.transcriptText,
@@ -817,13 +1005,46 @@ function mapCallJobSurveyResponse(dto: CallJobSurveyResponseApiResponse | null):
     id: dto.id,
     status: dto.status,
     completionPercent: dto.completionPercent,
-    answerCount: dto.answerCount,
+    answerCount: typeof dto.answerCount === "number" ? dto.answerCount : 0,
     validAnswerCount: dto.validAnswerCount,
     usableResponse: dto.usableResponse,
     startedAt: formatDateTime(dto.startedAt),
     completedAt: formatDateTime(dto.completedAt),
     aiSummaryText: dto.aiSummaryText,
     transcriptText: dto.transcriptText,
+    answers: (dto.answers ?? []).map(mapCallJobSurveyResponseAnswer),
+  };
+}
+
+function mapCallJobSurveyResponseAnswer(dto: CallJobSurveyResponseAnswerApiResponse): CallJobSurveyResponseAnswer {
+  return {
+    answerId: dto.answerId,
+    questionId: dto.questionId,
+    questionCode: dto.questionCode,
+    questionOrder: dto.questionOrder,
+    questionTitle: dto.questionTitle,
+    questionType: dto.questionType,
+    required: dto.required,
+    answerText: dto.answerText,
+    answerNumber: dto.answerNumber,
+    selectedOptionId: dto.selectedOptionId,
+    selectedOptionIds: dto.selectedOptionIds ?? [],
+    valid: dto.valid,
+    invalidReason: dto.invalidReason,
+    rawInputText: dto.rawInputText,
+    displayValue: dto.displayValue,
+    manuallyEdited: dto.manuallyEdited,
+    options: (dto.options ?? []).map(mapCallJobSurveyResponseAnswerOption),
+  };
+}
+
+function mapCallJobSurveyResponseAnswerOption(dto: CallJobSurveyResponseAnswerOptionApiResponse): CallJobSurveyResponseAnswerOption {
+  return {
+    id: dto.id,
+    code: dto.code,
+    label: dto.label,
+    value: dto.value,
+    optionOrder: dto.optionOrder,
   };
 }
 

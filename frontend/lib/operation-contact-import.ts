@@ -21,6 +21,7 @@ export type ImportSummary = {
 
 export const ACCEPTED_OPERATION_CONTACT_FILE_TYPES = ".csv,.xlsx";
 export const OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT = 8;
+const DEV_DUPLICATE_PHONE_STORAGE_KEY = "surveyai.dev.allowDuplicateOperationContactPhoneNumbers";
 
 const PHONE_NUMBER_PATTERN = /^[1-9]\d{7,14}$/;
 
@@ -66,6 +67,8 @@ export function buildPreviewRows(
   rows: unknown[][],
   options?: { existingPhoneNumbers?: Iterable<string> },
 ): { previewRows: ImportPreviewRow[]; summary: ImportSummary } {
+  const allowDuplicatePhoneNumbersForDev = isDuplicatePhoneNumbersAllowedForDev();
+
   if (rows.length === 0) {
     return {
       previewRows: [],
@@ -162,10 +165,10 @@ export function buildPreviewRows(
   }, new Map<string, number>());
 
   const previewRows = rawPreviewRows.map((row) => {
-    const isDuplicateInFile = Boolean(
+    const isDuplicateInFile = !allowDuplicatePhoneNumbersForDev && Boolean(
       row.normalizedPhoneNumber && (phoneNumberCounts.get(row.normalizedPhoneNumber) ?? 0) > 1,
     );
-    const isDuplicateInOperation = Boolean(
+    const isDuplicateInOperation = !allowDuplicatePhoneNumbersForDev && Boolean(
       row.normalizedPhoneNumber && existingPhoneNumbers.has(row.normalizedPhoneNumber),
     );
     const reasons = row.reason ? [row.reason] : [];
@@ -254,6 +257,22 @@ function repairMojibake(value: string): string {
 
 function isPhoneNumberValid(phoneNumber: string): boolean {
   return PHONE_NUMBER_PATTERN.test(phoneNumber);
+}
+
+function isDuplicatePhoneNumbersAllowedForDev(): boolean {
+  if (process.env.NEXT_PUBLIC_SURVEYAI_DEV_ALLOW_DUPLICATE_OPERATION_CONTACT_PHONE_NUMBERS === "true") {
+    return true;
+  }
+
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(DEV_DUPLICATE_PHONE_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
 }
 
 function resolveColumnIndex(headerRow: unknown[], aliases: string[]): number {

@@ -123,6 +123,65 @@ class SurveyResponseIngestionServiceImplTest {
     }
 
     @Test
+    void ingest_stripsVoiceDirectionTagsFromTranscriptText() {
+        TestFixture fixture = buildFixture();
+        ProviderWebhookEvent webhookWithDirections = new ProviderWebhookEvent(
+                CallProvider.ELEVENLABS,
+                "conv_123",
+                "op:contact",
+                "post_call_transcription",
+                CallJobStatus.COMPLETED,
+                CallAttemptStatus.COMPLETED,
+                OffsetDateTime.now(),
+                45,
+                new ProviderCorrelationMetadata(
+                        fixture.operation().getId(),
+                        fixture.contact().getId(),
+                        fixture.callJob().getId(),
+                        fixture.callAttempt().getId()
+                ),
+                null,
+                null,
+                "inline://elevenlabs/conversations/conv_123",
+                "agent: [slow] Hello\nuser: (sad) Hi",
+                """
+                {
+                  "type": "post_call_transcription",
+                  "data": {
+                    "conversation_id": "conv_123",
+                    "status": "done",
+                    "transcript": [
+                      {"role": "agent", "message": "[slow] Hello"},
+                      {"role": "user", "message": "(sad) Hi"}
+                    ],
+                    "analysis": {
+                      "transcript_summary": "Summary",
+                      "data_collection_results": {
+                        "consent": {"value": "yes"},
+                        "nps": {"value": "8", "number": 8}
+                      }
+                    }
+                  }
+                }
+                """
+        );
+        when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(fixture.callAttempt().getId())).thenReturn(Optional.empty());
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey().getId()))
+                .thenReturn(List.of(fixture.choiceQuestion(), fixture.ratingQuestion()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.choiceQuestion().getId()))
+                .thenReturn(List.of(fixture.yesOption(), fixture.noOption()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.ratingQuestion().getId()))
+                .thenReturn(List.of());
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(any(), any()))
+                .thenReturn(Optional.empty());
+
+        service.ingest(fixture.callAttempt(), webhookWithDirections);
+
+        SurveyResponse response = savedResponses.getLast();
+        assertThat(response.getTranscriptText()).isEqualTo("agent: Hello\nuser: Hi");
+    }
+
+    @Test
     void ingest_updatesExistingResponseInsteadOfCreatingDuplicateRecords() {
         TestFixture fixture = buildFixture();
         SurveyResponse existingResponse = new SurveyResponse();
@@ -164,7 +223,102 @@ class SurveyResponseIngestionServiceImplTest {
 
         assertThat(savedResponses).isNotEmpty();
         assertThat(savedResponses.getLast().getId()).isEqualTo(existingResponse.getId());
-        assertThat(savedAnswers).hasSize(2);
+        assertThat(savedAnswers).hasSize(1);
+        assertThat(savedAnswers.getFirst().getSurveyQuestion().getCode()).isEqualTo("nps");
+    }
+
+    @Test
+    void ingest_preservesExistingOpeningConsentStateInsideTranscriptJson() {
+        TestFixture fixture = buildFixture();
+        SurveyResponse existingResponse = new SurveyResponse();
+        existingResponse.setId(UUID.randomUUID());
+        existingResponse.setCompany(fixture.company());
+        existingResponse.setSurvey(fixture.survey());
+        existingResponse.setOperation(fixture.operation());
+        existingResponse.setOperationContact(fixture.contact());
+        existingResponse.setCallAttempt(fixture.callAttempt());
+        existingResponse.setStatus(SurveyResponseStatus.ABANDONED);
+        existingResponse.setCompletionPercent(BigDecimal.ZERO);
+        existingResponse.setRespondentPhone(fixture.contact().getPhoneNumber());
+        existingResponse.setStartedAt(OffsetDateTime.now());
+        existingResponse.setTranscriptJson("""
+                {
+                  "openingConsentState": "DECLINED",
+                  "openingConsentPromptDelivered": true
+                }
+                """);
+
+        when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(fixture.callAttempt().getId())).thenReturn(Optional.of(existingResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey().getId()))
+                .thenReturn(List.of(fixture.choiceQuestion(), fixture.ratingQuestion()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.choiceQuestion().getId()))
+                .thenReturn(List.of(fixture.yesOption(), fixture.noOption()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.ratingQuestion().getId()))
+                .thenReturn(List.of());
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(any(), any()))
+                .thenReturn(Optional.empty());
+
+        service.ingest(fixture.callAttempt(), fixture.completedWebhook());
+
+        SurveyResponse savedResponse = savedResponses.getLast();
+        assertThat(savedResponse.getTranscriptJson()).contains("\"openingConsentState\":\"DECLINED\"");
+        assertThat(savedResponse.getTranscriptJson()).contains("\"providerCallId\":\"conv_123\"");
+    }
+
+    @Test
+    void ingest_preservesExistingValidLiveToolAnswerWhenProviderPayloadDisagrees() {
+        TestFixture fixture = buildFixture();
+        SurveyResponse existingResponse = new SurveyResponse();
+        existingResponse.setId(UUID.randomUUID());
+        existingResponse.setCompany(fixture.company());
+        existingResponse.setSurvey(fixture.survey());
+        existingResponse.setOperation(fixture.operation());
+        existingResponse.setOperationContact(fixture.contact());
+        existingResponse.setCallAttempt(fixture.callAttempt());
+        existingResponse.setStatus(SurveyResponseStatus.PARTIAL);
+        existingResponse.setCompletionPercent(BigDecimal.ZERO);
+        existingResponse.setRespondentPhone(fixture.contact().getPhoneNumber());
+        existingResponse.setStartedAt(OffsetDateTime.now());
+        existingResponse.setTranscriptJson("{}");
+
+        SurveyAnswer existingAnswer = new SurveyAnswer();
+        existingAnswer.setId(UUID.randomUUID());
+        existingAnswer.setCompany(fixture.company());
+        existingAnswer.setSurveyResponse(existingResponse);
+        existingAnswer.setSurveyQuestion(fixture.choiceQuestion());
+        existingAnswer.setAnswerType(QuestionType.SINGLE_CHOICE);
+        existingAnswer.setSelectedOption(fixture.yesOption());
+        existingAnswer.setAnswerText("Yes");
+        existingAnswer.setRawInputText("Yes");
+        existingAnswer.setRetryCount(1);
+        existingAnswer.setValid(true);
+        existingAnswer.setAnswerJson("""
+                {
+                  "questionType": "SINGLE_CHOICE",
+                  "rawText": "Yes",
+                  "normalizedText": "Yes",
+                  "selectedOptionId": "%s"
+                }
+                """.formatted(fixture.yesOption().getId()));
+
+        when(surveyResponseRepository.findByCallAttempt_IdAndDeletedAtIsNull(fixture.callAttempt().getId())).thenReturn(Optional.of(existingResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey().getId()))
+                .thenReturn(List.of(fixture.choiceQuestion(), fixture.ratingQuestion()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.choiceQuestion().getId()))
+                .thenReturn(List.of(fixture.yesOption(), fixture.noOption()));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(fixture.ratingQuestion().getId()))
+                .thenReturn(List.of());
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(existingResponse.getId(), fixture.choiceQuestion().getId()))
+                .thenReturn(Optional.of(existingAnswer));
+        when(surveyAnswerRepository.findBySurveyResponse_IdAndSurveyQuestion_IdAndDeletedAtIsNull(existingResponse.getId(), fixture.ratingQuestion().getId()))
+                .thenReturn(Optional.empty());
+
+        service.ingest(fixture.callAttempt(), fixture.completedWebhook());
+
+        assertThat(savedAnswers).hasSize(1);
+        assertThat(savedAnswers.getFirst().getSurveyQuestion().getCode()).isEqualTo("nps");
+        assertThat(existingAnswer.getSelectedOption()).isEqualTo(fixture.yesOption());
+        assertThat(existingAnswer.getAnswerText()).isEqualTo("Yes");
     }
 
     @Test

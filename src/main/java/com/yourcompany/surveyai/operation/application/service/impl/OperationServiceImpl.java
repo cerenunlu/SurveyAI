@@ -11,6 +11,10 @@ import com.yourcompany.surveyai.operation.application.dto.request.CreateOperatio
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsBreakdownItemDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsAudienceBreakdownDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsInsightItemDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionGroupRowDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionGroupSeriesDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionGroupSummaryDto;
+import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsSampleResponseDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsQuestionSummaryDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsResponseDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsTrendPointDto;
@@ -54,6 +58,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -84,6 +89,101 @@ public class OperationServiceImpl implements OperationService {
             CallJobStatus.QUEUED,
             CallJobStatus.IN_PROGRESS,
             CallJobStatus.RETRY
+    );
+
+    private static final Set<String> OPEN_ENDED_STOP_WORDS = Set.of(
+            "ve", "veya", "ile", "icin", "ama", "fakat", "gibi", "cok", "daha", "bir", "iki", "uc",
+            "bu", "su", "o", "ben", "bence", "biz", "siz", "hem", "de", "da", "ki", "mi", "mu",
+            "midir", "nedir", "olan", "olarak", "yani", "artik", "gerek", "gerekiyor", "olmali",
+            "olsun", "var", "yok", "olanlar", "olmasi", "oluyor", "bile", "hala", "once", "sonra",
+            "sanki", "biraz", "fazla", "az", "en", "çok", "dair", "the", "and", "for",
+            "with", "that", "this", "are", "is", "was", "were", "have", "has", "had"
+    );
+
+    private static final Set<String> OPEN_ENDED_CONSENT_ARTIFACTS = Set.of(
+            "evet",
+            "hayir",
+            "olur",
+            "olabilir",
+            "tamam",
+            "tabii",
+            "tabi",
+            "uygunum",
+            "uygun degil",
+            "musait degilim",
+            "istemiyorum",
+            "hayir istemiyorum",
+            "simdi olmaz",
+            "rahatsiz etmeyin",
+            "aramayin",
+            "yes",
+            "no",
+            "nope",
+            "not now",
+            "go ahead"
+    );
+
+    private static final String CONSENT_STATE_KEY = "openingConsentState";
+    private static final String CONSENT_GRANTED = "GRANTED";
+    private static final String CONSENT_DECLINED = "DECLINED";
+
+    private static final Map<String, String> OPEN_ENDED_THEME_BY_KEYWORD = Map.ofEntries(
+            Map.entry("ulasim", "Ulasim"),
+            Map.entry("trafik", "Ulasim"),
+            Map.entry("yol", "Ulasim"),
+            Map.entry("otobus", "Ulasim"),
+            Map.entry("metro", "Ulasim"),
+            Map.entry("ekonomi", "Ekonomi"),
+            Map.entry("issizlik", "Ekonomi"),
+            Map.entry("is", "Ekonomi"),
+            Map.entry("istihdam", "Ekonomi"),
+            Map.entry("maas", "Ekonomi"),
+            Map.entry("enflasyon", "Ekonomi"),
+            Map.entry("pahalilik", "Ekonomi"),
+            Map.entry("fiyat", "Fiyat"),
+            Map.entry("ucret", "Fiyat"),
+            Map.entry("maliyet", "Fiyat"),
+            Map.entry("egitim", "Egitim"),
+            Map.entry("okul", "Egitim"),
+            Map.entry("ogrenci", "Egitim"),
+            Map.entry("universite", "Egitim"),
+            Map.entry("saglik", "Saglik"),
+            Map.entry("hastane", "Saglik"),
+            Map.entry("doktor", "Saglik"),
+            Map.entry("randevu", "Saglik"),
+            Map.entry("barinma", "Barinma"),
+            Map.entry("konut", "Barinma"),
+            Map.entry("kira", "Barinma"),
+            Map.entry("ev", "Barinma"),
+            Map.entry("deprem", "Afet"),
+            Map.entry("afet", "Afet"),
+            Map.entry("sel", "Afet"),
+            Map.entry("yangin", "Afet"),
+            Map.entry("guvenlik", "Guvenlik"),
+            Map.entry("asayis", "Guvenlik"),
+            Map.entry("suc", "Guvenlik"),
+            Map.entry("temizlik", "Temizlik"),
+            Map.entry("cop", "Temizlik"),
+            Map.entry("cevre", "Cevre"),
+            Map.entry("yesil", "Cevre"),
+            Map.entry("park", "Cevre"),
+            Map.entry("altyapi", "Altyapi"),
+            Map.entry("su", "Altyapi"),
+            Map.entry("kanalizasyon", "Altyapi"),
+            Map.entry("internet", "Altyapi"),
+            Map.entry("destek", "Destek"),
+            Map.entry("yardim", "Destek"),
+            Map.entry("hizmet", "Destek"),
+            Map.entry("kalite", "Kalite"),
+            Map.entry("performans", "Performans"),
+            Map.entry("hiz", "Performans"),
+            Map.entry("yavas", "Performans"),
+            Map.entry("uygulama", "Uygulama"),
+            Map.entry("mobil", "Uygulama"),
+            Map.entry("web", "Uygulama"),
+            Map.entry("sosyal", "Sosyal alanlar"),
+            Map.entry("kultur", "Sosyal alanlar"),
+            Map.entry("spor", "Sosyal alanlar")
     );
 
     private final OperationRepository operationRepository;
@@ -227,16 +327,47 @@ public class OperationServiceImpl implements OperationService {
             newJobs.add(job);
         }
 
-        if (!newJobs.isEmpty()) {
-            callJobRepository.saveAll(newJobs);
-            callJobDispatcher.dispatchPreparedJobs(newJobs);
-        }
-
         operation.setStartedAt(startedAt);
         operation.setStatus(OperationStatus.RUNNING);
         Operation savedOperation = operationRepository.save(operation);
 
+        if (!newJobs.isEmpty()) {
+            callJobRepository.saveAll(newJobs);
+            callJobDispatcher.dispatchNextPreparedJob(operationId);
+        }
+
         return toDto(savedOperation, contactCount, newJobs);
+    }
+
+    @Override
+    @Transactional
+    public OperationResponseDto pauseOperation(UUID companyId, UUID operationId) {
+        Operation operation = getOperation(companyId, operationId);
+        long contactCount = countContacts(operation);
+
+        if (operation.getStatus() != OperationStatus.RUNNING) {
+            throw new ValidationException("Yalnizca yurutulen operasyon duraklatilabilir.");
+        }
+
+        operation.setStatus(OperationStatus.PAUSED);
+        Operation savedOperation = operationRepository.save(operation);
+        return toDto(savedOperation, contactCount, List.of());
+    }
+
+    @Override
+    @Transactional
+    public OperationResponseDto resumeOperation(UUID companyId, UUID operationId) {
+        Operation operation = getOperation(companyId, operationId);
+        long contactCount = countContacts(operation);
+
+        if (operation.getStatus() != OperationStatus.PAUSED) {
+            throw new ValidationException("Yalnizca duraklatilmis operasyon devam ettirilebilir.");
+        }
+
+        operation.setStatus(OperationStatus.RUNNING);
+        Operation savedOperation = operationRepository.save(operation);
+        callJobDispatcher.dispatchNextPreparedJob(operationId);
+        return toDto(savedOperation, contactCount, List.of());
     }
 
     @Override
@@ -309,6 +440,7 @@ public class OperationServiceImpl implements OperationService {
 
         double completionRate = percentage(completedResponses, respondedContacts);
         double responseRate = percentage(respondedContacts, totalContacts);
+        double personResponseRate = percentage(respondedContacts, totalContacts);
         double contactReachRate = percentage(totalCallsAttempted, totalContacts);
         double participationRate = percentage(respondedContacts, totalContacts);
         double averageCompletionPercent = round(
@@ -338,6 +470,12 @@ public class OperationServiceImpl implements OperationService {
                 ))
                 .toList();
         questionSummaries = enrichQuestionDropOffs(questionSummaries);
+        List<OperationAnalyticsQuestionGroupSummaryDto> questionGroups = buildQuestionGroups(
+                questions,
+                optionsByQuestionId,
+                answersByQuestionId,
+                respondedContacts
+        );
 
         List<OperationAnalyticsAudienceBreakdownDto> audienceBreakdowns = buildAudienceBreakdowns(
                 questions,
@@ -345,6 +483,7 @@ public class OperationServiceImpl implements OperationService {
                 answersByQuestionId,
                 totalContacts
         );
+        List<OperationAnalyticsBreakdownItemDto> consentBreakdown = buildConsentBreakdown(responses, totalContacts);
 
         Map<String, Long> trendMap = responses.stream()
                 .map(response -> response.getCompletedAt() != null ? response.getCompletedAt() : response.getStartedAt())
@@ -407,6 +546,7 @@ public class OperationServiceImpl implements OperationService {
                 invalidResponses,
                 completionRate,
                 responseRate,
+                personResponseRate,
                 contactReachRate,
                 participationRate,
                 averageCompletionPercent,
@@ -414,8 +554,10 @@ public class OperationServiceImpl implements OperationService {
                 buildInsightSummary(operation, totalContacts, completedResponses, partialResponses, failedCallJobs, responseRate),
                 insightItems,
                 outcomeBreakdown,
+                consentBreakdown,
                 audienceBreakdowns,
                 questionSummaries,
+                questionGroups,
                 responseTrend
         );
     }
@@ -575,7 +717,11 @@ public class OperationServiceImpl implements OperationService {
                     .filter(answer -> answer.getAnswerType() == QuestionType.RATING)
                     .filter(this::hasUsableRatingAnswer)
                     .toList();
-            long answeredCount = ratingAnswers.size();
+            List<SurveyAnswer> ratingSpecialAnswers = answers.stream()
+                    .filter(answer -> answer.getAnswerType() == QuestionType.RATING)
+                    .filter(answer -> resolveSpecialAnswerCode(answer) != null)
+                    .toList();
+            long answeredCount = ratingAnswers.size() + ratingSpecialAnswers.size();
             double responseRate = percentage(answeredCount, respondedContacts);
             Map<String, Long> ratings = new LinkedHashMap<>();
             for (SurveyAnswer answer : ratingAnswers) {
@@ -607,6 +753,7 @@ public class OperationServiceImpl implements OperationService {
                     averageRating,
                     answeredCount == 0 ? "Puan dagilimi, gorusmelerden sayisal cevap geldikce gosterilir." : null,
                     toBreakdown(ratings, answeredCount),
+                    buildSpecialAnswerBreakdown(ratingSpecialAnswers, answeredCount),
                     List.of()
             );
         }
@@ -616,6 +763,12 @@ public class OperationServiceImpl implements OperationService {
                     .filter(answer -> answer.getAnswerType() == QuestionType.OPEN_ENDED)
                     .filter(SurveyAnswer::isValid)
                     .filter(this::hasUsableOpenEndedAnswer)
+                    .toList();
+            List<SurveyAnswer> specialOpenEndedAnswers = openEndedAnswers.stream()
+                    .filter(answer -> resolveSpecialAnswerCode(answer) != null)
+                    .toList();
+            List<SurveyAnswer> qualitativeAnswers = openEndedAnswers.stream()
+                    .filter(answer -> resolveSpecialAnswerCode(answer) == null)
                     .toList();
             long answeredCount = openEndedAnswers.size();
             double responseRate = percentage(answeredCount, respondedContacts);
@@ -633,14 +786,22 @@ public class OperationServiceImpl implements OperationService {
                     0,
                     null,
                     answeredCount == 0 ? "Acik uclu icgoruler, gecerli metin yanitlari geldikce olusur." : null,
-                    buildOpenEndedBreakdown(openEndedAnswers, answeredCount),
-                    buildOpenEndedSamples(openEndedAnswers)
+                    buildOpenEndedBreakdown(qualitativeAnswers, answeredCount),
+                    buildSpecialAnswerBreakdown(specialOpenEndedAnswers, answeredCount),
+                    buildOpenEndedSamples(qualitativeAnswers)
             );
         }
 
-        List<List<String>> choiceSelections = resolveChoiceSelections(question.getQuestionType(), options, answers);
+        List<SurveyAnswer> choiceAnswers = answers.stream()
+                .filter(answer -> answer.getAnswerType() == question.getQuestionType())
+                .toList();
+        List<List<String>> choiceSelections = resolveChoiceSelections(question, options, choiceAnswers);
         Map<String, Long> distributions = buildChoiceDistribution(options, choiceSelections);
-        long answeredCount = choiceSelections.size();
+        List<SurveyAnswer> specialChoiceAnswers = choiceAnswers.stream()
+                .filter(answer -> resolveSpecialAnswerCode(answer) != null)
+                .filter(answer -> resolveChoiceLabels(question, answer, options).isEmpty())
+                .toList();
+        long answeredCount = choiceSelections.size() + specialChoiceAnswers.size();
         double responseRate = percentage(answeredCount, respondedContacts);
         String chartKind = isBinaryQuestion(options) ? "BINARY" : question.getQuestionType() == QuestionType.MULTI_CHOICE
                 ? "MULTI_CHOICE"
@@ -661,6 +822,7 @@ public class OperationServiceImpl implements OperationService {
                 null,
                 answeredCount == 0 ? "Bu soru icin dagilim, cevaplar geldikce burada gosterilir." : null,
                 toBreakdown(distributions, answeredCount == 0 ? 1 : answeredCount),
+                buildSpecialAnswerBreakdown(specialChoiceAnswers, answeredCount),
                 List.of()
         );
     }
@@ -707,11 +869,140 @@ public class OperationServiceImpl implements OperationService {
                     current.averageRating(),
                     current.emptyStateMessage(),
                     current.breakdown(),
+                    current.specialAnswerBreakdown(),
                     current.sampleResponses()
             ));
         }
 
         return items;
+    }
+
+    private List<OperationAnalyticsQuestionGroupSummaryDto> buildQuestionGroups(
+            List<SurveyQuestion> questions,
+            Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId,
+            Map<UUID, List<SurveyAnswer>> answersByQuestionId,
+            long respondedContacts
+    ) {
+        Map<String, List<SurveyQuestion>> questionsByGroupCode = questions.stream()
+                .filter(this::isGroupedChoiceQuestion)
+                .collect(Collectors.groupingBy(
+                        question -> readGroupingMetadata(question).groupCode(),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
+        List<OperationAnalyticsQuestionGroupSummaryDto> groups = new ArrayList<>();
+        for (List<SurveyQuestion> groupedQuestions : questionsByGroupCode.values()) {
+            if (groupedQuestions.size() < 2) {
+                continue;
+            }
+            groups.add(buildQuestionGroupSummary(groupedQuestions, optionsByQuestionId, answersByQuestionId, respondedContacts));
+        }
+        return groups;
+    }
+
+    private OperationAnalyticsQuestionGroupSummaryDto buildQuestionGroupSummary(
+            List<SurveyQuestion> groupedQuestions,
+            Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId,
+            Map<UUID, List<SurveyAnswer>> answersByQuestionId,
+            long respondedContacts
+    ) {
+        List<SurveyQuestion> sortedQuestions = groupedQuestions.stream()
+                .sorted(Comparator.comparing(SurveyQuestion::getQuestionOrder))
+                .toList();
+        QuestionGroupingMetadata grouping = readGroupingMetadata(sortedQuestions.getFirst());
+        List<SurveyQuestionOption> sharedOptions = optionsByQuestionId.getOrDefault(sortedQuestions.getFirst().getId(), List.of());
+
+        List<OperationAnalyticsQuestionGroupRowDto> rows = new ArrayList<>();
+        List<List<String>> selectionsByRow = new ArrayList<>();
+        long answeredRowCount = 0;
+
+        for (SurveyQuestion question : sortedQuestions) {
+            List<SurveyQuestionOption> options = optionsByQuestionId.getOrDefault(question.getId(), sharedOptions);
+            List<List<String>> selections = resolveChoiceSelections(
+                    question,
+                    options,
+                    answersByQuestionId.getOrDefault(question.getId(), List.of())
+            );
+            QuestionGroupingMetadata metadata = readGroupingMetadata(question);
+            long answeredCount = selections.size();
+            answeredRowCount += answeredCount;
+            rows.add(new OperationAnalyticsQuestionGroupRowDto(
+                    question.getId(),
+                    question.getCode(),
+                    question.getQuestionOrder(),
+                    metadata.rowKey(),
+                    metadata.rowLabel(),
+                    answeredCount,
+                    percentage(answeredCount, respondedContacts)
+            ));
+            selectionsByRow.add(selections.stream().flatMap(Collection::stream).toList());
+        }
+
+        List<OperationAnalyticsQuestionGroupSeriesDto> series = new ArrayList<>();
+        for (SurveyQuestionOption option : sharedOptions) {
+            List<Long> data = new ArrayList<>(selectionsByRow.size());
+            for (List<String> rowSelections : selectionsByRow) {
+                long count = rowSelections.stream()
+                        .filter(label -> normalize(label).equals(normalize(option.getLabel())))
+                        .count();
+                data.add(count);
+            }
+            series.add(new OperationAnalyticsQuestionGroupSeriesDto(
+                    option.getOptionCode(),
+                    option.getLabel(),
+                    List.copyOf(data)
+            ));
+        }
+
+        String emptyStateMessage = answeredRowCount == 0
+                ? "Bu soru grubu icin birlesik dagilim, cevaplar geldikce burada gosterilir."
+                : null;
+        return new OperationAnalyticsQuestionGroupSummaryDto(
+                grouping.groupCode(),
+                grouping.groupTitle(),
+                sortedQuestions.getFirst().getQuestionType() == QuestionType.MULTI_CHOICE ? "GROUPED_MULTI_CHOICE" : "GROUPED_CHOICE",
+                grouping.optionSetCode(),
+                respondedContacts,
+                answeredRowCount,
+                emptyStateMessage,
+                List.copyOf(rows),
+                List.copyOf(series)
+        );
+    }
+
+    private boolean isGroupedChoiceQuestion(SurveyQuestion question) {
+        if (question.getQuestionType() != QuestionType.SINGLE_CHOICE
+                && question.getQuestionType() != QuestionType.MULTI_CHOICE
+                && question.getQuestionType() != QuestionType.RATING) {
+            return false;
+        }
+        return readGroupingMetadata(question).groupCode() != null;
+    }
+
+    private QuestionGroupingMetadata readGroupingMetadata(SurveyQuestion question) {
+        String rowLabel = question.getTitle();
+        String rowKey = slugify(question.getCode() != null ? question.getCode() : question.getTitle());
+        if (question.getSettingsJson() == null || question.getSettingsJson().isBlank()) {
+            return new QuestionGroupingMetadata(null, null, rowKey, rowLabel, null);
+        }
+        try {
+            JsonNode root = objectMapper.readTree(question.getSettingsJson());
+            String groupCode = trimToNull(text(root, "groupCode", "group_code"));
+            String groupTitle = trimToNull(text(root, "groupTitle", "group_title"));
+            String configuredRowKey = trimToNull(text(root, "rowKey", "row_key", "rowCode", "row_code"));
+            String configuredRowLabel = trimToNull(text(root, "rowLabel", "row_label"));
+            String optionSetCode = trimToNull(text(root, "optionSetCode", "option_set_code"));
+            return new QuestionGroupingMetadata(
+                    groupCode,
+                    groupTitle != null ? groupTitle : question.getTitle(),
+                    configuredRowKey != null ? configuredRowKey : rowKey,
+                    configuredRowLabel != null ? configuredRowLabel : rowLabel,
+                    optionSetCode
+            );
+        } catch (Exception error) {
+            return new QuestionGroupingMetadata(null, null, rowKey, rowLabel, null);
+        }
     }
 
     private List<OperationAnalyticsAudienceBreakdownDto> buildAudienceBreakdowns(
@@ -885,7 +1176,7 @@ public class OperationServiceImpl implements OperationService {
             }
         }
 
-        List<String> labels = resolveChoiceLabels(answer, options);
+        List<String> labels = resolveChoiceLabels(answer.getSurveyQuestion(), answer, options);
         for (String label : labels) {
             Integer parsed = extractAgeNumber(label);
             if (parsed != null) {
@@ -941,7 +1232,7 @@ public class OperationServiceImpl implements OperationService {
             String dimension
     ) {
         if (question.getQuestionType() == QuestionType.SINGLE_CHOICE || question.getQuestionType() == QuestionType.MULTI_CHOICE) {
-            List<String> labels = resolveChoiceLabels(answer, options);
+            List<String> labels = resolveChoiceLabels(question, answer, options);
             if (!labels.isEmpty()) {
                 return normalizeAudienceLabel(labels.get(0), dimension);
             }
@@ -995,23 +1286,23 @@ public class OperationServiceImpl implements OperationService {
     }
 
     private List<List<String>> resolveChoiceSelections(
-            QuestionType questionType,
+            SurveyQuestion question,
             List<SurveyQuestionOption> options,
             List<SurveyAnswer> answers
     ) {
         return answers.stream()
-                .filter(answer -> answer.getAnswerType() == questionType)
+                .filter(answer -> answer.getAnswerType() == question.getQuestionType())
                 .map(answer -> {
-                    List<String> labels = resolveChoiceLabels(answer, options).stream().distinct().toList();
+                    List<String> labels = resolveChoiceLabels(question, answer, options).stream().distinct().toList();
                     return new ResolvedChoiceAnswer(answer, labels);
                 })
                 .filter(resolved -> isUsableChoiceAnswer(resolved.answer(), resolved.labels()))
                 .map(ResolvedChoiceAnswer::labels)
-                .filter(labels -> questionType == QuestionType.MULTI_CHOICE || labels.size() == 1)
+                .filter(labels -> question.getQuestionType() == QuestionType.MULTI_CHOICE || labels.size() == 1)
                 .toList();
     }
 
-    private List<String> resolveChoiceLabels(SurveyAnswer answer, List<SurveyQuestionOption> options) {
+    private List<String> resolveChoiceLabels(SurveyQuestion question, SurveyAnswer answer, List<SurveyQuestionOption> options) {
         if (answer.getSelectedOption() != null) {
             String selectedLabel = answer.getSelectedOption().getLabel();
             return options.stream()
@@ -1022,7 +1313,16 @@ public class OperationServiceImpl implements OperationService {
                     .orElse(List.of());
         }
 
-        List<String> extracted = extractLabels(answer.getAnswerJson(), options).stream()
+        if (question.getQuestionType() == QuestionType.RATING && answer.getAnswerNumber() != null) {
+            String numericValue = answer.getAnswerNumber().stripTrailingZeros().toPlainString();
+            java.util.Optional<String> numericMatch = resolveOptionLabel(question, numericValue, options);
+            if (numericMatch.isPresent()
+                    && options.stream().anyMatch(option -> normalize(numericMatch.get()).equals(normalize(option.getLabel())))) {
+                return List.of(numericMatch.get());
+            }
+        }
+
+        List<String> extracted = extractLabels(question, answer.getAnswerJson(), options).stream()
                 .filter(label -> options.stream().anyMatch(option -> normalize(label).equals(normalize(option.getLabel()))))
                 .toList();
         if (!extracted.isEmpty()) {
@@ -1036,14 +1336,14 @@ public class OperationServiceImpl implements OperationService {
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(value -> !value.isBlank())
-                .map(value -> resolveOptionLabel(value, options).orElse(null))
+                .map(value -> resolveOptionLabel(question, value, options).orElse(null))
                 .filter(Objects::nonNull)
                 .filter(label -> options.stream().anyMatch(option -> normalize(label).equals(normalize(option.getLabel()))))
                 .distinct()
                 .toList();
     }
 
-    private List<String> extractLabels(String rawJson, List<SurveyQuestionOption> options) {
+    private List<String> extractLabels(SurveyQuestion question, String rawJson, List<SurveyQuestionOption> options) {
         if (rawJson == null || rawJson.isBlank()) {
             return List.of();
         }
@@ -1053,26 +1353,26 @@ public class OperationServiceImpl implements OperationService {
             List<String> labels = new ArrayList<>();
             if (root.isArray()) {
                 for (JsonNode node : root) {
-                    resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
+                    resolveOptionLabel(question, node.asText(null), options).ifPresent(labels::add);
                 }
             } else if (root.has("normalizedValues") && root.get("normalizedValues").isArray()) {
                 for (JsonNode node : root.get("normalizedValues")) {
-                    resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
+                    resolveOptionLabel(question, node.asText(null), options).ifPresent(labels::add);
                 }
             } else if (root.has("selectedOptionIds") && root.get("selectedOptionIds").isArray()) {
                 for (JsonNode node : root.get("selectedOptionIds")) {
-                    resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
+                    resolveOptionLabel(question, node.asText(null), options).ifPresent(labels::add);
                 }
             } else if (root.has("selectedOptionId")) {
-                resolveOptionLabel(root.get("selectedOptionId").asText(null), options).ifPresent(labels::add);
+                resolveOptionLabel(question, root.get("selectedOptionId").asText(null), options).ifPresent(labels::add);
             } else if (root.has("selectedOptions") && root.get("selectedOptions").isArray()) {
                 for (JsonNode node : root.get("selectedOptions")) {
-                    resolveOptionLabel(node.asText(null), options).ifPresent(labels::add);
+                    resolveOptionLabel(question, node.asText(null), options).ifPresent(labels::add);
                 }
             } else if (root.has("normalizedText")) {
-                resolveOptionLabel(root.get("normalizedText").asText(null), options).ifPresent(labels::add);
+                resolveOptionLabel(question, root.get("normalizedText").asText(null), options).ifPresent(labels::add);
             } else if (root.has("value")) {
-                resolveOptionLabel(root.get("value").asText(null), options).ifPresent(labels::add);
+                resolveOptionLabel(question, root.get("value").asText(null), options).ifPresent(labels::add);
             }
             return labels;
         } catch (Exception error) {
@@ -1080,65 +1380,384 @@ public class OperationServiceImpl implements OperationService {
         }
     }
 
-    private java.util.Optional<String> resolveOptionLabel(String rawValue, List<SurveyQuestionOption> options) {
+    private java.util.Optional<String> resolveOptionLabel(
+            SurveyQuestion question,
+            String rawValue,
+            List<SurveyQuestionOption> options
+    ) {
         if (rawValue == null || rawValue.isBlank()) {
             return java.util.Optional.empty();
         }
         String normalized = normalize(rawValue);
-        return options.stream()
+
+        java.util.Optional<String> directMatch = options.stream()
                 .filter(option -> normalized.equals(normalize(option.getId().toString()))
                         || normalized.equals(normalize(option.getOptionCode()))
                         || normalized.equals(normalize(option.getValue()))
                         || normalized.equals(normalize(option.getLabel())))
                 .map(SurveyQuestionOption::getLabel)
-                .findFirst()
-                .or(() -> java.util.Optional.of(rawValue.trim()));
+                .findFirst();
+        if (directMatch.isPresent()) {
+            return directMatch;
+        }
+
+        java.util.Optional<String> aliasMatch = resolveConfiguredAliasLabel(question, rawValue, options);
+        if (aliasMatch.isPresent()) {
+            return aliasMatch;
+        }
+
+        String simplified = simplifyChoiceText(rawValue);
+        if (!simplified.isBlank()) {
+            java.util.Optional<String> simplifiedMatch = options.stream()
+                    .filter(option -> simplified.equals(simplifyChoiceText(option.getLabel())))
+                    .map(SurveyQuestionOption::getLabel)
+                    .findFirst();
+            if (simplifiedMatch.isPresent()) {
+                return simplifiedMatch;
+            }
+        }
+
+        return java.util.Optional.of(rawValue.trim());
+    }
+
+    private java.util.Optional<String> resolveConfiguredAliasLabel(
+            SurveyQuestion question,
+            String rawValue,
+            List<SurveyQuestionOption> options
+    ) {
+        if (question.getSettingsJson() == null || question.getSettingsJson().isBlank()) {
+            return java.util.Optional.empty();
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(question.getSettingsJson());
+            JsonNode aliasesNode = root.get("aliases");
+            if (aliasesNode == null || !aliasesNode.isObject()) {
+                return java.util.Optional.empty();
+            }
+
+            String normalizedRaw = normalize(rawValue);
+            Iterator<String> fieldNames = aliasesNode.fieldNames();
+            while (fieldNames.hasNext()) {
+                String configuredLabel = fieldNames.next();
+                JsonNode aliasValues = aliasesNode.get(configuredLabel);
+                if (aliasValues == null || !aliasValues.isArray()) {
+                    continue;
+                }
+
+                for (JsonNode aliasNode : aliasValues) {
+                    String alias = aliasNode.asText(null);
+                    if (alias == null || alias.isBlank()) {
+                        continue;
+                    }
+                    if (!normalizedRaw.equals(normalize(alias))) {
+                        continue;
+                    }
+
+                    return options.stream()
+                            .map(SurveyQuestionOption::getLabel)
+                            .filter(label -> normalize(label).equals(normalize(configuredLabel)))
+                            .findFirst()
+                            .or(() -> java.util.Optional.of(configuredLabel));
+                }
+            }
+        } catch (Exception error) {
+            return java.util.Optional.empty();
+        }
+
+        return java.util.Optional.empty();
+    }
+
+    private String simplifyChoiceText(String value) {
+        String normalized = normalize(value);
+        if (normalized.isBlank()) {
+            return normalized;
+        }
+
+        String simplified = normalized
+                .replaceAll("\\b(cok|çok|biraz|hic|hiç|asla|pek)\\b", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return simplified.isBlank() ? normalized : simplified;
     }
 
     private boolean hasUsableOpenEndedAnswer(SurveyAnswer answer) {
         String text = resolveOpenEndedText(answer);
-        return text != null && !text.isBlank();
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+
+        String normalized = normalize(text);
+        return !normalized.isBlank() && !OPEN_ENDED_CONSENT_ARTIFACTS.contains(normalized);
     }
 
-    private List<OperationAnalyticsBreakdownItemDto> buildOpenEndedBreakdown(List<SurveyAnswer> answers, long answeredCount) {
-        Map<String, Long> buckets = new LinkedHashMap<>();
-        buckets.put("Kisa yanit", 0L);
-        buckets.put("Orta detay", 0L);
-        buckets.put("Detayli yanit", 0L);
+    private List<OperationAnalyticsBreakdownItemDto> buildConsentBreakdown(List<SurveyResponse> responses, long totalContacts) {
+        if (responses.isEmpty()) {
+            return List.of();
+        }
 
-        for (SurveyAnswer answer : answers) {
-            String text = resolveOpenEndedText(answer);
-            if (text == null || text.isBlank()) {
-                continue;
-            }
+        Map<String, Long> counts = new LinkedHashMap<>();
+        counts.put("Katilmayi kabul etti", 0L);
+        counts.put("Katilmayi reddetti", 0L);
+        counts.put("Belirsiz / yanitsiz", 0L);
 
-            int length = text.length();
-            if (length < 40) {
-                buckets.merge("Kisa yanit", 1L, Long::sum);
-            } else if (length < 120) {
-                buckets.merge("Orta detay", 1L, Long::sum);
+        for (SurveyResponse response : responses) {
+            String consentState = readConsentState(response);
+            if (CONSENT_DECLINED.equals(consentState) || inferConsentDeclined(response)) {
+                counts.computeIfPresent("Katilmayi reddetti", (key, value) -> value + 1L);
+            } else if (CONSENT_GRANTED.equals(consentState) || inferConsentAccepted(response)) {
+                counts.computeIfPresent("Katilmayi kabul etti", (key, value) -> value + 1L);
             } else {
-                buckets.merge("Detayli yanit", 1L, Long::sum);
+                counts.computeIfPresent("Belirsiz / yanitsiz", (key, value) -> value + 1L);
             }
         }
 
-        return toBreakdown(buckets, answeredCount == 0 ? 1 : answeredCount);
+        long denominator = totalContacts > 0 ? totalContacts : responses.size();
+        return toBreakdown(counts, denominator);
     }
 
-    private List<String> buildOpenEndedSamples(List<SurveyAnswer> answers) {
-        return answers.stream()
-                .map(this::resolveOpenEndedText)
+    private boolean inferConsentDeclined(SurveyResponse response) {
+        if (response == null || response.getStatus() != SurveyResponseStatus.ABANDONED) {
+            return false;
+        }
+
+        BigDecimal completionPercent = response.getCompletionPercent();
+        return completionPercent == null || completionPercent.compareTo(BigDecimal.ZERO) <= 0;
+    }
+
+    private boolean inferConsentAccepted(SurveyResponse response) {
+        if (response == null) {
+            return false;
+        }
+
+        if (response.getStatus() == SurveyResponseStatus.COMPLETED
+                || response.getStatus() == SurveyResponseStatus.PARTIAL
+                || response.getStatus() == SurveyResponseStatus.INVALID) {
+            return true;
+        }
+
+        BigDecimal completionPercent = response.getCompletionPercent();
+        return completionPercent != null && completionPercent.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    private String readConsentState(SurveyResponse response) {
+        String payload = response.getTranscriptJson();
+        if (payload == null || payload.isBlank()) {
+            return null;
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(payload);
+            if (!root.hasNonNull(CONSENT_STATE_KEY)) {
+                return null;
+            }
+            return trimToNull(root.get(CONSENT_STATE_KEY).asText(null));
+        } catch (Exception error) {
+            return null;
+        }
+    }
+
+    private List<OperationAnalyticsBreakdownItemDto> buildOpenEndedBreakdown(List<SurveyAnswer> answers, long answeredCount) {
+        if (answers.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, Long> tokenFrequency = buildOpenEndedTokenFrequency(answers);
+        Map<String, Long> themeCounts = new LinkedHashMap<>();
+        for (SurveyAnswer answer : sortOpenEndedAnswers(answers)) {
+            String theme = resolveOpenEndedTheme(answer, tokenFrequency);
+            themeCounts.merge(theme, 1L, Long::sum);
+        }
+
+        LinkedHashMap<String, Long> orderedThemes = themeCounts.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder())
+                        .thenComparing(Map.Entry::getKey))
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        return toBreakdown(orderedThemes, answeredCount == 0 ? 1 : answeredCount);
+    }
+
+    private List<OperationAnalyticsBreakdownItemDto> buildSpecialAnswerBreakdown(List<SurveyAnswer> answers, long answeredCount) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (SurveyAnswer answer : answers) {
+            String code = resolveSpecialAnswerCode(answer);
+            if (code == null) {
+                continue;
+            }
+            String label = toDisplayLabel(code.replace('_', ' '));
+            counts.merge(label, 1L, Long::sum);
+        }
+        if (counts.isEmpty()) {
+            return List.of();
+        }
+        return toBreakdown(counts, answeredCount == 0 ? 1 : answeredCount);
+    }
+
+    private List<OperationAnalyticsSampleResponseDto> buildOpenEndedSamples(List<SurveyAnswer> answers) {
+        return sortOpenEndedAnswers(answers).stream()
+                .map(this::toOpenEndedSampleResponse)
                 .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private OperationAnalyticsSampleResponseDto toOpenEndedSampleResponse(SurveyAnswer answer) {
+        String responseText = resolveOpenEndedText(answer);
+        if (responseText == null || responseText.isBlank()) {
+            return null;
+        }
+
+        SurveyResponse surveyResponse = answer.getSurveyResponse();
+        if (surveyResponse == null || surveyResponse.getCallAttempt() == null || surveyResponse.getCallAttempt().getCallJob() == null) {
+            return null;
+        }
+
+        CallJob callJob = surveyResponse.getCallAttempt().getCallJob();
+        String respondentName = surveyResponse.getOperationContact() != null
+                ? buildContactDisplayName(surveyResponse.getOperationContact())
+                : null;
+        if (respondentName == null) {
+            respondentName = "Katilimci";
+        }
+
+        return new OperationAnalyticsSampleResponseDto(
+                callJob.getId(),
+                respondentName,
+                resolveResponseMoment(surveyResponse),
+                trimSample(responseText.trim())
+        );
+    }
+
+    private String buildContactDisplayName(OperationContact contact) {
+        if (contact == null) {
+            return null;
+        }
+        String firstName = contact.getFirstName() == null ? "" : contact.getFirstName().trim();
+        String lastName = contact.getLastName() == null ? "" : contact.getLastName().trim();
+        String fullName = (firstName + " " + lastName).trim();
+        return fullName.isBlank() ? null : fullName;
+    }
+
+    private List<SurveyAnswer> sortOpenEndedAnswers(List<SurveyAnswer> answers) {
+        return answers.stream()
+                .sorted(Comparator
+                        .comparing((SurveyAnswer answer) -> resolveResponseMoment(answer.getSurveyResponse()), Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(answer -> answer.getSurveyResponse().getCreatedAt(), Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+    }
+
+    private OffsetDateTime resolveResponseMoment(SurveyResponse response) {
+        if (response == null) {
+            return null;
+        }
+        if (response.getCompletedAt() != null) {
+            return response.getCompletedAt();
+        }
+        if (response.getStartedAt() != null) {
+            return response.getStartedAt();
+        }
+        return response.getCreatedAt();
+    }
+
+    private Map<String, Long> buildOpenEndedTokenFrequency(List<SurveyAnswer> answers) {
+        Map<String, Long> frequencies = new LinkedHashMap<>();
+        for (SurveyAnswer answer : answers) {
+            for (String token : extractMeaningfulTokens(resolveOpenEndedText(answer))) {
+                frequencies.merge(token, 1L, Long::sum);
+            }
+        }
+        return frequencies;
+    }
+
+    private String resolveOpenEndedTheme(SurveyAnswer answer, Map<String, Long> tokenFrequency) {
+        List<String> storedThemes = extractStoredThemeLabels(answer);
+        if (!storedThemes.isEmpty()) {
+            return storedThemes.getFirst();
+        }
+
+        List<String> tokens = extractMeaningfulTokens(resolveOpenEndedText(answer));
+        if (tokens.isEmpty()) {
+            return "Diger";
+        }
+
+        for (String token : tokens) {
+            String mappedTheme = OPEN_ENDED_THEME_BY_KEYWORD.get(token);
+            if (mappedTheme != null) {
+                return mappedTheme;
+            }
+        }
+
+        String strongestToken = tokens.stream()
+                .max(Comparator
+                        .comparingLong((String token) -> tokenFrequency.getOrDefault(token, 0L))
+                        .thenComparingInt(String::length))
+                .orElse(tokens.getFirst());
+        return toDisplayLabel(strongestToken.replace('_', ' '));
+    }
+
+    private List<String> extractStoredThemeLabels(SurveyAnswer answer) {
+        if (answer.getAnswerJson() == null || answer.getAnswerJson().isBlank()) {
+            return List.of();
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(answer.getAnswerJson());
+            JsonNode codedThemes = root.get("codedThemes");
+            if (codedThemes == null || !codedThemes.isArray()) {
+                return List.of();
+            }
+            List<String> labels = new ArrayList<>();
+            codedThemes.forEach(item -> {
+                String rawValue = trimToNull(item.asText(null));
+                if (rawValue == null) {
+                    return;
+                }
+                labels.add(toDisplayLabel(rawValue.replace('_', ' ')));
+            });
+            return labels.stream().filter(Objects::nonNull).distinct().toList();
+        } catch (Exception error) {
+            return List.of();
+        }
+    }
+
+    private List<String> extractMeaningfulTokens(String text) {
+        String normalized = normalize(text);
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+
+        return java.util.Arrays.stream(normalized.split("\\s+"))
                 .map(String::trim)
-                .filter(text -> !text.isBlank())
-                .map(this::trimSample)
-                .distinct()
-                .limit(3)
+                .filter(token -> !token.isBlank())
+                .filter(token -> token.length() >= 3)
+                .filter(token -> !OPEN_ENDED_STOP_WORDS.contains(token))
                 .toList();
     }
 
     private boolean hasUsableRatingAnswer(SurveyAnswer answer) {
         return answer.isValid() && resolveRatingValue(answer) != null;
+    }
+
+    private String resolveSpecialAnswerCode(SurveyAnswer answer) {
+        if (answer.getAnswerJson() == null || answer.getAnswerJson().isBlank()) {
+            return null;
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(answer.getAnswerJson());
+            JsonNode specialAnswerNode = root.get("specialAnswerCode");
+            if (specialAnswerNode == null || specialAnswerNode.isNull()) {
+                return null;
+            }
+            String value = trimToNull(specialAnswerNode.asText(null));
+            return value == null ? null : normalize(value);
+        } catch (Exception error) {
+            return null;
+        }
     }
 
     private BigDecimal resolveRatingValue(SurveyAnswer answer) {
@@ -1409,6 +2028,26 @@ public class OperationServiceImpl implements OperationService {
         return value.substring(0, 137).trim() + "...";
     }
 
+    private String text(JsonNode node, String... fields) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        for (String field : fields) {
+            if (node.hasNonNull(field)) {
+                return node.get(field).asText();
+            }
+        }
+        return null;
+    }
+
+    private String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private String normalize(String value) {
         if (value == null) {
             return "";
@@ -1427,10 +2066,25 @@ public class OperationServiceImpl implements OperationService {
                 .replace('ö', 'o')
                 .replace('Ö', 'o')
                 .replace('ç', 'c')
+                .replace('Ç', 'c')
+                .replace('ı', 'i')
+                .replace('İ', 'i')
+                .replace('ş', 's')
+                .replace('Ş', 's')
+                .replace('ğ', 'g')
+                .replace('Ğ', 'g')
+                .replace('ü', 'u')
+                .replace('Ü', 'u')
+                .replace('ö', 'o')
+                .replace('Ö', 'o')
+                .replace('ç', 'c')
                 .replace('Ç', 'c');
 
-        String decomposed = Normalizer.normalize(normalized, Normalizer.Form.NFD);
-        return decomposed.replaceAll("\\p{M}+", "");
+        return Normalizer.normalize(normalized, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .replaceAll("[^a-z0-9]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private String slugify(String input) {
@@ -1448,6 +2102,15 @@ public class OperationServiceImpl implements OperationService {
             case CANCELLED -> "Iptal edilmis operasyon yeniden baslatilamaz.";
             default -> "Operasyonun mevcut durumu baslatmaya uygun degil.";
         };
+    }
+
+    private record QuestionGroupingMetadata(
+            String groupCode,
+            String groupTitle,
+            String rowKey,
+            String rowLabel,
+            String optionSetCode
+    ) {
     }
 }
 

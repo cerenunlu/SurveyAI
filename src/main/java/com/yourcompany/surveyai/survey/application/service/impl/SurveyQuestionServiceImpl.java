@@ -11,6 +11,7 @@ import com.yourcompany.surveyai.survey.application.dto.request.UpdateSurveyQuest
 import com.yourcompany.surveyai.survey.application.dto.response.SurveyQuestionOptionResponseDto;
 import com.yourcompany.surveyai.survey.application.dto.response.SurveyQuestionResponseDto;
 import com.yourcompany.surveyai.survey.application.service.SurveyQuestionService;
+import com.yourcompany.surveyai.survey.application.support.SurveyQuestionAutoLexiconService;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestionOption;
@@ -39,6 +40,7 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
     private final CompanyRepository companyRepository;
     private final Validator validator;
     private final ObjectMapper objectMapper;
+    private final SurveyQuestionAutoLexiconService surveyQuestionAutoLexiconService;
 
     public SurveyQuestionServiceImpl(
             SurveyRepository surveyRepository,
@@ -47,7 +49,8 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
             SurveyAnswerRepository surveyAnswerRepository,
             CompanyRepository companyRepository,
             Validator validator,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            SurveyQuestionAutoLexiconService surveyQuestionAutoLexiconService
     ) {
         this.surveyRepository = surveyRepository;
         this.surveyQuestionRepository = surveyQuestionRepository;
@@ -56,6 +59,7 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
         this.companyRepository = companyRepository;
         this.validator = validator;
         this.objectMapper = objectMapper;
+        this.surveyQuestionAutoLexiconService = surveyQuestionAutoLexiconService;
     }
 
     @Override
@@ -71,6 +75,7 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
         question.setCompany(survey.getCompany());
         question.setSurvey(survey);
         applyQuestionFields(question, request);
+        question.setSettingsJson(surveyQuestionAutoLexiconService.rebuildSettingsJson(question, List.of()));
 
         return toDto(surveyQuestionRepository.save(question));
     }
@@ -92,6 +97,10 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
         validateQuestionTypeTransition(question, request.getQuestionType());
 
         applyQuestionFields(question, request);
+        question.setSettingsJson(surveyQuestionAutoLexiconService.rebuildSettingsJson(
+                question,
+                surveyQuestionOptionRepository.findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(question.getId())
+        ));
         return toDto(surveyQuestionRepository.save(question));
     }
 
@@ -105,14 +114,11 @@ public class SurveyQuestionServiceImpl implements SurveyQuestionService {
             throw new ValidationException("Question cannot be deleted because answers already exist");
         }
 
-        OffsetDateTime deletedAt = OffsetDateTime.now();
         for (SurveyQuestionOption option : surveyQuestionOptionRepository
                 .findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(questionId)) {
-            option.setDeletedAt(deletedAt);
-            surveyQuestionOptionRepository.save(option);
+            surveyQuestionOptionRepository.delete(option);
         }
-        question.setDeletedAt(deletedAt);
-        surveyQuestionRepository.save(question);
+        surveyQuestionRepository.delete(question);
     }
 
     @Override

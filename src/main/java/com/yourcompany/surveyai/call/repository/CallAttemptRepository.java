@@ -3,6 +3,8 @@ package com.yourcompany.surveyai.call.repository;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
+import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,4 +23,10 @@ public interface CallAttemptRepository extends JpaRepository<CallAttempt, UUID> 
     Optional<CallAttempt> findByProviderAndProviderCallIdAndDeletedAtIsNull(CallProvider provider, String providerCallId);
 
     Optional<CallAttempt> findByIdAndDeletedAtIsNull(UUID id);
+
+    List<CallAttempt> findTop100ByProviderAndStatusInAndProviderCallIdIsNotNullAndDeletedAtIsNullAndDialedAtBeforeOrderByDialedAtAsc(
+            CallProvider provider,
+            Collection<CallAttemptStatus> statuses,
+            OffsetDateTime dialedAt
+    );
 }

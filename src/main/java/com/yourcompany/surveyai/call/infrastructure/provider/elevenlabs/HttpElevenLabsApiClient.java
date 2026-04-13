@@ -20,7 +20,7 @@ public class HttpElevenLabsApiClient implements ElevenLabsApiClient {
 
     @Override
     public String startOutboundCall(String requestBody, VoiceProviderConfiguration configuration) {
-        String endpoint = buildUrl(configuration.baseUrl(), "/v1/convai/twilio/outbound-call");
+        String endpoint = buildUrl(configuration.baseUrl(), "/v1/convai/sip-trunk/outbound-call");
         log.info(
                 "Calling ElevenLabs outbound endpoint. endpoint={} authHeaderType={} apiKeyPresent={} agentIdPresent={} phoneNumberIdPresent={}",
                 endpoint,

@@ -13,6 +13,7 @@ import com.yourcompany.surveyai.survey.application.dto.request.CreateSurveyReque
 import com.yourcompany.surveyai.survey.application.dto.request.UpdateSurveyRequest;
 import com.yourcompany.surveyai.survey.application.dto.response.SurveyResponseDto;
 import com.yourcompany.surveyai.survey.application.service.SurveyService;
+import com.yourcompany.surveyai.survey.application.support.SurveyQuestionAutoLexiconService;
 import com.yourcompany.surveyai.survey.domain.entity.Survey;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
 import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestionOption;
@@ -44,6 +45,7 @@ public class SurveyServiceImpl implements SurveyService {
     private final AppUserRepository appUserRepository;
     private final RequestAuthContext requestAuthContext;
     private final Validator validator;
+    private final SurveyQuestionAutoLexiconService surveyQuestionAutoLexiconService;
 
     public SurveyServiceImpl(
             SurveyRepository surveyRepository,
@@ -54,7 +56,8 @@ public class SurveyServiceImpl implements SurveyService {
             SurveyResponseRepository surveyResponseRepository,
             AppUserRepository appUserRepository,
             RequestAuthContext requestAuthContext,
-            Validator validator
+            Validator validator,
+            SurveyQuestionAutoLexiconService surveyQuestionAutoLexiconService
     ) {
         this.surveyRepository = surveyRepository;
         this.surveyQuestionRepository = surveyQuestionRepository;
@@ -65,6 +68,7 @@ public class SurveyServiceImpl implements SurveyService {
         this.appUserRepository = appUserRepository;
         this.requestAuthContext = requestAuthContext;
         this.validator = validator;
+        this.surveyQuestionAutoLexiconService = surveyQuestionAutoLexiconService;
     }
 
     @Override
@@ -95,6 +99,7 @@ public class SurveyServiceImpl implements SurveyService {
         applyUpdateFields(survey, request);
 
         if (request.getStatus() == SurveyStatus.PUBLISHED) {
+            refreshQuestionAutoLexicons(survey);
             validateReadyForPublishing(survey);
         }
 
@@ -257,6 +262,18 @@ public class SurveyServiceImpl implements SurveyService {
                     );
                 }
             }
+        }
+    }
+
+    private void refreshQuestionAutoLexicons(Survey survey) {
+        List<SurveyQuestion> questions = surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(
+                survey.getId()
+        );
+        for (SurveyQuestion question : questions) {
+            List<SurveyQuestionOption> options = surveyQuestionOptionRepository
+                    .findAllBySurveyQuestion_IdAndDeletedAtIsNullOrderByOptionOrderAsc(question.getId());
+            question.setSettingsJson(surveyQuestionAutoLexiconService.rebuildSettingsJson(survey, question, options));
+            surveyQuestionRepository.save(question);
         }
     }
 

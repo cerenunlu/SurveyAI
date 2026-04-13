@@ -7,6 +7,7 @@ out/
 
 # Frontend / Next.js
 frontend/.next/
+frontend/.next-dev/
 frontend/node_modules/
 frontend/.turbo/
 frontend/coverage/
@@ -31,8 +32,12 @@ logs/
 *.tmp
 *.temp
 *.cache
+*.class
 *.swp
 *.swo
+tmp/
+tmp_docx_extract/
+tmp_docx_extract.zip
 
 # IDE
 .vscode/

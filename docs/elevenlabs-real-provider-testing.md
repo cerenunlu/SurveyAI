@@ -36,7 +36,7 @@ The server will log the expected URL at startup. For local testing, expose the a
 
 - Live outbound calls use the stored agent configuration referenced by `ELEVENLABS_AGENT_ID`.
 - Preview-only or unsaved dashboard changes do not affect live outbound calls.
-- Code-side prompt, first-message, and language overrides are now opt-in. They are only sent when the corresponding `ELEVENLABS_AGENT_*_OVERRIDE_ENABLED` flag is `true`.
+- Code-side prompt override is enabled by default unless `ELEVENLABS_AGENT_PROMPT_OVERRIDE_ENABLED=false` is set explicitly. First-message and language overrides are also controlled by their corresponding `ELEVENLABS_AGENT_*_OVERRIDE_ENABLED` flags.
 - Even when the app sends those overrides, the same fields must also be explicitly allowed in the agent Security tab or ElevenLabs may reject the runtime override during conversation startup.
 - For Twilio-backed phone calls, configure the agent for `mu-law 8000 Hz` input and output. A telephony audio mismatch can cause the call to connect but fail before the conversational layer stabilizes.
 

@@ -82,10 +82,113 @@ class ElevenLabsVoiceExecutionProviderTest {
         assertThat(payload).contains(request.callJob().getId().toString());
         assertThat(payload).contains(request.contact().getId().toString());
         assertThat(payload).contains("\"user_id\":\"" + request.contact().getId() + "\"");
-        assertThat(payload).contains("survey_start_interview");
         assertThat(payload).contains("survey_submit_answer");
         assertThat(payload).contains(request.operation().getName());
         assertThat(payload).contains(request.survey().getName());
+        assertThat(payload).contains("Keep the same warm-neutral professional tone across the whole call.");
+        assertThat(payload).contains("Avoid cheerful hype, gloomy sadness, stiff formality, theatrical delivery, or abrupt mood swings.");
+        assertThat(payload).doesNotContain("\"first_message\"");
+        assertThat(payload).contains("Do not introduce yourself, describe the survey, or mention the research company unless that wording is coming from a backend prompt.");
+        assertThat(payload).contains("Stay silent when the call connects.");
+        assertThat(payload).contains("Do not say anything until the callee speaks first with a greeting-like opening");
+        assertThat(payload).contains("Do not reply to the callee's greeting with another greeting");
+        assertThat(payload).contains("If the opening message asks for permission to continue");
+        assertThat(payload).contains("As soon as the callee answers the opening message, immediately call `survey_submit_answer`, even if the answer is very short.");
+        assertThat(payload).contains("As soon as the callee gives a greeting-like opening, immediately call `survey_submit_answer` with the callee's latest utterance.");
+        assertThat(payload).contains("If the backend tool returns no prompt, stay silent and wait for the callee to speak again.");
+        assertThat(payload).contains("Do not say any survey invitation, consent request, or company introduction unless it comes from a backend tool response.");
+        assertThat(payload).contains("The first spoken survey line in the call must come from a backend tool response.");
+        assertThat(payload).contains("Do not add your own extra introduction, rephrased preface, or duplicate survey invitation before or after that backend-controlled opening.");
+        assertThat(payload).doesNotContain("\"contact_name\"");
+        assertThat(payload).contains("Never say or imply that you are the callee's assistant");
+        assertThat(payload).doesNotContain("Contact:");
+    }
+
+    @Test
+    void dispatchCallJob_omitsFirstMessageWhenSurveyIntroIsMissing() {
+        ProviderDispatchRequest request = buildRequest();
+        request.survey().setIntroPrompt(null);
+        VoiceProviderConfiguration configuration = configuration(false);
+        when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
+                {
+                  "conversation_id": "conv_123"
+                }
+                """);
+
+        provider.dispatchCallJob(request, configuration);
+
+        org.mockito.ArgumentCaptor<String> payloadCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
+        String payload = payloadCaptor.getValue();
+
+        assertThat(payload).doesNotContain("\"first_message\"");
+    }
+
+    @Test
+    void dispatchCallJob_doesNotSendFirstMessageEvenWhenSurveyIntroExists() {
+        ProviderDispatchRequest request = buildRequest();
+        request.survey().setIntroPrompt("[slow] Hello from SurveyAI");
+        VoiceProviderConfiguration configuration = configuration(false);
+        when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
+                {
+                  "conversation_id": "conv_123"
+                }
+                """);
+
+        provider.dispatchCallJob(request, configuration);
+
+        org.mockito.ArgumentCaptor<String> payloadCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
+        String payload = payloadCaptor.getValue();
+
+        assertThat(payload).doesNotContain("\"first_message\"");
+        assertThat(payload).contains("\"survey_intro\":\"Hello from SurveyAI\"");
+    }
+
+    @Test
+    void dispatchCallJob_includesSurveyLanguageOverrideForTurkishSurvey() {
+        ProviderDispatchRequest request = buildRequest();
+        request.survey().setLanguageCode("tr");
+        VoiceProviderConfiguration configuration = configuration(false);
+        when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
+                {
+                  "conversation_id": "conv_123"
+                }
+                """);
+
+        provider.dispatchCallJob(request, configuration);
+
+        org.mockito.ArgumentCaptor<String> payloadCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
+        String payload = payloadCaptor.getValue();
+
+        assertThat(payload).contains("\"language\":\"tr\"");
+    }
+
+    @Test
+    void dispatchCallJob_stripsVoiceDirectionTagsFromConfiguredPrompts() {
+        ProviderDispatchRequest request = buildRequest();
+        request.survey().setIntroPrompt("[happy] Hello from SurveyAI");
+        request.survey().setClosingPrompt("[sad] Thank you for your time");
+        VoiceProviderConfiguration configuration = configuration(false);
+        when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
+                {
+                  "conversation_id": "conv_123"
+                }
+                """);
+
+        provider.dispatchCallJob(request, configuration);
+
+        org.mockito.ArgumentCaptor<String> payloadCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
+        String payload = payloadCaptor.getValue();
+
+        assertThat(payload).contains("\"survey_intro\":\"Hello from SurveyAI\"");
+        assertThat(payload).contains("\"survey_closing\":\"Thank you for your time\"");
+        assertThat(payload).contains("\"survey_intro\":\"Hello from SurveyAI\"");
+        assertThat(payload).contains("\"survey_closing\":\"Thank you for your time\"");
+        assertThat(payload).doesNotContain("\"survey_intro\":\"[happy]");
+        assertThat(payload).doesNotContain("\"survey_closing\":\"[sad]");
     }
 
     @Test
@@ -184,6 +287,37 @@ class ElevenLabsVoiceExecutionProviderTest {
     }
 
     @Test
+    void parseWebhook_stripsVoiceDirectionTagsFromTranscriptMessages() {
+        List<ProviderWebhookEvent> events = provider.parseWebhook(
+                new ProviderWebhookRequest(
+                        CallProvider.ELEVENLABS,
+                        """
+                        {
+                          "type": "post_call_transcription",
+                          "data": {
+                            "conversation_id": "conv_123",
+                            "status": "completed",
+                            "transcript": [
+                              {"role": "agent", "message": "[slow] Merhaba"},
+                              {"role": "user", "message": "(sad) Alo?"}
+                            ]
+                          }
+                        }
+                        """,
+                        Map.of()
+                ),
+                configuration(false)
+        );
+
+        assertThat(events).singleElement().satisfies(event -> {
+            assertThat(event.transcriptText()).contains("agent: Merhaba");
+            assertThat(event.transcriptText()).contains("user: Alo?");
+            assertThat(event.transcriptText()).doesNotContain("[slow]");
+            assertThat(event.transcriptText()).doesNotContain("(sad)");
+        });
+    }
+
+    @Test
     void parseWebhook_mapsCallInitiationFailureIntoInternalFailureEvent() {
         List<ProviderWebhookEvent> events = provider.parseWebhook(
                 new ProviderWebhookRequest(
@@ -218,6 +352,42 @@ class ElevenLabsVoiceExecutionProviderTest {
             assertThat(event.providerCallId()).isEqualTo("conv_456");
             assertThat(event.idempotencyKey()).isEqualTo("operation:contact-2");
             assertThat(event.jobStatus()).isEqualTo(CallJobStatus.FAILED);
+            assertThat(event.errorMessage()).isEqualTo("busy");
+        });
+    }
+
+    @Test
+    void parseWebhook_prefersBusyCallStatusOverTranscriptDoneStatus() {
+        List<ProviderWebhookEvent> events = provider.parseWebhook(
+                new ProviderWebhookRequest(
+                        CallProvider.ELEVENLABS,
+                        """
+                        {
+                          "type": "post_call_transcription",
+                          "event_timestamp": "2026-04-10T10:00:00Z",
+                          "data": {
+                            "conversation_id": "conv_busy",
+                            "status": "done",
+                            "metadata": {
+                              "body": {
+                                "call_status": "busy"
+                              }
+                            },
+                            "transcript": [
+                              {"role": "agent", "message": "Alo?"}
+                            ]
+                          }
+                        }
+                        """,
+                        Map.of()
+                ),
+                configuration(false)
+        );
+
+        assertThat(events).singleElement().satisfies(event -> {
+            assertThat(event.providerCallId()).isEqualTo("conv_busy");
+            assertThat(event.jobStatus()).isEqualTo(CallJobStatus.FAILED);
+            assertThat(event.attemptStatus()).isEqualTo(com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus.BUSY);
             assertThat(event.errorMessage()).isEqualTo("busy");
         });
     }
