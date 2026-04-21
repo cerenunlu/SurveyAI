@@ -5,6 +5,11 @@ export type NavItem = {
   label: string;
   description: string;
   icon: ReactNode;
+  children?: Array<{
+    href: string;
+    label: string;
+    description?: string;
+  }>;
 };
 
 export type Stat = {
@@ -199,7 +204,7 @@ export type CallJobSurveyResponseAnswer = {
   questionCode: string;
   questionOrder: number;
   questionTitle: string;
-  questionType: "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING";
+  questionType: "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING" | "NUMBER";
   required: boolean;
   answerText: string | null;
   answerNumber: number | null;
@@ -328,8 +333,8 @@ export type OperationAnalyticsQuestionSummary = {
   questionCode: string;
   questionOrder: number;
   questionTitle: string;
-  questionType: "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING";
-  chartKind: "RATING" | "BINARY" | "CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED";
+  questionType: "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING" | "NUMBER";
+  chartKind: "RATING" | "NUMBER" | "BINARY" | "CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED";
   respondedContactCount: number;
   answeredCount: number;
   responseRate: number;
@@ -337,9 +342,12 @@ export type OperationAnalyticsQuestionSummary = {
   dropOffRate: number;
   averageRating: number | null;
   emptyStateMessage: string | null;
+  reviewCount: number;
+  reviewGroupOptions: string[];
   breakdown: OperationAnalyticsBreakdownItem[];
   specialAnswerBreakdown: OperationAnalyticsBreakdownItem[];
   sampleResponses: OperationAnalyticsSampleResponse[];
+  rawResponses: OperationAnalyticsSampleResponse[];
 };
 
 export type OperationAnalyticsSampleResponse = {
@@ -347,6 +355,9 @@ export type OperationAnalyticsSampleResponse = {
   respondentName: string;
   capturedAt: string | null;
   responseText: string;
+  rawResponseText: string;
+  codedThemes: string[];
+  reviewReason: string | null;
 };
 
 export type OperationAnalyticsQuestionGroupRow = {

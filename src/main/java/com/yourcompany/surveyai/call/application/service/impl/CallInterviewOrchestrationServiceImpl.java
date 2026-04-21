@@ -128,9 +128,6 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     );
     private static final Set<String> YES_WORDS = Set.of("evet", "olur", "tabii", "tabi", "yes", "yeah", "yep", "dogru", "buyurun", "sorabilirsiniz", "dinliyorum", "uygun");
     private static final Set<String> NO_WORDS = Set.of("hayir", "yok", "istemiyorum", "no", "nope", "degil", "uygun degil", "mesgul", "musait degil");
-    private static final Set<String> OPENING_GREETING_WORDS = Set.of(
-            "alo", "merhaba", "selam", "efendim", "buyurun", "buyrun", "dinliyorum", "hello", "hi", "hey"
-    );
     private static final Set<String> CIVIC_OPEN_ENDED_HINTS = Set.of(
             "sehir", "kent", "izmir", "belediye", "milletvekili", "milletvekillerinden",
             "sorun", "sorunlari", "beklenti", "oncelik", "oncelikli", "ulasim", "trafik", "altyapi", "hizmet"
@@ -218,6 +215,10 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         SessionContext context = loadSessionContext(request.callAttemptId(), request.providerCallId());
         SurveyResponse response = ensureSurveyResponse(context.callAttempt());
         initializeOpeningConsentState(response, context.survey());
+        if (isTerminalResponse(response)) {
+            surveyResponseRepository.save(response);
+            return buildTerminalResponse(context, response, resolveTerminalClosingPrompt(context, response));
+        }
         surveyResponseRepository.save(response);
         if (requiresOpeningGreeting(context.survey()) && !isOpeningGreetingReceived(response)) {
             return buildConsentPhaseResponse(context, response, null);
@@ -233,6 +234,10 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         SessionContext context = loadSessionContext(request.callAttemptId(), request.providerCallId());
         SurveyResponse response = ensureSurveyResponse(context.callAttempt());
         initializeOpeningConsentState(response, context.survey());
+        if (isTerminalResponse(response)) {
+            surveyResponseRepository.save(response);
+            return buildTerminalResponse(context, response, resolveTerminalClosingPrompt(context, response));
+        }
 
         if (request.signal() == InterviewConversationSignal.STOP_REQUEST) {
             FlowState flowState = resolveFlowState(context);
@@ -261,6 +266,15 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             finalizeResponse(response, context, null, currentFlowState);
             surveyResponseRepository.save(response);
             return buildTerminalResponse(context, response, buildClosingPrompt(context.survey()), currentFlowState);
+        }
+
+        if (request.signal() == InterviewConversationSignal.IDENTITY_REQUEST) {
+            return buildProgressResponse(
+                    context,
+                    response,
+                    buildInSurveyIdentityPrompt(context),
+                    currentFlowState
+            );
         }
 
         if (request.signal() == InterviewConversationSignal.REPEAT_REQUEST) {
@@ -559,6 +573,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
 
         return switch (question.getQuestionType()) {
             case OPEN_ENDED -> normalizeOpenEnded(question, raw);
+            case NUMBER -> normalizeNumber(raw);
             case RATING -> normalizeRating(question, raw);
             case SINGLE_CHOICE -> normalizeSingleChoice(question, options, raw);
             case MULTI_CHOICE -> normalizeMultiChoice(question, options, raw);
@@ -671,6 +686,14 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         }
         if (parsed == null || parsed < min || parsed > max) {
             return NormalizedAnswer.invalid("Rating answer must be between " + min + " and " + max, raw);
+        }
+        return NormalizedAnswer.validNumber(raw, BigDecimal.valueOf(parsed));
+    }
+
+    private NormalizedAnswer normalizeNumber(String raw) {
+        Integer parsed = extractNumber(raw);
+        if (parsed == null) {
+            return NormalizedAnswer.invalid("Number answer could not be parsed", raw);
         }
         return NormalizedAnswer.validNumber(raw, BigDecimal.valueOf(parsed));
     }
@@ -2173,6 +2196,13 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
                 appendPromptSentence(builder, "Please answer with one number between " + ratingMin + " and " + ratingMax);
             }
         }
+        if (question.getQuestionType() == QuestionType.NUMBER) {
+            if (turkish) {
+                appendPromptSentence(builder, "Lutfen tek bir sayi soyleyin");
+            } else {
+                appendPromptSentence(builder, "Please answer with one number");
+            }
+        }
         return normalizePromptPacing(builder.toString());
     }
 
@@ -2249,20 +2279,26 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         if ((question.getQuestionType() == QuestionType.SINGLE_CHOICE || question.getQuestionType() == QuestionType.MULTI_CHOICE)
                 && !options.isEmpty()) {
             if (turkish) {
-                return "Sizi net duyamadım. Tekrarlar mısınız?";
+                return "Sizi net duyamadim. Tekrarlar misiniz?";
             }
             return "I could not hear that clearly. Could you repeat that?";
         }
         if (question.getQuestionType() == QuestionType.RATING && ratingMin != null && ratingMax != null) {
             if (turkish) {
-                return "Yanıtı puan olarak anlayamadım. Lütfen "
-                        + ratingMin + " ile " + ratingMax + " arasında tek bir sayı söyleyin.";
+                return "Yaniti puan olarak anlayamadim. Lutfen "
+                        + ratingMin + " ile " + ratingMax + " arasinda tek bir sayi soyleyin.";
             }
             return "I could not convert that into a rating. Please say one number between "
                     + ratingMin + " and " + ratingMax + ".";
         }
+        if (question.getQuestionType() == QuestionType.NUMBER) {
+            if (turkish) {
+                return "Yaniti sayi olarak anlayamadim. Lutfen tek bir sayi soyleyin.";
+            }
+            return "I could not convert that into a number. Please say one number.";
+        }
         if (turkish) {
-            return "Sizi net duyamadım. Lütfen bir kez daha cevaplayın.";
+            return "Sizi net duyamadim. Lutfen bir kez daha cevaplayin.";
         }
         return "I could not hear that clearly. Please answer once more.";
     }
@@ -2353,24 +2389,12 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         if (signal == InterviewConversationSignal.NO_INPUT) {
             return false;
         }
-        if (signal == InterviewConversationSignal.IDENTITY_REQUEST) {
-            return true;
-        }
-
         String rawInput = trimToNull(request.utteranceText());
-        String normalized = normalize(rawInput);
-        if (normalized.isBlank()) {
+        String sanitizedInput = sanitizeUtterance(rawInput);
+        if (sanitizedInput == null || isLikelyAsrArtifact(rawInput, sanitizedInput)) {
             return false;
         }
-        if (containsAnyPhrase(normalized, "kim ariyor", "kimle gorusuyorum", "kimsiniz", "buyurun", "dinliyorum")) {
-            return true;
-        }
-        for (String token : normalized.split("\\s+")) {
-            if (OPENING_GREETING_WORDS.contains(token)) {
-                return true;
-            }
-        }
-        return false;
+        return true;
     }
 
     private boolean isOpeningGreetingReceived(SurveyResponse response) {
@@ -2409,16 +2433,24 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return false;
         }
         String normalized = normalize(introPrompt);
+        boolean containsSurveyParticipationIntent = normalized.contains("anket")
+                && (normalized.contains("katil") || normalized.contains("katilir") || normalized.contains("katilim"));
         return introPrompt.contains("?")
                 || normalized.contains("sorabilir miyim")
                 || normalized.contains("birkac soru sorabilir miyim")
                 || normalized.contains("uygun musunuz")
+                || normalized.contains("uygun musun")
                 || normalized.contains("izin verir misiniz")
+                || normalized.contains("izin verir misin")
                 || normalized.contains("katilmak ister misiniz")
+                || normalized.contains("katilmak ister misin")
+                || normalized.contains("katilir misiniz")
+                || normalized.contains("katilir misin")
                 || normalized.contains("may i ask")
                 || normalized.contains("can i ask")
                 || normalized.contains("is this a good time")
-                || normalized.contains("do you have a minute");
+                || normalized.contains("do you have a minute")
+                || containsSurveyParticipationIntent;
     }
 
     private ConsentDecision classifyOpeningConsentDecision(String rawText) {
@@ -2426,7 +2458,23 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         if (normalized.isBlank()) {
             return ConsentDecision.UNCLEAR;
         }
-        if (containsAnyPhrase(normalized, "istemiyorum", "uygun değil", "müsait değil", "simdi olmaz", "rahatsiz etmeyin", "aramayin", "not now")) {
+        if (containsAnyPhrase(
+                normalized,
+                "katilmam",
+                "katilmak istemiyorum",
+                "ankete katilmam",
+                "ankete katilmak istemiyorum",
+                "istemiyorum",
+                "uygun degil",
+                "musait degil",
+                "simdi olmaz",
+                "rahatsiz etmeyin",
+                "aramayin",
+                "beni aramayin",
+                "not now",
+                "do not call again",
+                "dont call again"
+        )) {
             return ConsentDecision.DECLINED;
         }
         if (containsAnyPhrase(normalized, "sorabilirsiniz", "buyurun", "dinliyorum", "olur", "uygunum", "sorun degil", "go ahead", "you can ask")) {
@@ -2436,9 +2484,6 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         for (String token : normalized.split("\\s+")) {
             if (YES_WORDS.contains(token)) {
                 return ConsentDecision.ACCEPTED;
-            }
-            if (NO_WORDS.contains(token)) {
-                return ConsentDecision.DECLINED;
             }
         }
         return ConsentDecision.UNCLEAR;
@@ -2527,6 +2572,38 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         return explanation + localized(context.survey(), " Sizinle kısa bir anket yapabilir miyim?", " May I conduct a short survey with you?");
     }
 
+    private String buildInSurveyIdentityPrompt(SessionContext context) {
+        String operationName = trimToNull(context.callAttempt().getOperation().getName());
+        String surveyName = trimToNull(context.survey().getName());
+
+        if (isTurkish(context.survey())) {
+            if (operationName != null && surveyName != null) {
+                return "Ben SurveyAI uzerinden " + operationName
+                        + " kapsamindaki " + surveyName
+                        + " anketi icin ariyorum.";
+            }
+            if (operationName != null) {
+                return "Ben SurveyAI uzerinden " + operationName + " arastirmasi icin ariyorum.";
+            }
+            if (surveyName != null) {
+                return "Ben SurveyAI uzerinden " + surveyName + " anketi icin ariyorum.";
+            }
+            return "Ben SurveyAI uzerinden kisa bir anket calismasi icin ariyorum.";
+        }
+
+        if (operationName != null && surveyName != null) {
+            return "I am calling through SurveyAI for the " + operationName
+                    + " study and the " + surveyName + " survey.";
+        }
+        if (operationName != null) {
+            return "I am calling through SurveyAI for the " + operationName + " study.";
+        }
+        if (surveyName != null) {
+            return "I am calling through SurveyAI for the " + surveyName + " survey.";
+        }
+        return "I am calling through SurveyAI for a short survey study.";
+    }
+
     private String buildConsentDeclinedClosingPrompt(Survey survey) {
         String surveyClosing = trimToNull(survey.getClosingPrompt());
         if (surveyClosing != null) {
@@ -2543,6 +2620,20 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
                 "Teşekkür ederim.",
                 "Thank you."
         );
+    }
+
+    private boolean isTerminalResponse(SurveyResponse response) {
+        return response != null
+                && (response.getStatus() == SurveyResponseStatus.COMPLETED
+                || response.getStatus() == SurveyResponseStatus.ABANDONED);
+    }
+
+    private String resolveTerminalClosingPrompt(SessionContext context, SurveyResponse response) {
+        String consentState = readOpeningConsentState(response);
+        if (CONSENT_DECLINED.equals(consentState)) {
+            return buildConsentDeclinedClosingPrompt(context.survey());
+        }
+        return buildClosingPrompt(context.survey());
     }
 
     private String localizeInvalidReason(Survey survey, String invalidReason) {
@@ -2874,4 +2965,5 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         ANY
     }
 }
+
 

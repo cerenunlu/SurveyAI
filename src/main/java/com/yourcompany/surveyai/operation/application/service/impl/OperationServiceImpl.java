@@ -700,6 +700,7 @@ public class OperationServiceImpl implements OperationService {
 
     private boolean hasUsableAnalyticsAnswer(SurveyAnswer answer) {
         return hasUsableRatingAnswer(answer)
+                || hasUsableNumberAnswer(answer)
                 || hasUsableOpenEndedAnswer(answer)
                 || hasReadableChoiceFallback(answer)
                 || answer.getSelectedOption() != null
@@ -752,8 +753,56 @@ public class OperationServiceImpl implements OperationService {
                     0,
                     averageRating,
                     answeredCount == 0 ? "Puan dagilimi, gorusmelerden sayisal cevap geldikce gosterilir." : null,
+                    0,
+                    List.of(),
                     toBreakdown(ratings, answeredCount),
                     buildSpecialAnswerBreakdown(ratingSpecialAnswers, answeredCount),
+                    List.of(),
+                    List.of()
+            );
+        }
+
+        if (question.getQuestionType() == QuestionType.NUMBER) {
+            List<SurveyAnswer> numberAnswers = answers.stream()
+                    .filter(answer -> answer.getAnswerType() == QuestionType.NUMBER)
+                    .filter(this::hasUsableNumberAnswer)
+                    .toList();
+            long answeredCount = numberAnswers.size();
+            double responseRate = percentage(answeredCount, respondedContacts);
+            Map<String, Long> values = new LinkedHashMap<>();
+            for (SurveyAnswer answer : numberAnswers) {
+                BigDecimal numericValue = resolveNumericValue(answer);
+                if (numericValue == null) {
+                    continue;
+                }
+                String key = numericValue.stripTrailingZeros().toPlainString();
+                values.merge(key, 1L, Long::sum);
+            }
+            double averageValue = round(numberAnswers.stream()
+                    .map(this::resolveNumericValue)
+                    .filter(Objects::nonNull)
+                    .mapToDouble(BigDecimal::doubleValue)
+                    .average()
+                    .orElse(0));
+            return new OperationAnalyticsQuestionSummaryDto(
+                    question.getId(),
+                    question.getCode(),
+                    question.getQuestionOrder(),
+                    question.getTitle(),
+                    question.getQuestionType(),
+                    "NUMBER",
+                    respondedContacts,
+                    answeredCount,
+                    responseRate,
+                    0,
+                    0,
+                    averageValue,
+                    answeredCount == 0 ? "Sayisal dagilim, gecerli sayi yanitlari geldikce gosterilir." : null,
+                    0,
+                    List.of(),
+                    toBreakdown(values, answeredCount),
+                    List.of(),
+                    List.of(),
                     List.of()
             );
         }
@@ -770,7 +819,67 @@ public class OperationServiceImpl implements OperationService {
             List<SurveyAnswer> qualitativeAnswers = openEndedAnswers.stream()
                     .filter(answer -> resolveSpecialAnswerCode(answer) == null)
                     .toList();
+            if (isNamedEntityOpenEndedQuestion(question)) {
+                Map<String, Long> entityCounts = new LinkedHashMap<>();
+                List<OperationAnalyticsSampleResponseDto> rawResponses = new ArrayList<>();
+                for (SurveyAnswer answer : sortOpenEndedAnswers(qualitativeAnswers)) {
+                    OperationAnalyticsSampleResponseDto rawResponse = toOpenEndedSampleResponse(
+                            answer,
+                            new OpenEndedGroupingResolution(null, List.of(), null)
+                    );
+                    if (rawResponse != null) {
+                        rawResponses.add(rawResponse);
+                    }
+                    String entityLabel = resolveNamedEntityLabel(answer);
+                    if (entityLabel != null) {
+                        entityCounts.merge(entityLabel, 1L, Long::sum);
+                    }
+                }
+                long answeredCount = openEndedAnswers.size();
+                double responseRate = percentage(answeredCount, respondedContacts);
+                return new OperationAnalyticsQuestionSummaryDto(
+                        question.getId(),
+                        question.getCode(),
+                        question.getQuestionOrder(),
+                        question.getTitle(),
+                        question.getQuestionType(),
+                        "OPEN_ENDED",
+                        respondedContacts,
+                        answeredCount,
+                        responseRate,
+                        0,
+                        0,
+                        null,
+                        answeredCount == 0 ? "Isim yanitlari geldikce dagilim burada gosterilir." : null,
+                        0,
+                        List.of(),
+                        toBreakdown(entityCounts, answeredCount == 0 ? 1 : answeredCount),
+                        buildSpecialAnswerBreakdown(specialOpenEndedAnswers, answeredCount),
+                        List.of(),
+                        rawResponses
+                );
+            }
+            List<String> reviewGroupOptions = extractConfiguredOpenEndedThemeCodes(question);
+            Map<String, Long> confirmedThemeCounts = new LinkedHashMap<>();
+            List<OperationAnalyticsSampleResponseDto> reviewSamples = new ArrayList<>();
+            List<OperationAnalyticsSampleResponseDto> rawResponses = new ArrayList<>();
+            for (SurveyAnswer answer : sortOpenEndedAnswers(qualitativeAnswers)) {
+                OpenEndedGroupingResolution resolution = resolveOpenEndedGrouping(question, answer);
+                OperationAnalyticsSampleResponseDto rawResponse = toOpenEndedSampleResponse(answer, resolution);
+                if (rawResponse != null) {
+                    rawResponses.add(rawResponse);
+                }
+                if (resolution.confirmedThemeCode() != null) {
+                    confirmedThemeCounts.merge(toDisplayLabel(resolution.confirmedThemeCode().replace('_', ' ')), 1L, Long::sum);
+                    continue;
+                }
+                OperationAnalyticsSampleResponseDto reviewSample = rawResponse;
+                if (reviewSample != null) {
+                    reviewSamples.add(reviewSample);
+                }
+            }
             long answeredCount = openEndedAnswers.size();
+            long confirmedCount = confirmedThemeCounts.values().stream().mapToLong(Long::longValue).sum();
             double responseRate = percentage(answeredCount, respondedContacts);
             return new OperationAnalyticsQuestionSummaryDto(
                     question.getId(),
@@ -786,9 +895,12 @@ public class OperationServiceImpl implements OperationService {
                     0,
                     null,
                     answeredCount == 0 ? "Acik uclu icgoruler, gecerli metin yanitlari geldikce olusur." : null,
-                    buildOpenEndedBreakdown(qualitativeAnswers, answeredCount),
+                    reviewSamples.size(),
+                    reviewGroupOptions,
+                    toBreakdown(confirmedThemeCounts, confirmedCount == 0 ? 1 : confirmedCount),
                     buildSpecialAnswerBreakdown(specialOpenEndedAnswers, answeredCount),
-                    buildOpenEndedSamples(qualitativeAnswers)
+                    reviewSamples,
+                    rawResponses
             );
         }
 
@@ -821,8 +933,11 @@ public class OperationServiceImpl implements OperationService {
                 0,
                 null,
                 answeredCount == 0 ? "Bu soru icin dagilim, cevaplar geldikce burada gosterilir." : null,
+                0,
+                List.of(),
                 toBreakdown(distributions, answeredCount == 0 ? 1 : answeredCount),
                 buildSpecialAnswerBreakdown(specialChoiceAnswers, answeredCount),
+                List.of(),
                 List.of()
         );
     }
@@ -868,9 +983,12 @@ public class OperationServiceImpl implements OperationService {
                     dropOffRate,
                     current.averageRating(),
                     current.emptyStateMessage(),
+                    current.reviewCount(),
+                    current.reviewGroupOptions(),
                     current.breakdown(),
                     current.specialAnswerBreakdown(),
-                    current.sampleResponses()
+                    current.sampleResponses(),
+                    current.rawResponses()
             ));
         }
 
@@ -1168,7 +1286,7 @@ public class OperationServiceImpl implements OperationService {
     }
 
     private Integer resolveAgeValue(SurveyAnswer answer, List<SurveyQuestionOption> options) {
-        BigDecimal numericValue = resolveRatingValue(answer);
+        BigDecimal numericValue = resolveNumericValue(answer);
         if (numericValue != null) {
             int age = numericValue.intValue();
             if (age >= 0 && age <= 120) {
@@ -1238,7 +1356,7 @@ public class OperationServiceImpl implements OperationService {
             }
         }
 
-        if (question.getQuestionType() == QuestionType.RATING && "age".equals(dimension)) {
+        if ((question.getQuestionType() == QuestionType.RATING || question.getQuestionType() == QuestionType.NUMBER) && "age".equals(dimension)) {
             Integer age = resolveAgeValue(answer, options);
             return age == null ? null : resolveAgeBucket(age);
         }
@@ -1313,7 +1431,7 @@ public class OperationServiceImpl implements OperationService {
                     .orElse(List.of());
         }
 
-        if (question.getQuestionType() == QuestionType.RATING && answer.getAnswerNumber() != null) {
+        if ((question.getQuestionType() == QuestionType.RATING || question.getQuestionType() == QuestionType.NUMBER) && answer.getAnswerNumber() != null) {
             String numericValue = answer.getAnswerNumber().stripTrailingZeros().toPlainString();
             java.util.Optional<String> numericMatch = resolveOptionLabel(question, numericValue, options);
             if (numericMatch.isPresent()
@@ -1598,14 +1716,122 @@ public class OperationServiceImpl implements OperationService {
         return toBreakdown(counts, answeredCount == 0 ? 1 : answeredCount);
     }
 
-    private List<OperationAnalyticsSampleResponseDto> buildOpenEndedSamples(List<SurveyAnswer> answers) {
-        return sortOpenEndedAnswers(answers).stream()
-                .map(this::toOpenEndedSampleResponse)
-                .filter(Objects::nonNull)
-                .toList();
+    private List<String> extractConfiguredOpenEndedThemeCodes(SurveyQuestion question) {
+        if (question == null || question.getSettingsJson() == null || question.getSettingsJson().isBlank()) {
+            return extractDefaultOpenEndedThemeCodes();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(question.getSettingsJson());
+            JsonNode categoriesNode = root.path("coding").path("categories");
+            if (categoriesNode.isMissingNode() || categoriesNode.isNull() || !categoriesNode.isObject()) {
+                categoriesNode = root.path("codingCategories");
+            }
+            if (categoriesNode.isMissingNode() || categoriesNode.isNull() || !categoriesNode.isObject()) {
+                return extractDefaultOpenEndedThemeCodes();
+            }
+
+            List<String> codes = new ArrayList<>();
+            categoriesNode.fieldNames().forEachRemaining(fieldName -> {
+                String code = normalizeOrNull(fieldName);
+                if (code != null && !codes.contains(code)) {
+                    codes.add(code);
+                }
+            });
+            return codes.isEmpty() ? extractDefaultOpenEndedThemeCodes() : List.copyOf(codes);
+        } catch (Exception error) {
+            return extractDefaultOpenEndedThemeCodes();
+        }
     }
 
-    private OperationAnalyticsSampleResponseDto toOpenEndedSampleResponse(SurveyAnswer answer) {
+    private boolean isNamedEntityOpenEndedQuestion(SurveyQuestion question) {
+        if (question == null || question.getQuestionType() != QuestionType.OPEN_ENDED) {
+            return false;
+        }
+        if (hasNamedEntityLexicon(question)) {
+            return true;
+        }
+        String normalizedTitle = normalizeOrNull(question.getTitle());
+        if (normalizedTitle == null) {
+            return false;
+        }
+        return normalizedTitle.contains("hangi siyasetci")
+                || normalizedTitle.contains("hangi politikaci")
+                || normalizedTitle.contains("kim oldugunu")
+                || normalizedTitle.contains("kimin")
+                || normalizedTitle.contains("kimdir")
+                || normalizedTitle.contains("adini")
+                || normalizedTitle.contains("ismi")
+                || normalizedTitle.contains("siyasetciler denince")
+                || normalizedTitle.contains("akliniza ilk gelen");
+    }
+
+    private boolean hasNamedEntityLexicon(SurveyQuestion question) {
+        if (question == null || question.getSettingsJson() == null || question.getSettingsJson().isBlank()) {
+            return false;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(question.getSettingsJson());
+            return hasUsableNamedEntityLexiconNode(root.path("autoEntityLexicon"))
+                    || hasUsableNamedEntityLexiconNode(root.path("autoLexicon"))
+                    || hasUsableNamedEntityLexiconNode(root.path("entityLexicon"));
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    private boolean hasUsableNamedEntityLexiconNode(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return false;
+        }
+        if (node.isArray()) {
+            return node.size() > 0;
+        }
+        return node.isObject() && node.fields().hasNext();
+    }
+
+    private OpenEndedGroupingResolution resolveOpenEndedGrouping(SurveyQuestion question, SurveyAnswer answer) {
+        List<String> configuredCodes = extractConfiguredOpenEndedThemeCodes(question);
+        if (configuredCodes.isEmpty()) {
+            return new OpenEndedGroupingResolution(null, List.of(), "Bu soru icin grup kategorileri tanimli degil.");
+        }
+
+        List<String> storedCodes = extractStoredThemeCodes(answer).stream()
+                .filter(configuredCodes::contains)
+                .distinct()
+                .toList();
+        if (storedCodes.isEmpty()) {
+            storedCodes = extractConfiguredOpenEndedThemeMatches(question, resolveRawOpenEndedText(answer)).stream()
+                    .filter(configuredCodes::contains)
+                    .distinct()
+                    .toList();
+        }
+        if (storedCodes.isEmpty()) {
+            storedCodes = extractKeywordBasedOpenEndedThemeMatches(resolveRawOpenEndedText(answer)).stream()
+                    .filter(configuredCodes::contains)
+                    .distinct()
+                    .toList();
+        }
+        if (storedCodes.size() == 1) {
+            return new OpenEndedGroupingResolution(storedCodes.getFirst(), storedCodes, null);
+        }
+        if (storedCodes.size() > 1) {
+            return new OpenEndedGroupingResolution(null, storedCodes, "Birden fazla grup eslesmesi bulundu.");
+        }
+        return new OpenEndedGroupingResolution(null, List.of(), "Cevap net bir gruba eslestirilemedi.");
+    }
+
+    private List<String> extractDefaultOpenEndedThemeCodes() {
+        List<String> codes = new ArrayList<>();
+        for (String label : OPEN_ENDED_THEME_BY_KEYWORD.values()) {
+            String normalized = normalizeOrNull(label);
+            if (normalized != null && !codes.contains(normalized)) {
+                codes.add(normalized);
+            }
+        }
+        return List.copyOf(codes);
+    }
+
+    private OperationAnalyticsSampleResponseDto toOpenEndedSampleResponse(SurveyAnswer answer, OpenEndedGroupingResolution resolution) {
         String responseText = resolveOpenEndedText(answer);
         if (responseText == null || responseText.isBlank()) {
             return null;
@@ -1628,8 +1854,23 @@ public class OperationServiceImpl implements OperationService {
                 callJob.getId(),
                 respondentName,
                 resolveResponseMoment(surveyResponse),
-                trimSample(responseText.trim())
+                trimSample(responseText.trim()),
+                trimToNull(resolveRawOpenEndedText(answer)) == null ? trimSample(responseText.trim()) : trimSample(resolveRawOpenEndedText(answer).trim()),
+                resolution.suggestedThemeCodes(),
+                resolution.reviewReason()
         );
+    }
+
+    private String resolveNamedEntityLabel(SurveyAnswer answer) {
+        String text = trimToNull(resolveOpenEndedText(answer));
+        if (text == null) {
+            return null;
+        }
+        String cleaned = text
+                .replaceAll("^[\\p{Punct}\\s]+", "")
+                .replaceAll("[\\p{Punct}\\s]+$", "")
+                .trim();
+        return trimToNull(cleaned);
     }
 
     private String buildContactDisplayName(OperationContact contact) {
@@ -1699,6 +1940,82 @@ public class OperationServiceImpl implements OperationService {
         return toDisplayLabel(strongestToken.replace('_', ' '));
     }
 
+    private List<String> extractStoredThemeCodes(SurveyAnswer answer) {
+        if (answer.getAnswerJson() == null || answer.getAnswerJson().isBlank()) {
+            return List.of();
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(answer.getAnswerJson());
+            JsonNode codedThemes = root.get("codedThemes");
+            if (codedThemes == null || !codedThemes.isArray()) {
+                return List.of();
+            }
+            List<String> codes = new ArrayList<>();
+            codedThemes.forEach(item -> {
+                String rawValue = normalizeOrNull(item.asText(null));
+                if (rawValue != null && !codes.contains(rawValue)) {
+                    codes.add(rawValue);
+                }
+            });
+            return List.copyOf(codes);
+        } catch (Exception error) {
+            return List.of();
+        }
+    }
+
+    private List<String> extractConfiguredOpenEndedThemeMatches(SurveyQuestion question, String text) {
+        String normalizedText = normalizeOrNull(text);
+        if (normalizedText == null || question == null || question.getSettingsJson() == null || question.getSettingsJson().isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(question.getSettingsJson());
+            JsonNode categoriesNode = root.path("coding").path("categories");
+            if (categoriesNode.isMissingNode() || categoriesNode.isNull() || !categoriesNode.isObject()) {
+                categoriesNode = root.path("codingCategories");
+            }
+            if (categoriesNode.isMissingNode() || categoriesNode.isNull() || !categoriesNode.isObject()) {
+                return List.of();
+            }
+
+            List<String> matches = new ArrayList<>();
+            categoriesNode.fields().forEachRemaining(entry -> {
+                String code = normalizeOrNull(entry.getKey());
+                if (code == null || !entry.getValue().isArray()) {
+                    return;
+                }
+                for (JsonNode aliasNode : entry.getValue()) {
+                    String alias = normalizeOrNull(aliasNode.asText(null));
+                    if (alias != null && normalizedText.contains(alias)) {
+                        if (!matches.contains(code)) {
+                            matches.add(code);
+                        }
+                        break;
+                    }
+                }
+            });
+            return List.copyOf(matches);
+        } catch (Exception error) {
+            return List.of();
+        }
+    }
+
+    private List<String> extractKeywordBasedOpenEndedThemeMatches(String text) {
+        List<String> matches = new ArrayList<>();
+        for (String token : extractMeaningfulTokens(text)) {
+            String label = OPEN_ENDED_THEME_BY_KEYWORD.get(token);
+            if (label == null) {
+                continue;
+            }
+            String code = normalizeOrNull(label);
+            if (code != null && !matches.contains(code)) {
+                matches.add(code);
+            }
+        }
+        return List.copyOf(matches);
+    }
+
     private List<String> extractStoredThemeLabels(SurveyAnswer answer) {
         if (answer.getAnswerJson() == null || answer.getAnswerJson().isBlank()) {
             return List.of();
@@ -1740,6 +2057,10 @@ public class OperationServiceImpl implements OperationService {
 
     private boolean hasUsableRatingAnswer(SurveyAnswer answer) {
         return answer.isValid() && resolveRatingValue(answer) != null;
+    }
+
+    private boolean hasUsableNumberAnswer(SurveyAnswer answer) {
+        return answer.isValid() && resolveNumericValue(answer) != null;
     }
 
     private String resolveSpecialAnswerCode(SurveyAnswer answer) {
@@ -1785,6 +2106,10 @@ public class OperationServiceImpl implements OperationService {
         }
     }
 
+    private BigDecimal resolveNumericValue(SurveyAnswer answer) {
+        return resolveRatingValue(answer);
+    }
+
     private String resolveOpenEndedText(SurveyAnswer answer) {
         if (answer.getAnswerText() != null && !answer.getAnswerText().isBlank()) {
             return answer.getAnswerText().trim();
@@ -1793,6 +2118,28 @@ public class OperationServiceImpl implements OperationService {
             return answer.getRawInputText().trim();
         }
         return extractNormalizedText(answer.getAnswerJson());
+    }
+
+    private String resolveRawOpenEndedText(SurveyAnswer answer) {
+        if (answer.getRawInputText() != null && !answer.getRawInputText().isBlank()) {
+            return answer.getRawInputText().trim();
+        }
+        if (answer.getAnswerJson() == null || answer.getAnswerJson().isBlank()) {
+            return resolveOpenEndedText(answer);
+        }
+        try {
+            JsonNode root = objectMapper.readTree(answer.getAnswerJson());
+            String originalRawText = trimToNull(root.path("originalRawText").asText(null));
+            if (originalRawText != null) {
+                return originalRawText;
+            }
+            String rawText = trimToNull(root.path("rawText").asText(null));
+            if (rawText != null) {
+                return rawText;
+            }
+        } catch (Exception ignored) {
+        }
+        return resolveOpenEndedText(answer);
     }
 
     private String extractNormalizedText(String rawJson) {
@@ -2048,6 +2395,15 @@ public class OperationServiceImpl implements OperationService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    private String normalizeOrNull(String value) {
+        String trimmed = trimToNull(value);
+        if (trimmed == null) {
+            return null;
+        }
+        String normalized = normalize(trimmed);
+        return normalized.isBlank() ? null : normalized;
+    }
+
     private String normalize(String value) {
         if (value == null) {
             return "";
@@ -2110,6 +2466,13 @@ public class OperationServiceImpl implements OperationService {
             String rowKey,
             String rowLabel,
             String optionSetCode
+    ) {
+    }
+
+    private record OpenEndedGroupingResolution(
+            String confirmedThemeCode,
+            List<String> suggestedThemeCodes,
+            String reviewReason
     ) {
     }
 }

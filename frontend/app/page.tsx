@@ -399,7 +399,8 @@ export default function DashboardPage() {
             {activityRows.length === 0 ? (
               <EmptyState title="Aktivite bulunmuyor" description="Operasyon guncellemeleri burada listelenecek." />
             ) : (
-              <div className="ops-control-table">
+              <div className="ops-dashboard-activity-scroll">
+                <div className="ops-control-table">
                 <div className="ops-control-table-head ops-control-table-head-activity">
                   <span>Saat</span>
                   <span>Kullanici / Sistem</span>
@@ -409,7 +410,7 @@ export default function DashboardPage() {
                   <span>Aksiyon</span>
                 </div>
                 {activityRows.map((row) => (
-                  <div key={row.id} className="ops-control-table-row ops-control-table-head-activity">
+                  <div key={row.id} className="ops-control-table-row ops-control-table-row-activity">
                     <span>{row.time}</span>
                     <strong>{row.actor}</strong>
                     <span>{row.event}</span>
@@ -421,6 +422,7 @@ export default function DashboardPage() {
                     </Link>
                   </div>
                 ))}
+                </div>
               </div>
             )}
           </SectionCard>

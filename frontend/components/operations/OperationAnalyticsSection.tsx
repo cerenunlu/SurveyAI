@@ -179,12 +179,11 @@ export function OperationAnalyticsSection({
       summary,
     })),
   ].sort((left, right) => left.order - right.order);
-
   useEffect(() => {
     const nextDrafts: Record<string, string> = {};
 
     for (const summary of analytics?.questionSummaries ?? []) {
-      for (const sample of summary.sampleResponses) {
+      for (const sample of summary.rawResponses) {
         nextDrafts[buildSampleResponseKey(summary.questionId, sample.callJobId)] = sample.responseText ?? "";
       }
     }
@@ -342,7 +341,7 @@ export function OperationAnalyticsSection({
     }));
   };
 
-  const handleSampleResponseBlur = async (
+  const handleSaveOpenEndedResponse = async (
     sampleKey: string,
     callJobId: string,
     questionId: string,
@@ -552,9 +551,9 @@ export function OperationAnalyticsSection({
             const presentation = getQuestionChartPresentation(summary);
             const hasBreakdownData = summary.breakdown.some((breakdownItem) => breakdownItem.count > 0);
             const hasSpecialAnswerData = summary.specialAnswerBreakdown.some((breakdownItem) => breakdownItem.count > 0);
-            const hasSampleData = summary.sampleResponses.length > 0;
+            const hasSampleData = summary.rawResponses.length > 0;
             const hasData = hasBreakdownData || hasSpecialAnswerData || hasSampleData;
-            const shouldRenderSummaryChart = summary.chartKind !== "OPEN_ENDED" && (hasBreakdownData || hasSpecialAnswerData);
+            const shouldRenderSummaryChart = hasBreakdownData || hasSpecialAnswerData;
 
             return (
               <article
@@ -596,6 +595,13 @@ export function OperationAnalyticsSection({
                     <span className="operation-inline-filter-pill is-emphasis">Ort. {summary.averageRating.toFixed(1)}</span>
                   </div>
                 ) : null}
+                {summary.chartKind === "OPEN_ENDED" ? (
+                  <div className="operation-question-support-row">
+                    <span>Grafige dahil edilen net yanit</span>
+                    <strong>{summary.breakdown.reduce((sum, item) => sum + item.count, 0)}</strong>
+                    <small>Ham cevap: {summary.rawResponses.length}</small>
+                  </div>
+                ) : null}
                 {summary.dropOffCount > 0 ? (
                   <div className="operation-question-support-row">
                     <span>Bu sorudan sonra akistan cikan</span>
@@ -603,8 +609,12 @@ export function OperationAnalyticsSection({
                     <small>%{summary.dropOffRate}</small>
                   </div>
                 ) : null}
-                {shouldRenderSummaryChart ? renderSummaryChart(summary) : null}
-                {!hasData ? <div className="operation-mini-empty">{presentation.empty}</div> : null}
+                {summary.chartKind === "OPEN_ENDED"
+                  ? renderOpenEndedWorkspace(summary, presentation.empty)
+                  : shouldRenderSummaryChart
+                    ? renderSummaryChart(summary)
+                    : null}
+                {!hasData && summary.chartKind !== "OPEN_ENDED" ? <div className="operation-mini-empty">{presentation.empty}</div> : null}
                 {summary.specialAnswerBreakdown.length > 0 ? (
                   <div className="operation-question-special-answer-block">
                     <div className="operation-question-special-answer-head">
@@ -614,39 +624,6 @@ export function OperationAnalyticsSection({
                     {renderBarRows(summary.specialAnswerBreakdown)}
                   </div>
                 ) : null}
-                {summary.sampleResponses.length > 0 ? (
-                  <div className={`operation-open-response-list${summary.sampleResponses.length > 8 ? " is-scrollable" : ""}`}>
-                    {summary.sampleResponses.map((response, index) => (
-                      <div key={`${summary.questionId}-sample-${index}`} className="operation-open-response-item">
-                        {(() => {
-                          const sampleKey = buildSampleResponseKey(summary.questionId, response.callJobId);
-                          const initialValue = response.responseText ?? "";
-                          const draftValue = sampleResponseDrafts[sampleKey] ?? initialValue;
-                          const isSaving = sampleResponseSavingKeys[sampleKey] ?? false;
-                          const statusMessage = sampleResponseStatus[sampleKey] ?? null;
-                          const isEditable = canSaveSampleResponse(response.callJobId);
-
-                          return (
-                            <>
-                              <textarea
-                                className="operation-open-response-editor"
-                                value={draftValue}
-                                onChange={(event) => handleSampleResponseChange(sampleKey, event.target.value)}
-                                onBlur={() => void handleSampleResponseBlur(sampleKey, response.callJobId, summary.questionId, initialValue)}
-                                rows={Math.max(2, Math.min(6, Math.ceil(((draftValue ?? "").length || 1) / 96)))}
-                                readOnly={!isEditable}
-                              />
-                              <div className="operation-open-response-status">
-                                <span>{isEditable && isSaving ? "Kaydediliyor..." : ""}</span>
-                                {statusMessage ? <strong>{statusMessage}</strong> : null}
-                              </div>
-                            </>
-                          );
-                        })()}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
               </article>
             );
           })}
@@ -654,6 +631,52 @@ export function OperationAnalyticsSection({
       ) : (
         <div className="operation-mini-empty">Bu ankette henuz soru bazli gosterilecek cevap verisi yok.</div>
       )}
+    </div>
+  );
+
+  const renderOpenEndedWorkspace = (
+    summary: OperationAnalytics["questionSummaries"][number],
+    emptyMessage: string,
+  ) => (
+    <div className="operation-open-ended-workspace">
+      <div className="operation-open-ended-column">
+        {summary.rawResponses.length > 0 ? (
+          <div className={`operation-open-response-list${summary.rawResponses.length > 5 ? " is-scrollable" : ""}`}>
+            {summary.rawResponses.map((response, index) => {
+              const sampleKey = buildSampleResponseKey(summary.questionId, response.callJobId);
+              const initialValue = response.responseText ?? "";
+              const draftValue = sampleResponseDrafts[sampleKey] ?? initialValue;
+              const isSaving = sampleResponseSavingKeys[sampleKey] ?? false;
+              const statusMessage = sampleResponseStatus[sampleKey] ?? null;
+              const isEditable = canSaveSampleResponse(response.callJobId);
+
+              return (
+                <div key={`${summary.questionId}-raw-${index}`} className="operation-open-response-item">
+                  <textarea
+                    className="operation-open-response-editor"
+                    value={draftValue}
+                    onChange={(event) => handleSampleResponseChange(sampleKey, event.target.value)}
+                    onBlur={() => void handleSaveOpenEndedResponse(sampleKey, response.callJobId, summary.questionId, initialValue)}
+                    rows={Math.max(2, Math.min(6, Math.ceil(((draftValue ?? "").length || 1) / 96)))}
+                    readOnly={!isEditable}
+                  />
+                  <div className="operation-open-response-status">
+                    <span>{isEditable && isSaving ? "Kaydediliyor..." : ""}</span>
+                    {statusMessage ? <strong>{statusMessage}</strong> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="operation-mini-empty">Bu soru icin henuz ham cevap yok.</div>
+        )}
+      </div>
+      <div className="operation-open-ended-column">
+        {summary.breakdown.some((item) => item.count > 0) || summary.specialAnswerBreakdown.some((item) => item.count > 0)
+          ? renderSummaryChart(summary)
+          : <div className="operation-mini-empty">{emptyMessage}</div>}
+      </div>
     </div>
   );
 
@@ -890,6 +913,15 @@ export function OperationAnalyticsSection({
           summary.questionTitle,
         );
       case "OPEN_ENDED":
+        if (summary.breakdown.some((item) => item.count > 0)) {
+          return summary.breakdown.length <= 5
+            ? renderDonutChart(
+              summary.breakdown,
+              summary.breakdown.reduce((sum, item) => sum + item.count, 0),
+              summary.questionTitle,
+            )
+            : renderBarRows(summary.breakdown);
+        }
         if (summary.specialAnswerBreakdown.some((item) => item.count > 0)) {
           return renderOpenEndedState("Bu soruda sadece ozel cevaplar kaydedildi.");
         }
@@ -1236,7 +1268,7 @@ export function OperationAnalyticsSection({
     );
   }
 
-  function renderOpenEndedState(message = "Acik uclu sorular Google Forms'ta oldugu gibi ornek yanit listesiyle gosterilir.") {
+  function renderOpenEndedState(message = "Bu soru icin henuz gosterilecek dagilim yok.") {
     return (
       <div className="operation-mini-empty">
         {message}

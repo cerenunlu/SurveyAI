@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getNavigationItems } from "@/components/layout/navigation";
 import { PageHeaderProvider, useResolvedPageHeader } from "@/components/layout/PageHeaderContext";
-import { ArrowLeftIcon, BellIcon, CollapseIcon, MenuIcon, SearchIcon } from "@/components/ui/Icons";
+import { ArrowLeftIcon, ArrowRightIcon, BellIcon, CollapseIcon, MenuIcon, SearchIcon } from "@/components/ui/Icons";
 import { useAuth } from "@/lib/auth";
 import { useLanguage, useTranslations } from "@/lib/i18n/LanguageContext";
 import type { Language } from "@/lib/i18n";
@@ -39,7 +39,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
   const { t } = useTranslations();
   const pageHeaderOverride = useResolvedPageHeader();
 
-  const navigationItems = getNavigationItems(t);
+  const navigationItems = useMemo(() => getNavigationItems(t), [t]);
   const isAuthRoute = pathname === "/login";
   const isDashboardHome = pathname === "/";
   const isSurveysRoute = pathname === "/surveys" || pathname.startsWith("/surveys/");
@@ -50,6 +50,24 @@ function AppShellFrame({ children }: { children: ReactNode }) {
     setIsUserMenuOpen(false);
     setIsMobileNavOpen(false);
   }, [pathname]);
+
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      navigationItems
+        .filter((item) => item.children?.length)
+        .map((item) => [item.href, pathname.startsWith(item.href)]),
+    ),
+  );
+
+  useEffect(() => {
+    setExpandedSections(() =>
+      Object.fromEntries(
+        navigationItems
+          .filter((item) => item.children?.length)
+          .map((item) => [item.href, pathname.startsWith(item.href)]),
+      ),
+    );
+  }, [navigationItems, pathname]);
 
   useEffect(() => {
     if (status === "unauthenticated" && !isAuthRoute) {
@@ -178,22 +196,68 @@ function AppShellFrame({ children }: { children: ReactNode }) {
           <nav className="nav-list">
             {navigationItems.map((item) => {
               const isActive = item.href === "/" ? pathname === item.href : pathname.startsWith(item.href);
+              const isExpandable = Boolean(item.children?.length);
+              const isExpanded = expandedSections[item.href] ?? false;
 
               return (
-                <Link
-                  key={item.href}
-                  className={["nav-item", isActive ? "is-active" : ""].filter(Boolean).join(" ")}
-                  href={item.href}
-                  onClick={() => setIsMobileNavOpen(false)}
-                >
-                  {item.icon}
-                  {!isSidebarCollapsed ? (
-                    <span className="nav-copy">
-                      <span className="nav-title">{item.label}</span>
-                      <span className="nav-description">{item.description}</span>
-                    </span>
+                <div key={item.href} className={["nav-section", isExpanded ? "is-expanded" : ""].filter(Boolean).join(" ")}>
+                  {isExpandable ? (
+                    <button
+                      type="button"
+                      className={["nav-item", "nav-item-button", isActive ? "is-active" : ""].filter(Boolean).join(" ")}
+                      onClick={() =>
+                        setExpandedSections((current) => ({
+                          ...current,
+                          [item.href]: !isExpanded,
+                        }))
+                      }
+                    >
+                      {item.icon}
+                      {!isSidebarCollapsed ? (
+                        <>
+                          <span className="nav-copy">
+                            <span className="nav-title">{item.label}</span>
+                            <span className="nav-description">{item.description}</span>
+                          </span>
+                          <ArrowRightIcon className={["nav-icon", "nav-expand-icon", isExpanded ? "is-expanded" : ""].join(" ")} />
+                        </>
+                      ) : null}
+                    </button>
+                  ) : (
+                    <Link
+                      className={["nav-item", isActive ? "is-active" : ""].filter(Boolean).join(" ")}
+                      href={item.href}
+                      onClick={() => setIsMobileNavOpen(false)}
+                    >
+                      {item.icon}
+                      {!isSidebarCollapsed ? (
+                        <span className="nav-copy">
+                          <span className="nav-title">{item.label}</span>
+                          <span className="nav-description">{item.description}</span>
+                        </span>
+                      ) : null}
+                    </Link>
+                  )}
+
+                  {isExpandable && !isSidebarCollapsed && isExpanded ? (
+                    <div className="nav-sublist">
+                      {item.children?.map((child) => {
+                        const isChildActive = pathname === child.href || pathname.startsWith(`${child.href}/`);
+                        return (
+                          <Link
+                            key={child.href}
+                            className={["nav-subitem", isChildActive ? "is-active" : ""].filter(Boolean).join(" ")}
+                            href={child.href}
+                            onClick={() => setIsMobileNavOpen(false)}
+                          >
+                            <span className="nav-subitem-label">{child.label}</span>
+                            {child.description ? <span className="nav-subitem-description">{child.description}</span> : null}
+                          </Link>
+                        );
+                      })}
+                    </div>
                   ) : null}
-                </Link>
+                </div>
               );
             })}
           </nav>

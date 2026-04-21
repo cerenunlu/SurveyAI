@@ -751,6 +751,7 @@ public class CallJobServiceImpl implements CallJobService {
             List<SurveyQuestionOption> options,
             UpdateCallJobSurveyResponseAnswerRequest request
     ) {
+        String originalRawText = extractOriginalRawText(answer);
         answer.setAnswerType(question.getQuestionType());
         answer.setConfidenceScore(BigDecimal.ONE);
         answer.setSelectedOption(null);
@@ -763,11 +764,20 @@ public class CallJobServiceImpl implements CallJobService {
 
         switch (question.getQuestionType()) {
             case OPEN_ENDED -> {
-                answer.setRawInputText(trimmedText);
+                answer.setRawInputText(originalRawText != null ? originalRawText : trimmedText);
                 answer.setAnswerText(trimmedText);
                 answer.setValid(trimmedText != null);
                 if (trimmedText == null) {
                     answer.setInvalidReason("Manuel olarak bos birakildi");
+                }
+            }
+            case NUMBER -> {
+                answer.setRawInputText(request.getAnswerNumber() == null ? trimmedText : request.getAnswerNumber().stripTrailingZeros().toPlainString());
+                answer.setAnswerNumber(request.getAnswerNumber());
+                answer.setAnswerText(request.getAnswerNumber() == null ? trimmedText : request.getAnswerNumber().stripTrailingZeros().toPlainString());
+                answer.setValid(request.getAnswerNumber() != null);
+                if (request.getAnswerNumber() == null) {
+                    answer.setInvalidReason("Gecerli bir sayi girilmedi");
                 }
             }
             case RATING -> {
@@ -800,15 +810,20 @@ public class CallJobServiceImpl implements CallJobService {
             }
         }
 
-        answer.setAnswerJson(buildManualAnswerJson(question, answer, matchedOptions));
+        answer.setAnswerJson(buildManualAnswerJson(question, answer, matchedOptions, request, originalRawText));
     }
 
     private String buildManualAnswerJson(
             SurveyQuestion question,
             SurveyAnswer answer,
-            List<SurveyQuestionOption> matchedOptions
+            List<SurveyQuestionOption> matchedOptions,
+            UpdateCallJobSurveyResponseAnswerRequest request,
+            String originalRawText
     ) {
         Map<String, Object> payload = new LinkedHashMap<>();
+        List<String> codedThemes = question.getQuestionType() == QuestionType.OPEN_ENDED
+                ? normalizeCodedThemes(request.getCodedThemes())
+                : List.of();
         payload.put("questionType", question.getQuestionType());
         payload.put("manualEdit", true);
         payload.put("updatedAt", OffsetDateTime.now().toString());
@@ -818,7 +833,9 @@ public class CallJobServiceImpl implements CallJobService {
         payload.put("normalizedText", answer.getAnswerText());
         payload.put("normalizedNumber", answer.getAnswerNumber());
         payload.put("rawText", answer.getRawInputText());
+        payload.put("originalRawText", originalRawText);
         payload.put("value", answer.getAnswerText());
+        payload.put("codedThemes", codedThemes);
         payload.put("invalidReason", answer.getInvalidReason());
 
         try {
@@ -826,6 +843,31 @@ public class CallJobServiceImpl implements CallJobService {
         } catch (JsonProcessingException error) {
             return "{}";
         }
+    }
+
+    private List<String> normalizeCodedThemes(List<String> codedThemes) {
+        if (codedThemes == null) {
+            return List.of();
+        }
+        return codedThemes.stream()
+                .map(this::trimToNull)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    private String extractOriginalRawText(SurveyAnswer answer) {
+        if (answer.getAnswerJson() != null && !answer.getAnswerJson().isBlank()) {
+            try {
+                JsonNode root = objectMapper.readTree(answer.getAnswerJson());
+                String originalRawText = trimToNull(root.path("originalRawText").asText(null));
+                if (originalRawText != null) {
+                    return originalRawText;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return trimToNull(answer.getRawInputText());
     }
 
     private List<SurveyQuestionOption> resolveMatchedOptions(
@@ -1013,6 +1055,7 @@ public class CallJobServiceImpl implements CallJobService {
         }
         return switch (question.getQuestionType()) {
             case OPEN_ENDED -> trimToNull(answer.getAnswerText()) == null ? "Bos" : answer.getAnswerText().trim();
+            case NUMBER -> answer.getAnswerNumber() == null ? "Bos" : answer.getAnswerNumber().stripTrailingZeros().toPlainString();
             case RATING -> answer.getAnswerNumber() == null ? "Bos" : answer.getAnswerNumber().stripTrailingZeros().toPlainString();
             case SINGLE_CHOICE, MULTI_CHOICE -> {
                 if (!selectedOptionIds.isEmpty()) {

@@ -235,6 +235,16 @@ public class SurveyResponseIngestionServiceImpl implements SurveyResponseIngesti
             case OPEN_ENDED -> {
                 surveyAnswer.setAnswerText(firstNonBlank(ingestedAnswer.normalizedText(), ingestedAnswer.rawText(), ingestedAnswer.rawValue()));
             }
+            case NUMBER -> {
+                surveyAnswer.setAnswerNumber(ingestedAnswer.normalizedNumber());
+                surveyAnswer.setAnswerText(ingestedAnswer.normalizedNumber() == null
+                        ? firstNonBlank(ingestedAnswer.normalizedText(), ingestedAnswer.rawText(), ingestedAnswer.rawValue())
+                        : ingestedAnswer.normalizedNumber().stripTrailingZeros().toPlainString());
+                if (surveyAnswer.getAnswerNumber() == null) {
+                    surveyAnswer.setValid(false);
+                    surveyAnswer.setInvalidReason(firstNonBlank(ingestedAnswer.invalidReason(), "Number answer could not be normalized"));
+                }
+            }
             case RATING -> {
                 surveyAnswer.setAnswerNumber(ingestedAnswer.normalizedNumber());
                 if (surveyAnswer.getAnswerNumber() == null) {

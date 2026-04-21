@@ -4,7 +4,7 @@ import type { SurveyBuilderQuestion, SurveyBuilderSurvey, SurveyQuestionOption, 
 import { isMatrixQuestion } from "@/lib/survey-builder";
 
 type SurveyStatusDto = "DRAFT" | "PUBLISHED" | "ARCHIVED";
-type QuestionTypeDto = "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING";
+type QuestionTypeDto = "SINGLE_CHOICE" | "MULTI_CHOICE" | "OPEN_ENDED" | "RATING" | "NUMBER";
 
 type ApiErrorResponse = {
   code?: string;
@@ -238,7 +238,7 @@ async function syncQuestions(
     const existingQuestion = existingById.get(localQuestion.id);
     const questionRequest = buildQuestionRequest(localQuestion, currentOrder);
 
-    if (existingQuestion && questionRequest.questionType === "OPEN_ENDED" && hasActiveOptions(existingQuestion.options)) {
+    if (existingQuestion && !isChoiceQuestionType(questionRequest.questionType) && hasActiveOptions(existingQuestion.options)) {
       for (const option of existingQuestion.options) {
         await deleteOption(companyId, surveyId, existingQuestion.id, option.id);
       }
@@ -580,6 +580,8 @@ function mapApiQuestionTypeToBuilder(questionType: QuestionTypeDto, settings: Bu
       return settings.ratingScale === 5 ? "rating_1_5" : "rating_1_10";
     case "SINGLE_CHOICE":
       return "single_choice";
+    case "NUMBER":
+      return "number";
     case "OPEN_ENDED":
     default:
       return "short_text";
@@ -602,7 +604,14 @@ function mapBuilderQuestionTypeToApi(type: SurveyQuestionType): QuestionTypeDto 
   if (type === "rating_1_5" || type === "rating_1_10") {
     return "RATING";
   }
+  if (type === "number") {
+    return "NUMBER";
+  }
   return "OPEN_ENDED";
+}
+
+function isChoiceQuestionType(questionType: QuestionTypeDto): boolean {
+  return questionType === "SINGLE_CHOICE" || questionType === "MULTI_CHOICE";
 }
 
 function mapSurveyStatusToBuilder(status: SurveyStatusDto): SurveyBuilderSurvey["status"] {

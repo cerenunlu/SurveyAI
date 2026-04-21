@@ -333,6 +333,14 @@ public class ImportedSurveyOperationServiceImpl implements ImportedSurveyOperati
         List<String> normalizedValues = List.of();
         if (column.question().getQuestionType() == QuestionType.OPEN_ENDED) {
             answer.setAnswerText(rawValue);
+        } else if (column.question().getQuestionType() == QuestionType.NUMBER) {
+            normalizedNumber = parseDecimal(rawValue);
+            answer.setAnswerNumber(normalizedNumber);
+            answer.setAnswerText(normalizedNumber == null ? rawValue : normalizedNumber.stripTrailingZeros().toPlainString());
+            if (normalizedNumber == null) {
+                answer.setValid(false);
+                answer.setInvalidReason("Sayisal deger sayiya cevrilemedi");
+            }
         } else if (column.question().getQuestionType() == QuestionType.RATING) {
             normalizedNumber = parseDecimal(rawValue);
             answer.setAnswerNumber(normalizedNumber);

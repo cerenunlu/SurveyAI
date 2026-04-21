@@ -1,0 +1,313 @@
+﻿<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<title>SurveyAI SaaS Hazirlik Degerlendirmesi</title>
+<style>
+  @page { size: A4; margin: 18mm 14mm 18mm 14mm; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1f2937; line-height: 1.45; font-size: 11pt; }
+  h1 { font-size: 22pt; margin: 0 0 14px 0; color: #111827; }
+  h2 { font-size: 15pt; margin: 22px 0 8px 0; color: #0f172a; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
+  h3 { font-size: 12pt; margin: 16px 0 6px 0; color: #111827; }
+  p { margin: 0 0 8px 0; }
+  ul { margin: 0 0 10px 18px; padding: 0; }
+  li { margin: 0 0 4px 0; }
+  code { font-family: Consolas, 'Courier New', monospace; background: #f3f4f6; padding: 1px 4px; border-radius: 4px; font-size: 10pt; }
+  .code-block { background: #f8fafc; border: 1px solid #e5e7eb; padding: 10px; border-radius: 6px; white-space: pre-wrap; }
+  .file-ref { color: #374151; font-style: italic; }
+</style>
+</head>
+<body>
+<h1>SurveyAI SaaS Hazirlik Degerlendirmesi</h1>
+<h2>Kapsam</h2>
+<p>Bu dokuman, <code>SurveyAI</code> projesinin mevcut kod tabani incelenerek hazirlanmistir. Degerlendirme; SaaS urunlesme icin kritik olan alanlari kapsar:</p>
+<ul>
+<li>kimlik ve yetki yonetimi</li>
+<li>tenant/workspace yonetimi</li>
+<li>self-service onboarding</li>
+<li>abonelik, kullanim ve faturalama</li>
+<li>guvenlik ve uyumluluk</li>
+<li>operasyon, gozlemlenebilirlik ve release surecleri</li>
+<li>test, kalite ve dokumantasyon olgunlugu</li>
+</ul>
+<h2>Yonetici Ozeti</h2>
+<p>Proje bugun itibariyla &quot;tek tenant veya yakin destekle yonetilen urun prototipi / internal beta&quot; seviyesine daha yakin. Cekirdek urun mantigi guclu: anket yonetimi, operasyon/call-job akisleri, provider webhook entegrasyonlari, analytics ve company-scoped veri modeli mevcut. Ancak bunu dogrudan satilabilir bir SaaS urune donusturmek icin kritik eksikler var.</p>
+<p>En buyuk bosluklar:</p>
+<ul>
+<li>self-service tenant olusturma ve kullanici yasam dongusu yok</li>
+<li>rol bazli yetkilendirme fiilen uygulanmiyor</li>
+<li>faturalama, plan, kullanim limiti ve tahsilat katmani yok</li>
+<li>production-grade secret management ve guvenlik varsayimlari hazir degil</li>
+<li>gozlemlenebilirlik, audit trail, CI/CD ve operasyonel guardrail&#39;lar eksik</li>
+<li>frontend ve dokumantasyon halen seeded/demo kurguya bagimli</li>
+</ul>
+<p>Sonuc: Bu proje teknik olarak urunlesebilir, ancak bugun haliyle &quot;SaaS&#39;a cikmaya hazir&quot; degil. Once platformizasyon ve guvenlik/operasyon katmanlari tamamlanmali.</p>
+<h2>Guclu Taraflar</h2>
+<ul>
+<li>Backend tarafinda company-scoped veri modeli mevcut. <code>company</code>, <code>app_user</code>, <code>survey</code>, <code>operation</code>, <code>call_job</code>, <code>survey_response</code> gibi cekirdek tablolar dogru yone gidiyor. Bkz. <span class="file-ref">V2__create_company_and_app_user.sql</span>, <span class="file-ref">V5__create_call_tables.sql</span></li>
+<li>Request seviyesinde company izolasyonu icin interceptor tabanli kontrol var. Bkz. <span class="file-ref">AuthInterceptor.java</span></li>
+<li>Session tabanli auth ve session tablosu mevcut. Bkz. <span class="file-ref">AuthService.java</span>, <span class="file-ref">V10__create_auth_session.sql</span></li>
+<li>Survey import, operation execution, webhook ingestion ve response ingestion taraflari urun cekirdegi olarak anlamli bir derinlige sahip.</li>
+<li>Test suiti tamamen bos degil; domain/service seviyesinde anlamli sayida test var. <code>mvn test</code> calistirildiginda cok sayida servis testi geciyor, ancak WebMvc tarafinda kirmizilar bulunuyor.</li>
+</ul>
+<h2>Kritik Bosluklar</h2>
+<h3>1. Self-service SaaS onboarding yok</h3>
+<p>Mevcut sistemde yeni bir tenant/company olusturma, ilk owner kullanicisini acma, email dogrulama veya davet akisi bulunmuyor. Acik bir <code>CompanyController</code>, signup, invitation veya workspace provisioning akisi yok. Auth sadece login/me/logout sunuyor. Bkz. <span class="file-ref">AuthController.java</span></p>
+<p>Etkisi:</p>
+<ul>
+<li>her yeni musteri icin manual provisioning gerekir</li>
+<li>urun self-serve satilamaz</li>
+<li>sales-led onboarding disinda buyume zorlasir</li>
+</ul>
+<p>Gerekli isler:</p>
+<ul>
+<li>tenant/workspace olusturma API ve UI</li>
+<li>ilk owner olusturma</li>
+<li>invitation kabul akisi</li>
+<li>sifre belirleme / reset</li>
+<li>email verification</li>
+<li>trial baslatma akisi</li>
+</ul>
+<h3>2. Rol bazli yetkilendirme tanimli ama uygulanmiyor</h3>
+<p><code>OWNER</code>, <code>ADMIN</code>, <code>ANALYST</code>, <code>OPERATOR</code>, <code>MEMBER</code> rolleri enum olarak var; fakat controller/service seviyesinde bu rollere gore bir authorization enforcement gorunmuyor. Spring Security, <code>@PreAuthorize</code>, <code>SecurityFilterChain</code> veya benzeri bir katman da yok. Bkz. <span class="file-ref">AppUserRole.java</span></p>
+<p>Etkisi:</p>
+<ul>
+<li>tenant icindeki tum authenticated kullanicilarin ayni guce sahip olma riski var</li>
+<li>enterprise musteri beklentisi karsilanmaz</li>
+<li>veri degisikligi, operasyon baslatma, survey publish gibi kritik aksiyonlar korunmaz</li>
+</ul>
+<p>Gerekli isler:</p>
+<ul>
+<li>endpoint bazli RBAC matrisi</li>
+<li>UI permission gating</li>
+<li>auditlenebilir authorization karar mekanizmasi</li>
+<li>tercihen Spring Security tabanli policy enforcement</li>
+</ul>
+<h3>3. Faturalama, plan ve kullanim yonetimi yok</h3>
+<p>Kod tabaninda subscription, billing, usage meter, quota, invoice, payment webhook veya plan enforcement katmani bulunmuyor.</p>
+<p>Etkisi:</p>
+<ul>
+<li>gelir modeli teknik olarak uygulanamaz</li>
+<li>kullanima dayali maliyetler kontrolsuz kalir</li>
+<li>trial, soft limit, hard limit, overage gibi SaaS mekanikleri yoktur</li>
+</ul>
+<p>Gerekli isler:</p>
+<ul>
+<li>plan modeli: trial / starter / growth / enterprise</li>
+<li>kullanim metrikleri: call sayisi, dakika, aktif operation, storage, export</li>
+<li>billing provider entegrasyonu</li>
+<li>webhook bazli subscription state senkronizasyonu</li>
+<li>payment failure / grace period / suspension akislari</li>
+</ul>
+<h3>4. Guvenlik varsayimlari production icin uygun degil</h3>
+<p>Asagidaki noktalar kritik:</p>
+<ul>
+<li>gercek API key ve secret benzeri degerler <code>application.yml</code> icinde default olarak duruyor. Bkz. <span class="file-ref">application.yml</span></li>
+<li>auth cookie <code>secure(false)</code> olarak set ediliyor. Bkz. <span class="file-ref">AuthCookieService.java</span></li>
+<li>seeded kullanici ve sifre uygulama baslangicinda otomatik yaratiliyor. Bkz. <span class="file-ref">DataInitializer.java</span></li>
+<li>login ekrani varsayilan test credentials ile geliyor. Bkz. <span class="file-ref">frontend/app/login/page.tsx</span></li>
+<li>frontend tarafinda sabit company id kullanimi var. Bkz. <span class="file-ref">frontend/lib/company.ts</span></li>
+</ul>
+<p>Etkisi:</p>
+<ul>
+<li>secret leakage riski</li>
+<li>prod ortaminda yanlis konfigurasyonla canliya cikma riski</li>
+<li>tenant baglaminin UI tarafinda dogru tasinmasi zayif</li>
+</ul>
+<p>Gerekli isler:</p>
+<ul>
+<li>tum secret&#39;larin vault / env / secret manager&#39;a alinmasi</li>
+<li>secure cookie + HTTPS zorunlulugu</li>
+<li>seed data&#39;nin sadece local/dev profile ile sinirlanmasi</li>
+<li>frontend&#39;de hardcoded company baglaminin kaldirilmasi</li>
+<li>auth hardening: login rate limit, brute-force lockout, session revocation, device/session listesi</li>
+</ul>
+<h3>5. Multi-tenant yasam dongusu eksik</h3>
+<p>Veri modeli company-scoped olsa da bir SaaS icin gereken tenant lifecycle yonetimi eksik:</p>
+<ul>
+<li>tenant create/suspend/reactivate/delete</li>
+<li>tenant-level config paneli</li>
+<li>plan bilgisi</li>
+<li>data retention policy</li>
+<li>tenant export / offboarding</li>
+</ul>
+<p><code>CompanyStatus</code> enum mevcut ama bunu yoneten bir admin/business akisi gorunmuyor. Bkz. <span class="file-ref">CompanyStatus.java</span></p>
+<h3>6. Admin/backoffice katmani yok</h3>
+<p>SaaS operasyonu icin urun disi ama isletme icin zorunlu olan panel/ara yuzler yok:</p>
+<ul>
+<li>tenant listesi</li>
+<li>fatura ve plan gorunumu</li>
+<li>destek amacli impersonation veya support session</li>
+<li>operasyonel incident ekranlari</li>
+<li>provider hata takip ekranlari</li>
+<li>kullanici, invitation ve audit log yonetimi</li>
+</ul>
+<p>Bugun urun UI daha cok tenant-icinde operasyon yapmaya odakli.</p>
+<h3>7. Audit log ve uyumluluk eksik</h3>
+<p>CRUD ve operasyon akisleri var; ancak kim neyi ne zaman degistirdi, hangi survey publish edildi, hangi kullanici hangi response&#39;u manuel editledi gibi SaaS ve enterprise icin cok kritik audit trail katmani gorunmuyor.</p>
+<p>Ozellikle kritik aksiyonlar:</p>
+<ul>
+<li>survey publish/unpublish</li>
+<li>operation start/pause/resume</li>
+<li>call job retry/redial</li>
+<li>survey response manuel guncelleme</li>
+<li>kullanici yetki degisikligi</li>
+<li>billing state degisikligi</li>
+</ul>
+<p>Gerekli isler:</p>
+<ul>
+<li>immutable audit event tablosu</li>
+<li>actor, tenant, action, resource, diff metadata</li>
+<li>admin/export ekranlari</li>
+</ul>
+<h2>Yuksek Oncelikli Platform Bosluklari</h2>
+<h3>8. CI/CD ve release standardizasyonu eksik</h3>
+<p>Repo icinde workflow, pipeline, deploy manifestleri veya ortam ayrimi icin yeterli release otomasyonu gorunmuyor. Dockerfile ve <code>docker-compose.yml</code> var ama bu local deployment seviyesinde. Bkz. <span class="file-ref">docker-compose.yml</span>, <span class="file-ref">Dockerfile</span></p>
+<p>Gerekli isler:</p>
+<ul>
+<li>PR pipeline: lint, unit test, integration test, build</li>
+<li>environment promotion: dev / staging / prod</li>
+<li>database migration guardrail</li>
+<li>rollback stratejisi</li>
+<li>image versioning ve release tagging</li>
+</ul>
+<h3>9. Gozlemlenebilirlik production seviyesi degil</h3>
+<p>Loglar var ama metrik, tracing, alerting ve health-governance katmani gorunmuyor. <code>actuator</code>, Prometheus, OpenTelemetry, Sentry vb. bulunmuyor.</p>
+<p>Etkisi:</p>
+<ul>
+<li>canli problem oldugunda MTTR yuksek olur</li>
+<li>provider kaynakli hata ve timeout&#39;lar sistematik izlenemez</li>
+<li>tenant bazli SLA takibi yapilamaz</li>
+</ul>
+<p>Gerekli isler:</p>
+<ul>
+<li>health/readiness/liveness endpointleri</li>
+<li>metrics: request latency, error rate, webhook lag, dispatch success, provider failure rate</li>
+<li>tracing: request -&gt; operation -&gt; call_job -&gt; attempt -&gt; webhook zinciri</li>
+<li>alerting: payment failure, webhook failure spike, queue backlog, ingestion error</li>
+</ul>
+<h3>10. Queue/worker mimarisi sinirli gorunuyor</h3>
+<p>Domain tarafinda job modeli var ama kurumsal SaaS olgunlugunda beklenen ayrik queue/worker altyapisi gorunmuyor. Uygulama ici schedule/dispatch mantigi var; buyuk hacimde tenant trafigi geldiginde yatay olceklenebilir worker tasarimi gerekir.</p>
+<p>Gerekli isler:</p>
+<ul>
+<li>gercek queue altyapisi</li>
+<li>worker ownership/locking strategy</li>
+<li>retry ve dead-letter governance</li>
+<li>tenant-aware rate control</li>
+</ul>
+<h2>Orta Oncelikli Urun Bosluklari</h2>
+<h3>11. Dokumantasyon demo/seed bagimli</h3>
+<p>README neredeyse bos. Bkz. <span class="file-ref">README.md</span></p>
+<p>Mevcut Postman/OpenAPI dokumanlari seeded company id ve seeded veriye referans veriyor. Bu, urunun halen demo moduna yakin oldugunu gosteriyor. Bkz. <span class="file-ref">docs/openapi-postman-tests.yaml</span></p>
+<p>Gerekli isler:</p>
+<ul>
+<li>ger&#195;&#167;ek onboarding dokumani</li>
+<li>env var referansi</li>
+<li>tenant admin guide</li>
+<li>support runbook</li>
+<li>provider setup guide</li>
+<li>security and compliance guide</li>
+</ul>
+<h3>12. Frontend tenant-aware ve production-ready degil</h3>
+<p>Frontend auth var ama halen demo bagimliliklari mevcut:</p>
+<ul>
+<li>hardcoded company id</li>
+<li>varsayilan login bilgileri</li>
+<li>seeded/dummy kurgulara yakin copy ve state</li>
+</ul>
+<p>Bu, cok tenantli ve self-service SaaS deneyimini zayiflatiyor.</p>
+<p>Gerekli isler:</p>
+<ul>
+<li>aktif workspace&#39;i auth context&#39;ten tam dogru tasima</li>
+<li>multi-workspace support gerekiyorsa workspace switch</li>
+<li>invitation / billing / settings / team management sayfalari</li>
+<li>empty state&#39;lerin demo dilinden cikarilmasi</li>
+</ul>
+<h3>13. Kullanici ve ekip yonetimi eksik</h3>
+<p>Bir SaaS urunde asagidakiler beklenir:</p>
+<ul>
+<li>ekip uyeleri listesi</li>
+<li>davet etme</li>
+<li>rol degistirme</li>
+<li>kullanici devre disi birakma</li>
+<li>son giris / aktif sessionlar</li>
+</ul>
+<p>Veri modeli bunu destekleyebilecek temeli atmis, ama urun akisi yok.</p>
+<h3>14. Uyumluluk ve veri yonetimi eksik</h3>
+<p>Ozellikle sesli anket ve transcript toplandigi icin uyumluluk daha da kritik:</p>
+<ul>
+<li>KVKK/GDPR aydinlatma ve consent akislari</li>
+<li>data retention ve deletion policy</li>
+<li>transcript ve raw payload saklama politikasi</li>
+<li>PII minimization / masking</li>
+<li>DPA / subprocessor / audit readiness</li>
+</ul>
+<p>Kodda transcript ve raw payload alanlari var, ama governance tarafi gorunmuyor. Bkz. <span class="file-ref">V5__create_call_tables.sql</span></p>
+<h2>Kalite ve Release Riskleri</h2>
+<h3>15. Testler tamamen yesil degil</h3>
+<p><code>mvn test -q</code> calistirildiginda tum suite yesil donmuyor.</p>
+<p>Gozlenen problemler:</p>
+<ul>
+<li><code>AuthControllerWebMvcTest</code> Java 25 + Byte Buddy/Mockito uyumsuzlugu nedeniyle context kuramiyor</li>
+<li><code>SurveyCorsIntegrationTest</code> eksik mock bean (<code>ImportedSurveyOperationService</code>) nedeniyle context kuramiyor</li>
+</ul>
+<p>Bu durum release confidence&#39;i dusurur; SaaS&#39;a cikista &quot;green main branch&quot; kritik gerekliliktir.</p>
+<h3>16. Local/prod ayrimi daha net olmali</h3>
+<p><code>application-local.yml</code> ve <code>application-dev.yml</code> minimal; ancak prod profile, secret strategy, log policy, cookie policy, provider mode guardrail ve staging davranislari daha net ayrilmali. Bkz. <span class="file-ref">application-local.yml</span>, <span class="file-ref">application-dev.yml</span></p>
+<h3>17. Maliyet kontrol mekanizmalari eksik</h3>
+<p>Bu urun call provider ve AI provider kullaniyor. SaaS&#39;ta en kritik teknik konulardan biri tenant bazli maliyet izolasyonudur.</p>
+<p>Eksik gorunen alanlar:</p>
+<ul>
+<li>tenant bazli spending limit</li>
+<li>provider bazli budget cap</li>
+<li>daily/monthly usage cap</li>
+<li>anomaly detection</li>
+<li>auto-pause on excessive spend</li>
+</ul>
+<h2>Onerilen Yol Haritasi</h2>
+<h3>Faz 1: SaaS Temeli</h3>
+<ul>
+<li>secret cleanup ve config hardening</li>
+<li>seed/demo bagimliliklarini ayirma</li>
+<li>RBAC implementasyonu</li>
+<li>tenant/company management API</li>
+<li>team/invitation/password reset akislari</li>
+<li>green CI pipeline</li>
+</ul>
+<h3>Faz 2: Satin Alinabilir Urun</h3>
+<ul>
+<li>billing/subscription altyapisi</li>
+<li>usage metering ve quota enforcement</li>
+<li>tenant settings ve workspace admin UI</li>
+<li>audit log</li>
+<li>production observability</li>
+</ul>
+<h3>Faz 3: Operasyonel Olgunluk</h3>
+<ul>
+<li>queue/worker olcekleme</li>
+<li>support tooling</li>
+<li>compliance ve retention politikasi</li>
+<li>SSO/SAML/enterprise readiness</li>
+<li>advanced analytics export ve tenant reporting</li>
+</ul>
+<h2>Onerilen Oncelik Sirasi</h2>
+<p>En kritik ve hemen ele alinmasi gerekenler:</p>
+<p><strong>1.</strong> secret ve auth hardening</p>
+<p><strong>2.</strong> self-service onboarding + tenant lifecycle</p>
+<p><strong>3.</strong> RBAC ve kullanici yonetimi</p>
+<p><strong>4.</strong> billing/usage/quota katmani</p>
+<p><strong>5.</strong> CI/CD + test suite stabilizasyonu</p>
+<p><strong>6.</strong> observability + audit log</p>
+<h2>Son Hukum</h2>
+<p>SurveyAI&#39;nin cekirdek urun mantigi umut verici ve dogru yonde. Ozellikle anket, operasyon, cagri isleme ve response ingestion taraflari &quot;SaaS olacak urunun cekirdegi&quot; olarak degerli. Ancak bugunku haliyle bu proje daha cok:</p>
+<ul>
+<li>demo / pilot</li>
+<li>tek tenantli veya manuel onboardingli beta</li>
+<li>destekle isletilen erken asama urun</li>
+</ul>
+<p>sinifinda.</p>
+<p>Ticari SaaS&#39;a cikis icin gerekli ana is, yeni ozellik eklemekten cok &quot;platform katmani&quot; insa etmek: authz, tenant lifecycle, billing, audit, observability, ops ve guvenlik.</p>
+<h2>Inceleme Notlari</h2>
+<p>Bu degerlendirme repo icindeki mevcut kod ve konfigurasyon uzerinden yapilmistir. Ozellikle canli altyapi, harici CI sistemi veya repo disi operasyon runbook&#39;lari varsa burada gorunmeyen ek olgunluk unsurlari olabilir.</p>
+</body>
+</html>

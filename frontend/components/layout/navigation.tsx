@@ -1,4 +1,4 @@
-import { AnalyticsIcon, CallingOpsIcon, OperationIcon, ContactIcon, DashboardIcon, SurveyIcon } from "@/components/ui/Icons";
+import { AnalyticsIcon, OperationIcon, DashboardIcon, SurveyIcon } from "@/components/ui/Icons";
 import type { NavItem } from "@/lib/types";
 
 type Translate = (path: string) => string;
@@ -16,30 +16,42 @@ export function getNavigationItems(t: Translate): NavItem[] {
       label: t("shell.navigation.surveys.label"),
       description: t("shell.navigation.surveys.description"),
       icon: <SurveyIcon className="nav-icon" />,
+      children: [
+        {
+          href: "/surveys",
+          label: "Anketler Dashboard",
+          description: "Tum anketleri gor",
+        },
+        {
+          href: "/surveys/new",
+          label: "Yeni Anket Olustur",
+          description: "Sifirdan yeni anket kur",
+        },
+      ],
     },
     {
       href: "/operations",
       label: t("shell.navigation.operations.label"),
       description: t("shell.navigation.operations.description"),
       icon: <OperationIcon className="nav-icon" />,
-    },
-    {
-      href: "/contacts",
-      label: t("shell.navigation.contacts.label"),
-      description: t("shell.navigation.contacts.description"),
-      icon: <ContactIcon className="nav-icon" />,
+      children: [
+        {
+          href: "/operations",
+          label: "Operasyon Dashboard",
+          description: "Tum operasyonlari gor",
+        },
+        {
+          href: "/operations/new",
+          label: "Yeni Operasyon",
+          description: "Yeni arama akisi baslat",
+        },
+      ],
     },
     {
       href: "/analytics",
       label: t("shell.navigation.analytics.label"),
       description: t("shell.navigation.analytics.description"),
       icon: <AnalyticsIcon className="nav-icon" />,
-    },
-    {
-      href: "/calling-ops",
-      label: t("shell.navigation.callingOps.label"),
-      description: t("shell.navigation.callingOps.description"),
-      icon: <CallingOpsIcon className="nav-icon" />,
     },
   ];
 }

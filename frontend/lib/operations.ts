@@ -223,9 +223,12 @@ type OperationAnalyticsQuestionSummaryApiResponse = {
   dropOffRate: number;
   averageRating: number | null;
   emptyStateMessage: string | null;
+  reviewCount?: number;
+  reviewGroupOptions?: string[];
   breakdown: OperationAnalyticsBreakdownItemApiResponse[];
   specialAnswerBreakdown: OperationAnalyticsBreakdownItemApiResponse[];
   sampleResponses: Array<OperationAnalyticsSampleResponseApiResponse | string>;
+  rawResponses?: Array<OperationAnalyticsSampleResponseApiResponse | string>;
 };
 
 type OperationAnalyticsSampleResponseApiResponse = {
@@ -233,6 +236,9 @@ type OperationAnalyticsSampleResponseApiResponse = {
   respondentName: string;
   capturedAt: string | null;
   responseText: string;
+  rawResponseText?: string | null;
+  codedThemes?: string[];
+  reviewReason?: string | null;
 };
 
 type OperationAnalyticsQuestionGroupRowApiResponse = {
@@ -419,6 +425,7 @@ export async function updateOperationCallJobSurveyResponse(
     answerNumber?: number | null;
     selectedOptionId?: string | null;
     selectedOptionIds?: string[];
+    codedThemes?: string[];
   }>,
   companyId?: string,
 ): Promise<CallJobDetail> {
@@ -488,6 +495,34 @@ export async function fetchOperationAnalytics(
     });
   }
 
+  const mapSampleResponse = (
+    questionId: string,
+    sample: OperationAnalyticsSampleResponseApiResponse | string,
+    sampleIndex: number,
+  ): OperationAnalyticsSampleResponse => {
+    if (typeof sample === "string") {
+      return {
+        callJobId: `legacy-${questionId}-${sampleIndex}`,
+        respondentName: "Katilimci",
+        capturedAt: null,
+        responseText: sample,
+        rawResponseText: sample,
+        codedThemes: [],
+        reviewReason: null,
+      };
+    }
+
+    return {
+      callJobId: sample.callJobId,
+      respondentName: sample.respondentName,
+      capturedAt: sample.capturedAt ? formatDateTime(sample.capturedAt) : null,
+      responseText: sample.responseText ?? "",
+      rawResponseText: sample.rawResponseText ?? sample.responseText ?? "",
+      codedThemes: sample.codedThemes ?? [],
+      reviewReason: sample.reviewReason ?? null,
+    };
+  };
+
   return {
     operationId: response.operationId,
     totalContacts: response.totalContacts,
@@ -544,25 +579,12 @@ export async function fetchOperationAnalytics(
       dropOffRate: item.dropOffRate ?? 0,
       averageRating: item.averageRating,
       emptyStateMessage: item.emptyStateMessage,
+      reviewCount: item.reviewCount ?? 0,
+      reviewGroupOptions: item.reviewGroupOptions ?? [],
       breakdown: (item.breakdown ?? []).map(mapAnalyticsBreakdown),
       specialAnswerBreakdown: (item.specialAnswerBreakdown ?? []).map(mapAnalyticsBreakdown),
-      sampleResponses: (item.sampleResponses ?? []).map((sample, sampleIndex): OperationAnalyticsSampleResponse => {
-        if (typeof sample === "string") {
-          return {
-            callJobId: `legacy-${item.questionId}-${sampleIndex}`,
-            respondentName: "Katilimci",
-            capturedAt: null,
-            responseText: sample,
-          };
-        }
-
-        return {
-          callJobId: sample.callJobId,
-          respondentName: sample.respondentName,
-          capturedAt: sample.capturedAt ? formatDateTime(sample.capturedAt) : null,
-          responseText: sample.responseText ?? "",
-        };
-      }),
+      sampleResponses: (item.sampleResponses ?? []).map((sample, sampleIndex) => mapSampleResponse(item.questionId, sample, sampleIndex)),
+      rawResponses: (item.rawResponses ?? []).map((sample, sampleIndex) => mapSampleResponse(item.questionId, sample, sampleIndex)),
     })),
     questionGroups: (response.questionGroups ?? []).map((item): OperationAnalyticsQuestionGroupSummary => ({
       groupCode: item.groupCode,

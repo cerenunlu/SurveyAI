@@ -1,6 +1,9 @@
 import { Operation, OperationAnalytics, OperationAnalyticsQuestionSummary } from "@/lib/types";
 
-type OperationLifecycleStatus = Extract<Operation["status"], "Draft" | "Ready" | "Running" | "Paused" | "Completed" | "Failed">;
+type OperationLifecycleStatus = Extract<
+  Operation["status"],
+  "Draft" | "Ready" | "Scheduled" | "Running" | "Paused" | "Completed" | "Failed" | "Cancelled"
+>;
 
 export const OPERATION_STATUS_BADGE_CONFIG: Record<
   OperationLifecycleStatus,
@@ -8,10 +11,12 @@ export const OPERATION_STATUS_BADGE_CONFIG: Record<
 > = {
   Draft: { tone: "neutral", label: "Taslak" },
   Ready: { tone: "ready", label: "Hazir" },
+  Scheduled: { tone: "ready", label: "Planlandi" },
   Running: { tone: "live", label: "Yurutuluyor" },
   Paused: { tone: "warning", label: "Duraklatildi" },
   Completed: { tone: "success", label: "Tamamlandi" },
   Failed: { tone: "danger", label: "Basarisiz" },
+  Cancelled: { tone: "warning", label: "Iptal edildi" },
 };
 
 export function getOperationStatusConfig(operation: Operation | null, contactCount: number) {
@@ -38,6 +43,14 @@ export function getOperationStatusConfig(operation: Operation | null, contactCou
         summary: "Tum temel onkosullar tamam. Bu sayfa artik operasyonun baslatma ve ilk izleme yuzeyi.",
         nextStepTitle: "Akisi baslat",
         nextStepText: "Akis baslatildiginda cagri isleri hazirlanir ve cevap analitigi bu sayfada canli guncellenir.",
+      };
+    case "Scheduled":
+      return {
+        badge,
+        title: "Operasyon yeniden baslatilmaya hazir",
+        summary: "Gecmis cagri verileri temizlendi. Kisi listesi korunarak akis sifirlandi.",
+        nextStepTitle: "Akisi yeniden baslat",
+        nextStepText: "Baslattiginizda kisiler icin yeni cagri isleri olusturulur ve operasyon bastan ilerler.",
       };
     case "Running":
       return {
@@ -71,6 +84,22 @@ export function getOperationStatusConfig(operation: Operation | null, contactCou
         nextStepTitle: "Guvenli inceleme",
         nextStepText: "Sorunlu isleri acin, toplanan kismi veriyi inceleyin ve gerekirse operasyonu yeniden hazirlayin.",
       };
+    case "Cancelled":
+      return {
+        badge,
+        title: "Operasyon iptal edildi",
+        summary: "Akis manuel olarak sonlandirildi. Yeni cagrilar bu durumdayken baslamaz.",
+        nextStepTitle: "Durumu gozden gecir",
+        nextStepText: "Gerekirse yeni bir operasyon acin veya operasyonu yeniden planlayin.",
+      };
+    default:
+      return {
+        badge: OPERATION_STATUS_BADGE_CONFIG.Draft,
+        title: "Durum bilgisi guncelleniyor",
+        summary: "Operasyon durumu okunuyor.",
+        nextStepTitle: "Bekleyin",
+        nextStepText: "Durum bilgisi yuklenirken bu kart guvenli varsayilan icerikle gosterilir.",
+      };
   }
 }
 
@@ -82,6 +111,7 @@ export function getAnalyticsEmptyState(status: Operation["status"], contactCount
         description: "Analitik paneller, yurutme baslayip gorusme yanitlari gelmeye basladiginda burada gorunur.",
       };
     case "Ready":
+    case "Scheduled":
       return {
         title: "Yurutme oncesi gorunum",
         description: `${contactCount} kisi icin operasyon hazir. Cevap grafikleri akis basladiktan sonra dolar.`,
@@ -95,6 +125,11 @@ export function getAnalyticsEmptyState(status: Operation["status"], contactCount
       return {
         title: "Kismi veri yok",
         description: "Bu hata durumunda henuz gosterilecek cevap verisi birikmedi.",
+      };
+    case "Cancelled":
+      return {
+        title: "Operasyon iptal edildi",
+        description: "Iptal edilen operasyonlarda yeni veri akisi olmaz.",
       };
     case "Paused":
       return {
@@ -120,6 +155,15 @@ export function getPrimaryAction(operation: Operation | null, isStarting: boolea
       label: isStarting ? "Akis baslatiliyor..." : "Akisi baslat",
       disabled: isStarting,
       hint: "Operasyon hazir. Akisi bu aksiyondan baslatabilirsiniz.",
+      intent: "start" as const,
+    };
+  }
+
+  if (operation.status === "Scheduled") {
+    return {
+      label: isStarting ? "Akis baslatiliyor..." : "Akisi yeniden baslat",
+      disabled: isStarting,
+      hint: "Operasyon sifirlandi. Kisi listesi korunarak akisi yeniden baslatabilirsiniz.",
       intent: "start" as const,
     };
   }
@@ -155,7 +199,7 @@ export function getPrimaryAction(operation: Operation | null, isStarting: boolea
   if (operation.status === "Completed") {
     return {
       label: "Akis tamamlandi",
-      disabled: true,
+        disabled: true,
       hint: "Tamamlanan operasyonlarda baslatma aksiyonu yeniden acilmaz.",
       intent: "start" as const,
     };
@@ -166,6 +210,15 @@ export function getPrimaryAction(operation: Operation | null, isStarting: boolea
       label: "Akis durdu",
       disabled: true,
       hint: "Operasyon hata ile durdu. Detaylari inceleyip yeniden hazirlamaniz gerekir.",
+      intent: "start" as const,
+    };
+  }
+
+  if (operation.status === "Cancelled") {
+    return {
+      label: "Operasyon iptal edildi",
+      disabled: true,
+      hint: "Iptal edilen operasyon bu ekrandan yeniden baslatilamaz.",
       intent: "start" as const,
     };
   }
@@ -286,6 +339,11 @@ export function getQuestionChartPresentation(summary: OperationAnalyticsQuestion
         eyebrow: "Puan dagilimi",
         empty: summary.emptyStateMessage ?? "Puan verisi geldikce dagilim olusur.",
       };
+    case "NUMBER":
+      return {
+        eyebrow: "Sayisal dagilim",
+        empty: summary.emptyStateMessage ?? "Sayisal veriler geldikce dagilim olusur.",
+      };
     case "BINARY":
       return {
         eyebrow: "Evet / Hayir dagilimi",
@@ -298,8 +356,8 @@ export function getQuestionChartPresentation(summary: OperationAnalyticsQuestion
       };
     case "OPEN_ENDED":
       return {
-        eyebrow: "Acik uclu sinyal",
-        empty: summary.emptyStateMessage ?? "Acik uclu yanit sinyali henuz olusmadi.",
+        eyebrow: "Acik uclu yanitlar",
+        empty: summary.emptyStateMessage ?? "Bu soru icin henuz gosterilecek dagilim yok.",
       };
     case "CHOICE":
     default:

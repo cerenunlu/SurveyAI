@@ -11,6 +11,7 @@ public class UpdateCallJobSurveyResponseAnswerRequest {
     private BigDecimal answerNumber;
     private UUID selectedOptionId;
     private List<UUID> selectedOptionIds;
+    private List<String> codedThemes;
 
     public UUID getQuestionId() {
         return questionId;
@@ -50,5 +51,13 @@ public class UpdateCallJobSurveyResponseAnswerRequest {
 
     public void setSelectedOptionIds(List<UUID> selectedOptionIds) {
         this.selectedOptionIds = selectedOptionIds;
+    }
+
+    public List<String> getCodedThemes() {
+        return codedThemes;
+    }
+
+    public void setCodedThemes(List<String> codedThemes) {
+        this.codedThemes = codedThemes;
     }
 }

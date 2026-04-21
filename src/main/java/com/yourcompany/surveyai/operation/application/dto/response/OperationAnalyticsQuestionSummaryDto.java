@@ -18,8 +18,11 @@ public record OperationAnalyticsQuestionSummaryDto(
         double dropOffRate,
         Double averageRating,
         String emptyStateMessage,
+        long reviewCount,
+        List<String> reviewGroupOptions,
         List<OperationAnalyticsBreakdownItemDto> breakdown,
         List<OperationAnalyticsBreakdownItemDto> specialAnswerBreakdown,
-        List<OperationAnalyticsSampleResponseDto> sampleResponses
+        List<OperationAnalyticsSampleResponseDto> sampleResponses,
+        List<OperationAnalyticsSampleResponseDto> rawResponses
 ) {
 }

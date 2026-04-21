@@ -158,9 +158,9 @@ export function CallJobSurveyResponseEditor({
                     </label>
                   ) : null}
 
-                  {answer.questionType === "RATING" ? (
+                  {answer.questionType === "RATING" || answer.questionType === "NUMBER" ? (
                     <label className="call-job-answer-field">
-                      <span>Yeni puan</span>
+                      <span>{answer.questionType === "RATING" ? "Yeni puan" : "Yeni sayi"}</span>
                       <input
                         type="number"
                         value={draft.answerNumber}
@@ -301,6 +301,8 @@ function formatQuestionType(questionType: CallJobSurveyResponseAnswer["questionT
       return "Acik uc";
     case "RATING":
       return "Puan";
+    case "NUMBER":
+      return "Sayisal giris";
     case "SINGLE_CHOICE":
       return "Tek secim";
     case "MULTI_CHOICE":

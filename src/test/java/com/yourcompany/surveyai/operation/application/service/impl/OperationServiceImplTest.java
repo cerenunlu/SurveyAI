@@ -470,6 +470,14 @@ class OperationServiceImplTest {
                 QuestionType.OPEN_ENDED,
                 "Bu sehirde en onemli sorun nedir?"
         );
+        openEndedQuestion.setSettingsJson("""
+                {
+                  "codingCategories": {
+                    "ulasim": ["ulasim", "trafik"],
+                    "ekonomi": ["issizlik", "ekonomi"]
+                  }
+                }
+                """);
 
         SurveyResponse firstResponse = buildSurveyResponse(
                 operation,
@@ -495,7 +503,7 @@ class OperationServiceImplTest {
 
         SurveyAnswer firstAnswer = buildOpenEndedAnswer(firstResponse, openEndedQuestion, "Ulasim cok kotu.");
         SurveyAnswer secondAnswer = buildOpenEndedAnswer(thirdResponse, openEndedQuestion, "Trafik artik cekilmiyor.");
-        SurveyAnswer thirdAnswer = buildOpenEndedAnswer(secondResponse, openEndedQuestion, "Issizlik en buyuk problem.");
+        SurveyAnswer thirdAnswer = buildOpenEndedAnswer(secondResponse, openEndedQuestion, "Parklar daha temiz olsun.");
 
         when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
                 .thenReturn(Optional.of(operation));
@@ -524,14 +532,158 @@ class OperationServiceImplTest {
         assertThat(response.questionSummaries().getFirst().answeredCount()).isEqualTo(3);
         assertThat(response.questionSummaries().getFirst().breakdown())
                 .extracting(item -> item.label() + ":" + item.count())
-                .containsExactly("Ulasim:2", "Ekonomi:1");
+                .containsExactly("Ulasim:2");
+        assertThat(response.questionSummaries().getFirst().reviewCount()).isEqualTo(1);
         assertThat(response.questionSummaries().getFirst().sampleResponses())
+                .extracting(item -> item.rawResponseText())
+                .containsExactly("Parklar daha temiz olsun.");
+    }
+
+    @Test
+    void getOperationAnalytics_usesKeywordFallbackWhenOpenEndedCategoriesMissing() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion openEndedQuestion = buildQuestion(
+                operation.getSurvey(),
+                "q-open-missing-categories",
+                1,
+                QuestionType.OPEN_ENDED,
+                "Izmir icin oncelikli beklentiniz nedir?"
+        );
+        openEndedQuestion.setSettingsJson("{\"builderType\":\"short_text\"}");
+
+        SurveyResponse firstResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112311",
+                100,
+                OffsetDateTime.now().minusMinutes(20)
+        );
+        SurveyResponse secondResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112312",
+                100,
+                OffsetDateTime.now().minusMinutes(10)
+        );
+
+        SurveyAnswer firstAnswer = buildOpenEndedAnswer(firstResponse, openEndedQuestion, "Ulasim sorunu cozulmeli.");
+        SurveyAnswer secondAnswer = buildOpenEndedAnswer(secondResponse, openEndedQuestion, "Daha iyi olsun.");
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(2L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(
+                        buildCallJob(operation, CallJobStatus.COMPLETED),
+                        buildCallJob(operation, CallJobStatus.COMPLETED)
+                ));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(secondResponse, firstResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(openEndedQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(openEndedQuestion.getId())
+        )).thenReturn(List.of());
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(
+                List.of(secondResponse.getId(), firstResponse.getId())
+        )).thenReturn(List.of(firstAnswer, secondAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionSummaries()).hasSize(1);
+        assertThat(response.questionSummaries().getFirst().breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Ulasim:1");
+        assertThat(response.questionSummaries().getFirst().reviewCount()).isEqualTo(1);
+        assertThat(response.questionSummaries().getFirst().sampleResponses())
+                .extracting(item -> item.rawResponseText())
+                .containsExactly("Daha iyi olsun.");
+    }
+
+    @Test
+    void getOperationAnalytics_buildsNamedEntityDistributionForOpenEndedNameQuestions() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyQuestion openEndedQuestion = buildQuestion(
+                operation.getSurvey(),
+                "q-open-named-entity",
+                1,
+                QuestionType.OPEN_ENDED,
+                "Izmirdeki siyasetciler denince akliniza ilk gelen, en begendiginiz siyasetcinin kim oldugunu soyler misiniz"
+        );
+        openEndedQuestion.setSettingsJson("""
+                {
+                  "builderType": "short_text",
+                  "autoLexicon": {
+                    "enabled": true
+                  }
+                }
+                """);
+
+        SurveyResponse firstResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112321",
+                100,
+                OffsetDateTime.now().minusMinutes(20)
+        );
+        SurveyResponse secondResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112322",
+                100,
+                OffsetDateTime.now().minusMinutes(10)
+        );
+        SurveyResponse thirdResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.COMPLETED,
+                "905551112323",
+                100,
+                OffsetDateTime.now().minusMinutes(5)
+        );
+
+        SurveyAnswer firstAnswer = buildOpenEndedAnswer(firstResponse, openEndedQuestion, "Levent Uysal.");
+        SurveyAnswer secondAnswer = buildOpenEndedAnswer(secondResponse, openEndedQuestion, "Ali Mahir Basarir.");
+        SurveyAnswer thirdAnswer = buildOpenEndedAnswer(thirdResponse, openEndedQuestion, "Levent Uysal");
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(3L);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
+                .thenReturn(List.of(
+                        buildCallJob(operation, CallJobStatus.COMPLETED),
+                        buildCallJob(operation, CallJobStatus.COMPLETED),
+                        buildCallJob(operation, CallJobStatus.COMPLETED)
+                ));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(thirdResponse, secondResponse, firstResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of(openEndedQuestion));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(
+                List.of(openEndedQuestion.getId())
+        )).thenReturn(List.of());
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(
+                List.of(thirdResponse.getId(), secondResponse.getId(), firstResponse.getId())
+        )).thenReturn(List.of(firstAnswer, secondAnswer, thirdAnswer));
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.questionSummaries()).hasSize(1);
+        assertThat(response.questionSummaries().getFirst().answeredCount()).isEqualTo(3);
+        assertThat(response.questionSummaries().getFirst().reviewCount()).isZero();
+        assertThat(response.questionSummaries().getFirst().breakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly("Levent Uysal:2", "Ali Mahir Basarir:1");
+        assertThat(response.questionSummaries().getFirst().rawResponses())
                 .extracting(item -> item.responseText())
-                .containsExactly(
-                        "Trafik artik cekilmiyor.",
-                        "Issizlik en buyuk problem.",
-                        "Ulasim cok kotu."
-                );
+                .containsExactly("Levent Uysal", "Ali Mahir Basarir.", "Levent Uysal.");
     }
 
     @Test
