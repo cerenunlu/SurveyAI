@@ -16,6 +16,7 @@ import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.call.repository.CallAttemptRepository;
 import com.yourcompany.surveyai.common.exception.NotFoundException;
 import com.yourcompany.surveyai.common.exception.ValidationException;
+import com.yourcompany.surveyai.operation.application.support.OperationAutoEntityLexiconService;
 import com.yourcompany.surveyai.response.domain.entity.SurveyAnswer;
 import com.yourcompany.surveyai.response.domain.entity.SurveyResponse;
 import com.yourcompany.surveyai.response.domain.enums.SurveyResponseStatus;
@@ -34,6 +35,8 @@ import java.math.RoundingMode;
 import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -138,6 +141,108 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     private static final Set<String> SUSPICIOUS_CIVIC_ASR_TOKENS = Set.of(
             "sehzadin", "sehradin", "sehzade", "şehirin", "sehirin"
     );
+    private static final Set<String> OCCUPATION_OPEN_ENDED_HINTS = Set.of(
+            "meslek", "mesleginiz", "ne is yapiyorsunuz", "calisma durumu",
+            "is durumu", "is hayati", "meslegi", "meslegini", "occupation", "job"
+    );
+    // Normalized (via normalize()) karşılıkları — Turkish diacritics stripped
+    private static final Set<String> KNOWN_OCCUPATIONS_NORMALIZED = Set.of(
+            // İstihdam durumu
+            "ev hanimi", "ev kadini", "ev yoneticisi",
+            "emekli", "emekliyim",
+            "ogrenci", "ogrenciyim",
+            "issiz", "issizim", "is ariyorum", "is ariyor",
+            "calisiyor", "calisiyorum", "calismiyor",
+            // Kamu / Devlet
+            "memur", "devlet memuru", "kamu calisani",
+            "ogretmen", "ogretim uyesi", "ogretim gorevlisi", "akademisyen",
+            "polis", "emniyet memuru", "jandarma",
+            "asker", "subay",
+            "hakim", "savci",
+            // Sağlık
+            "doktor", "hekim", "pratisyen hekim", "uzman doktor",
+            "hemsire",
+            "eczaci",
+            "dis hekimi",
+            "fizyoterapist",
+            "psikolog", "psikyatrist",
+            "diyetisyen",
+            "saglik calisani",
+            // Mühendislik / Teknik
+            "muhendis", "insaat muhendisi", "makine muhendisi",
+            "elektrik muhendisi", "bilgisayar muhendisi",
+            "mimar",
+            "teknisyen", "tekniker",
+            "elektrikci",
+            "tesisatci",
+            "yazilimci", "programci", "yazilim gelistirici",
+            // Hukuk / Finans
+            "avukat", "noter",
+            "muhasebeci", "mali musavir",
+            "ekonomist",
+            "banker", "banka calisani",
+            // Ticaret / Yönetim
+            "esnaf", "dukkan sahibi",
+            "isci", "fabrika iscisi",
+            "is insani", "girisimci", "isletmeci",
+            "mudur", "yonetici", "genel mudur",
+            "sekreter",
+            "uzman", "danisman",
+            "pazarlamaci", "satis temsilcisi",
+            // Ziraat
+            "ciftci", "tarimci",
+            // Sanat / Medya
+            "gazeteci", "muhabir",
+            "sanatci", "ressam", "muzisyen",
+            // Ulaşım / Hizmet
+            "sofor", "surucu", "taksici",
+            "pilot",
+            "berber", "kuafor",
+            "kasap", "manav",
+            "terzi",
+            "tamirci", "marangoz",
+            "boyaci",
+            "temizlikci", "temizlik gorevlisi",
+            "garson", "asci", "pastaci",
+            "guvenlik gorevlisi",
+            // Serbest
+            "serbest meslek", "serbest calisiyor", "kendi hesabima",
+            "emekli isci", "emekli memur",
+            "ev hizmetcisi", "gundelikci"
+    );
+    // Tek token olarak cevap içinde geçtiğinde meslek işareti sayılan kök kelimeler.
+    // Token startsWith kontrolü Turkish morfolojik ekleri kapsar (ör. "ogretmenim" → "ogretmen")
+    private static final Set<String> OCCUPATION_INDICATOR_TOKENS = Set.of(
+            "calisiyor", "calisiyorum", "calisan", "calistigim",
+            "emekli", "emekliyim",
+            "ogrenci", "ogrenciyim",
+            "issiz",
+            "serbest",
+            "memur",
+            "mudur",
+            "muhendis",
+            "ogretmen",
+            "doktor",
+            "hemsire",
+            "avukat",
+            "esnaf",
+            "isci",
+            "uzman",
+            "mimar",
+            "teknisyen",
+            "girisimci",
+            "yonetici",
+            "danisman",
+            "sekreter",
+            "sofor", "surucu",
+            "berber", "kuafor",
+            "eczaci",
+            "gazeteci",
+            "polis",
+            "asker",
+            "ciftci",
+            "programci", "yazilimci"
+    );
     private static final Map<String, List<String>> DEFAULT_SPECIAL_ANSWERS = Map.ofEntries(
             Map.entry("bilmiyorum", List.of(
                     "bilmiyorum",
@@ -175,6 +280,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     private final SurveyQuestionOptionRepository surveyQuestionOptionRepository;
     private final ObjectMapper objectMapper;
     private final TurkeyGeoDataService turkeyGeoDataService;
+    private final OperationAutoEntityLexiconService operationAutoEntityLexiconService;
 
     public CallInterviewOrchestrationServiceImpl(
             CallAttemptRepository callAttemptRepository,
@@ -183,7 +289,8 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             SurveyQuestionRepository surveyQuestionRepository,
             SurveyQuestionOptionRepository surveyQuestionOptionRepository,
             ObjectMapper objectMapper,
-            TurkeyGeoDataService turkeyGeoDataService
+            TurkeyGeoDataService turkeyGeoDataService,
+            OperationAutoEntityLexiconService operationAutoEntityLexiconService
     ) {
         this.callAttemptRepository = callAttemptRepository;
         this.surveyResponseRepository = surveyResponseRepository;
@@ -192,6 +299,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         this.surveyQuestionOptionRepository = surveyQuestionOptionRepository;
         this.objectMapper = objectMapper;
         this.turkeyGeoDataService = turkeyGeoDataService;
+        this.operationAutoEntityLexiconService = operationAutoEntityLexiconService;
     }
 
     @Override
@@ -221,10 +329,13 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         }
         surveyResponseRepository.save(response);
         if (requiresOpeningGreeting(context.survey()) && !isOpeningGreetingReceived(response)) {
-            return buildConsentPhaseResponse(context, response, null);
+            if (isOpeningConsentPending(context.survey(), response)) {
+                return buildConsentPhaseResponse(context, response, buildOpeningConsentRepeatPrompt(context.survey()));
+            }
+            return buildProgressResponse(context, response, buildOpeningLeadIn(context), resolveFlowState(context));
         }
         if (isOpeningConsentPending(context.survey(), response)) {
-            return buildConsentPhaseResponse(context, response, null);
+            return buildConsentPhaseResponse(context, response, buildOpeningConsentRepeatPrompt(context.survey()));
         }
         return buildProgressResponse(context, response, null, resolveFlowState(context));
     }
@@ -299,6 +410,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             answer = createSurveyAnswer(response, cursor.question());
         }
         NormalizedAnswer normalizedAnswer = normalizeAnswer(
+                context,
                 cursor.question(),
                 context.optionsByQuestionId().getOrDefault(cursor.question().getId(), List.of()),
                 request,
@@ -339,7 +451,10 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         FlowState flowState = resolveFlowState(context);
         finalizeResponse(response, context, request.requestedStatus(), flowState);
         surveyResponseRepository.save(response);
-        return buildTerminalResponse(context, response, buildClosingPrompt(context.survey()), flowState);
+        String closingMessage = Boolean.TRUE.equals(request.suppressClosingMessage())
+                ? null
+                : buildClosingPrompt(context.survey());
+        return buildTerminalResponse(context, response, closingMessage, flowState);
     }
 
     private SessionContext loadSessionContext(UUID callAttemptId, String providerCallId) {
@@ -536,6 +651,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     }
 
     private NormalizedAnswer normalizeAnswer(
+            SessionContext context,
             SurveyQuestion question,
             List<SurveyQuestionOption> options,
             InterviewAnswerRequest request,
@@ -572,7 +688,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         }
 
         return switch (question.getQuestionType()) {
-            case OPEN_ENDED -> normalizeOpenEnded(question, raw);
+            case OPEN_ENDED -> normalizeOpenEnded(context, question, raw);
             case NUMBER -> normalizeNumber(raw);
             case RATING -> normalizeRating(question, raw);
             case SINGLE_CHOICE -> normalizeSingleChoice(question, options, raw);
@@ -698,7 +814,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         return NormalizedAnswer.validNumber(raw, BigDecimal.valueOf(parsed));
     }
 
-    private NormalizedAnswer normalizeOpenEnded(SurveyQuestion question, String raw) {
+    private NormalizedAnswer normalizeOpenEnded(SessionContext context, SurveyQuestion question, String raw) {
         String correctedRaw = applyQuestionAwareOpenEndedCorrections(question, raw);
         if (shouldAskToRepeatOpenEnded(question, raw, correctedRaw)) {
             return NormalizedAnswer.invalidWithClarification(
@@ -712,9 +828,13 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             );
         }
 
+        if (isOccupationOpenEndedContext(question)) {
+            return normalizeOccupationOpenEnded(question, raw, correctedRaw);
+        }
+
         TurkeyGeoDataService.GeoScope geoScope = extractGeoScope(question);
         if (geoScope == null) {
-            return normalizeOpenEndedEntity(question, raw, correctedRaw);
+            return normalizeOpenEndedEntity(context, question, raw, correctedRaw);
         }
 
         TurkeyGeoDataService.GeoMatchResult match = turkeyGeoDataService.match(correctedRaw, geoScope);
@@ -738,11 +858,11 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             );
         }
 
-        return normalizeOpenEndedEntity(question, raw, correctedRaw);
+        return normalizeOpenEndedEntity(context, question, raw, correctedRaw);
     }
 
-    private NormalizedAnswer normalizeOpenEndedEntity(SurveyQuestion question, String raw, String candidateText) {
-        List<AutoEntityEntry> entries = extractAutoEntityEntries(question);
+    private NormalizedAnswer normalizeOpenEndedEntity(SessionContext context, SurveyQuestion question, String raw, String candidateText) {
+        List<AutoEntityEntry> entries = extractAutoEntityEntries(context, question);
         if (entries.isEmpty()) {
             return buildOpenEndedFreeTextAnswer(raw, candidateText);
         }
@@ -793,6 +913,60 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         return NormalizedAnswer.validText(raw, sanitizedCandidate, normalizedValues.stream().distinct().toList());
     }
 
+    private NormalizedAnswer normalizeOccupationOpenEnded(SurveyQuestion question, String raw, String correctedRaw) {
+        String normalized = normalize(correctedRaw);
+        if (normalized.isBlank()) {
+            return occupationNotRecognized(question, raw);
+        }
+
+        // 1. Birebir eşleşme
+        if (KNOWN_OCCUPATIONS_NORMALIZED.contains(normalized)) {
+            return NormalizedAnswer.validText(raw, correctedRaw, List.of(correctedRaw));
+        }
+
+        // 2. Bilinen meslek içeriyorsa geçerli say
+        //    ("ev hanimiyim" → "ev hanimi" içeriyor; "ogretmenim" → "ogretmen" içeriyor)
+        boolean containsKnown = KNOWN_OCCUPATIONS_NORMALIZED.stream()
+                .anyMatch(normalized::contains);
+        if (containsKnown) {
+            return NormalizedAnswer.validText(raw, correctedRaw, List.of(correctedRaw));
+        }
+
+        // 3. Fuzzy eşleşme: bilinen meslekle yüksek benzerlik
+        double bestFuzzy = KNOWN_OCCUPATIONS_NORMALIZED.stream()
+                .mapToDouble(occ -> scorePhraseSimilarity(normalized, occ))
+                .max()
+                .orElse(0d);
+        if (bestFuzzy >= 0.80d) {
+            return NormalizedAnswer.validText(raw, correctedRaw, List.of(correctedRaw));
+        }
+
+        // 4. Token göstergesi: herhangi bir token, bilinen bir gösterge ile başlıyorsa geçerli say
+        //    Turkish morfolojisi: "ogretmenim".startsWith("ogretmen") → geçerli
+        Set<String> tokens = semanticTokens(normalized);
+        boolean hasIndicator = tokens.stream()
+                .anyMatch(token -> OCCUPATION_INDICATOR_TOKENS.stream()
+                        .anyMatch(indicator -> token.equals(indicator) || token.startsWith(indicator)));
+        if (hasIndicator) {
+            return NormalizedAnswer.validText(raw, correctedRaw, List.of(correctedRaw));
+        }
+
+        // Hiçbir kontrolü geçemedi → meslek değil, tekrar sor
+        return occupationNotRecognized(question, raw);
+    }
+
+    private NormalizedAnswer occupationNotRecognized(SurveyQuestion question, String raw) {
+        return NormalizedAnswer.invalidWithClarification(
+                "Occupation answer not recognized",
+                raw,
+                localized(
+                        question.getSurvey(),
+                        "Mesleğinizi anlayamadım. Lütfen tekrar edebilir misiniz?",
+                        "I couldn't understand your occupation. Could you please repeat it?"
+                )
+        );
+    }
+
     private String applyQuestionAwareOpenEndedCorrections(SurveyQuestion question, String raw) {
         String corrected = raw;
         if (isCivicOpenEndedContext(question)) {
@@ -807,6 +981,14 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         if (isTransportOpenEndedContext(question)) {
             corrected = replacePattern(corrected, "(?iu)\\balt\\s+yap[ıi]\\b", "altyapı");
             corrected = replacePattern(corrected, "(?iu)\\b(?:ulaş[ıi]n|ulasin)\\b", "ulaşım");
+        }
+        if (isOccupationOpenEndedContext(question)) {
+            // "ev ekonomisi" → "ev hanımı" (bilinen ASR karışıklığı)
+            corrected = replacePattern(corrected, "(?iu)\\bev\\s+ekonomis[iy]\\b", "ev hanımı");
+            // "emeklilik" → "emekli" (durum yerine kişi)
+            corrected = replacePattern(corrected, "(?iu)\\bemeklili[ğg][iy]\\b", "emekli");
+            // "öğrencilik" → "öğrenci"
+            corrected = replacePattern(corrected, "(?iu)\\b[öo][ğg]rencili[ğg][iy]\\b", "öğrenci");
         }
         return corrected;
     }
@@ -833,6 +1015,10 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
 
     private boolean isTransportOpenEndedContext(SurveyQuestion question) {
         return containsAnyPhrase(normalize(buildOpenEndedContext(question)), TRANSPORT_OPEN_ENDED_HINTS.toArray(String[]::new));
+    }
+
+    private boolean isOccupationOpenEndedContext(SurveyQuestion question) {
+        return containsAnyPhrase(normalize(buildOpenEndedContext(question)), OCCUPATION_OPEN_ENDED_HINTS.toArray(String[]::new));
     }
 
     private String buildOpenEndedContext(SurveyQuestion question) {
@@ -1128,7 +1314,38 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         return bestScore;
     }
 
-    private List<AutoEntityEntry> extractAutoEntityEntries(SurveyQuestion question) {
+    private List<AutoEntityEntry> extractAutoEntityEntries(SessionContext context, SurveyQuestion question) {
+        Map<String, AutoEntityEntry> merged = new LinkedHashMap<>();
+        mergeAutoEntityEntries(merged, parseQuestionAutoEntityEntries(question));
+        mergeAutoEntityEntries(
+                merged,
+                operationAutoEntityLexiconService.extractEntriesForQuestion(
+                        context.callAttempt().getOperation().getSourcePayloadJson(),
+                        question.getId(),
+                        question.getCode()
+                ).stream()
+                        .map(entry -> new AutoEntityEntry(entry.label(), entry.aliases()))
+                        .toList()
+        );
+        return List.copyOf(merged.values());
+    }
+
+    private void mergeAutoEntityEntries(Map<String, AutoEntityEntry> target, List<AutoEntityEntry> incomingEntries) {
+        for (AutoEntityEntry incoming : incomingEntries) {
+            String key = normalize(incoming.label());
+            if (key.isBlank()) {
+                continue;
+            }
+            LinkedHashSet<String> aliases = new LinkedHashSet<>();
+            if (target.containsKey(key)) {
+                aliases.addAll(target.get(key).aliases());
+            }
+            aliases.addAll(incoming.aliases());
+            target.put(key, new AutoEntityEntry(incoming.label(), List.copyOf(aliases)));
+        }
+    }
+
+    private List<AutoEntityEntry> parseQuestionAutoEntityEntries(SurveyQuestion question) {
         if (question.getSettingsJson() == null || question.getSettingsJson().isBlank()) {
             return List.of();
         }
@@ -1173,7 +1390,13 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
                 return 1d;
             }
             if (normalizedCandidate.contains(normalizedAlias) || normalizedAlias.contains(normalizedCandidate)) {
-                best = Math.max(best, 0.96d);
+                Set<String> aliasTokenSet = new HashSet<>(Arrays.asList(normalizedAlias.split("\\s+")));
+                long unexplainedTokens = Arrays.stream(normalizedCandidate.split("\\s+"))
+                        .filter(t -> t.length() >= 3 && !aliasTokenSet.contains(t))
+                        .count();
+                if (unexplainedTokens == 0) {
+                    best = Math.max(best, 0.96d);
+                }
             }
             best = Math.max(best, scorePhraseSimilarity(normalizedCandidate, normalizedAlias));
         }
@@ -1456,17 +1679,30 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return null;
         }
 
-        if (normalized.contains("her ikis")
-                || normalized.contains("ikisine gore")
-                || normalized.contains("ikisi de")
-                || normalized.contains("ikiside")) {
-            return findOptionContaining(options, "her ikisi");
+        if (containsAnyPhrase(normalized,
+                "her ikisi",
+                "her ikisi de",
+                "ikisine gore",
+                "ikisi de",
+                "ikiside")) {
+            return findOptionContainingAny(options, "her ikisi", "ikisi", "both");
         }
-        if (normalized.contains("parti")) {
-            return findOptionContaining(options, "parti");
+        if (containsAnyPhrase(normalized,
+                "partiye gore",
+                "partiye gore oy",
+                "parti bazli",
+                "parti tercihi",
+                "parti")) {
+            return findOptionContainingAny(options, "parti", "partiye gore", "party");
         }
-        if (normalized.contains("aday") || normalized.contains("milletvekili")) {
-            return findOptionContaining(options, "aday");
+        if (containsAnyPhrase(normalized,
+                "adaylara gore",
+                "adaya gore",
+                "milletvekili adaylarina gore",
+                "milletvekili adayina gore",
+                "aday",
+                "milletvekili")) {
+            return findOptionContainingAny(options, "aday", "milletvekili", "candidate");
         }
         return null;
     }
@@ -1476,6 +1712,19 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
                 .filter(option -> normalize(option.getLabel() + " " + option.getOptionCode() + " " + option.getValue()).contains(token))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private SurveyQuestionOption findOptionContainingAny(List<SurveyQuestionOption> options, String... tokens) {
+        if (tokens == null || tokens.length == 0) {
+            return null;
+        }
+        for (String token : tokens) {
+            SurveyQuestionOption matched = findOptionContaining(options, token);
+            if (matched != null) {
+                return matched;
+            }
+        }
+        return null;
     }
 
     private boolean looksLikeYesNo(List<SurveyQuestionOption> options) {

@@ -14,13 +14,17 @@ import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
+import com.yourcompany.surveyai.call.repository.CallAttemptRepository;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
+import com.yourcompany.surveyai.common.domain.entity.AppUser;
 import com.yourcompany.surveyai.common.domain.entity.Company;
 import com.yourcompany.surveyai.common.exception.ValidationException;
 import com.yourcompany.surveyai.common.repository.AppUserRepository;
 import com.yourcompany.surveyai.common.repository.CompanyRepository;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsResponseDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationResponseDto;
+import com.yourcompany.surveyai.operation.application.dto.request.CreateOperationRequest;
+import com.yourcompany.surveyai.operation.application.support.OperationAutoEntityLexiconService;
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
@@ -43,6 +47,7 @@ import com.yourcompany.surveyai.survey.repository.SurveyRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
+import java.util.Map;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +62,7 @@ class OperationServiceImplTest {
 
     private final OperationRepository operationRepository = mock(OperationRepository.class);
     private final OperationContactRepository operationContactRepository = mock(OperationContactRepository.class);
+    private final CallAttemptRepository callAttemptRepository = mock(CallAttemptRepository.class);
     private final CallJobRepository callJobRepository = mock(CallJobRepository.class);
     private final CompanyRepository companyRepository = mock(CompanyRepository.class);
     private final SurveyRepository surveyRepository = mock(SurveyRepository.class);
@@ -69,14 +75,30 @@ class OperationServiceImplTest {
     private final RequestAuthContext requestAuthContext = new RequestAuthContext(mock(HttpServletRequest.class));
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final OperationAutoEntityLexiconService operationAutoEntityLexiconService = new OperationAutoEntityLexiconService(objectMapper, null, null) {
+        @Override
+        public String buildSourcePayloadJson(
+                Survey survey,
+                String operationName,
+                List<SurveyQuestion> questions,
+                Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId,
+                String existingSourcePayloadJson
+        ) {
+            lexiconBuildInvocations += 1;
+            return nextOperationSourcePayloadJson;
+        }
+    };
 
     private OperationServiceImpl operationService;
+    private String nextOperationSourcePayloadJson;
+    private int lexiconBuildInvocations;
 
     @BeforeEach
     void setUp() {
         operationService = new OperationServiceImpl(
                 operationRepository,
                 operationContactRepository,
+                callAttemptRepository,
                 callJobRepository,
                 companyRepository,
                 surveyRepository,
@@ -88,10 +110,50 @@ class OperationServiceImplTest {
                 callJobDispatcher,
                 requestAuthContext,
                 validator,
-                objectMapper
+                objectMapper,
+                operationAutoEntityLexiconService
         );
 
         when(operationRepository.save(any(Operation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        nextOperationSourcePayloadJson = "{\"autoEntityLexiconPreview\":{\"questionSuggestions\":[],\"keywords\":[]}}";
+        lexiconBuildInvocations = 0;
+    }
+
+    @Test
+    void createOperation_buildsOperationScopedAutoEntityLexiconPayload() {
+        Company company = new Company();
+        company.setId(UUID.randomUUID());
+
+        Survey survey = new Survey();
+        survey.setId(UUID.randomUUID());
+        survey.setCompany(company);
+        survey.setStatus(SurveyStatus.PUBLISHED);
+        survey.setName("Secmen egilimleri");
+
+        SurveyQuestion question = buildQuestion(survey, "vote", 1, QuestionType.SINGLE_CHOICE, "Bugun secim olsa kime oy verirsiniz?");
+        SurveyQuestionOption option = buildOption(question, 1, "cemil_tugay", "Cemil Tugay", "Cemil Tugay");
+
+        CreateOperationRequest request = new CreateOperationRequest();
+        request.setSurveyId(survey.getId());
+        request.setName("Izmir belediye secimleri");
+
+        when(companyRepository.findById(company.getId())).thenReturn(Optional.of(company));
+        when(surveyRepository.findByIdAndCompany_IdAndDeletedAtIsNull(survey.getId(), company.getId())).thenReturn(Optional.of(survey));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(survey.getId()))
+                .thenReturn(List.of(question));
+        when(surveyQuestionOptionRepository.findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(List.of(question.getId())))
+                .thenReturn(List.of(option));
+        nextOperationSourcePayloadJson = "{\"autoEntityLexiconPreview\":{\"operationName\":\"Izmir belediye secimleri\",\"questionSuggestions\":[{\"questionCode\":\"vote\"}],\"keywords\":[\"Cemil Tugay\"]}}";
+        AppUser createdBy = new AppUser();
+        createdBy.setId(UUID.randomUUID());
+        createdBy.setCompany(company);
+        request.setCreatedByUserId(createdBy.getId());
+        when(appUserRepository.findById(createdBy.getId())).thenReturn(Optional.of(createdBy));
+
+        OperationResponseDto response = operationService.createOperation(company.getId(), request);
+
+        assertThat(response.sourcePayloadJson()).contains("autoEntityLexiconPreview");
+        assertThat(lexiconBuildInvocations).isEqualTo(1);
     }
 
     @Test
@@ -176,6 +238,69 @@ class OperationServiceImplTest {
     }
 
     @Test
+    void deleteOperation_softDeletesOperationAndRelatedRecords() {
+        Operation operation = buildOperation(OperationStatus.DRAFT, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+        OffsetDateTime beforeDelete = OffsetDateTime.now().minusMinutes(1);
+
+        OperationContact contact = buildContact(operation);
+        CallJob callJob = new CallJob();
+        callJob.setId(UUID.randomUUID());
+        callJob.setOperation(operation);
+        callJob.setOperationContact(contact);
+        CallAttempt attempt = new CallAttempt();
+        attempt.setId(UUID.randomUUID());
+        attempt.setCallJob(callJob);
+        SurveyResponse surveyResponse = buildSurveyResponse(operation, SurveyResponseStatus.COMPLETED, "905551112233", 100, OffsetDateTime.now());
+        SurveyQuestion question = buildQuestion(operation.getSurvey(), "q-open", 1, QuestionType.OPEN_ENDED, "Yorumunuz");
+        SurveyAnswer surveyAnswer = buildOpenEndedAnswer(surveyResponse, question, "Tamam");
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(callJobRepository.existsByOperation_IdAndStatusInAndDeletedAtIsNull(any(UUID.class), any()))
+                .thenReturn(false);
+        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId)).thenReturn(List.of(callJob));
+        when(callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(callJob.getId())).thenReturn(List.of(attempt));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(surveyResponse));
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(List.of(surveyResponse.getId())))
+                .thenReturn(List.of(surveyAnswer));
+        when(operationContactRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId)).thenReturn(List.of(contact));
+        when(operationRepository.save(any(Operation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        operationService.deleteOperation(companyId, operationId);
+
+        assertThat(operation.getDeletedAt()).isAfter(beforeDelete);
+        assertThat(contact.getDeletedAt()).isAfter(beforeDelete);
+        assertThat(callJob.getDeletedAt()).isAfter(beforeDelete);
+        assertThat(attempt.getDeletedAt()).isAfter(beforeDelete);
+        assertThat(surveyResponse.getDeletedAt()).isAfter(beforeDelete);
+        assertThat(surveyAnswer.getDeletedAt()).isAfter(beforeDelete);
+        verify(operationRepository).save(operation);
+    }
+
+    @Test
+    void deleteOperation_rejectsRunningOperation() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(callJobRepository.existsByOperation_IdAndStatusInAndDeletedAtIsNull(operationId, java.util.EnumSet.of(
+                CallJobStatus.PENDING,
+                CallJobStatus.QUEUED,
+                CallJobStatus.IN_PROGRESS,
+                CallJobStatus.RETRY
+        ))).thenReturn(true);
+
+        assertThatThrownBy(() -> operationService.deleteOperation(companyId, operationId))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Once duraklatin");
+    }
+
+    @Test
     void getOperationAnalytics_aggregatesRealSurveyResponsesAndAnswers() {
         Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
         UUID companyId = operation.getCompany().getId();
@@ -203,11 +328,11 @@ class OperationServiceImplTest {
                 .thenReturn(Optional.of(operation));
         when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
                 .thenReturn(3L);
-        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
-                .thenReturn(List.of(
-                        buildCallJob(operation, CallJobStatus.COMPLETED),
-                        buildCallJob(operation, CallJobStatus.FAILED),
-                        buildCallJob(operation, CallJobStatus.QUEUED)
+        when(callJobRepository.countGroupedByStatusForOperation(operationId))
+                .thenReturn(List.<Object[]>of(
+                        new Object[]{CallJobStatus.COMPLETED, 1L},
+                        new Object[]{CallJobStatus.FAILED, 1L},
+                        new Object[]{CallJobStatus.QUEUED, 1L}
                 ));
         when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
                 .thenReturn(List.of(partialResponse, completedResponse));
@@ -252,6 +377,44 @@ class OperationServiceImplTest {
         assertThat(response.questionSummaries().get(2).sampleResponses())
                 .extracting(item -> item.responseText())
                 .containsExactly("Temsilci oldukca yardimciydi ve surec kolay ilerledi.");
+    }
+
+    @Test
+    void getOperationAnalytics_doesNotCountZeroProgressPartialResponseAsAcceptedConsent() {
+        Operation operation = buildOperation(OperationStatus.RUNNING, SurveyStatus.PUBLISHED);
+        UUID companyId = operation.getCompany().getId();
+        UUID operationId = operation.getId();
+
+        SurveyResponse voicemailLikeResponse = buildSurveyResponse(
+                operation,
+                SurveyResponseStatus.PARTIAL,
+                "905551112255",
+                0,
+                OffsetDateTime.now().minusMinutes(10)
+        );
+
+        when(operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(Optional.of(operation));
+        when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
+                .thenReturn(1L);
+        when(callJobRepository.countGroupedByStatusForOperation(operationId))
+                .thenReturn(List.<Object[]>of(new Object[]{CallJobStatus.FAILED, 1L}));
+        when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
+                .thenReturn(List.of(voicemailLikeResponse));
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))
+                .thenReturn(List.of());
+        when(surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(List.of(voicemailLikeResponse.getId())))
+                .thenReturn(List.of());
+
+        OperationAnalyticsResponseDto response = operationService.getOperationAnalytics(companyId, operationId);
+
+        assertThat(response.consentBreakdown())
+                .extracting(item -> item.label() + ":" + item.count())
+                .containsExactly(
+                        "Katilmayi kabul etti:0",
+                        "Katilmayi reddetti:0",
+                        "Belirsiz / yanitsiz:1"
+                );
     }
 
     @Test
@@ -700,8 +863,8 @@ class OperationServiceImplTest {
                 .thenReturn(Optional.of(operation));
         when(operationContactRepository.countByOperation_IdAndCompany_IdAndDeletedAtIsNull(operationId, companyId))
                 .thenReturn(1L);
-        when(callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId))
-                .thenReturn(List.of(buildCallJob(operation, CallJobStatus.FAILED)));
+        when(callJobRepository.countGroupedByStatusForOperation(operationId))
+                .thenReturn(List.<Object[]>of(new Object[]{CallJobStatus.FAILED, 1L}));
         when(surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId))
                 .thenReturn(List.of());
         when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(operation.getSurvey().getId()))

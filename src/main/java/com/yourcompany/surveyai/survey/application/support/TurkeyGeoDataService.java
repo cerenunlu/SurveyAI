@@ -15,6 +15,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -25,8 +26,10 @@ public class TurkeyGeoDataService {
     private static final String CITY_RESOURCE = "data/geo/turkey-city-list.json";
     private static final String NEIGHBOURHOOD_RESOURCE = "data/geo/turkey-neighbourhoods-by-district-and-city-code.json";
     private static final Set<String> NEIGHBOURHOOD_SUFFIXES = Set.of("mah", "mahalle", "mahallesi");
+    private static final int MATCH_CACHE_MAX_SIZE = 2000;
 
     private final ObjectMapper objectMapper;
+    private final ConcurrentHashMap<String, GeoMatchResult> matchCache = new ConcurrentHashMap<>();
 
     private Map<String, CityEntry> citiesByCode = Map.of();
     private List<DistrictEntry> allDistricts = List.of();
@@ -181,6 +184,20 @@ public class TurkeyGeoDataService {
             return GeoMatchResult.noMatch();
         }
 
+        String cacheKey = buildMatchCacheKey(normalizedUtterance, scope);
+        GeoMatchResult cached = matchCache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
+        GeoMatchResult result = computeMatch(normalizedUtterance, scope);
+        if (matchCache.size() < MATCH_CACHE_MAX_SIZE) {
+            matchCache.put(cacheKey, result);
+        }
+        return result;
+    }
+
+    private GeoMatchResult computeMatch(String normalizedUtterance, GeoScope scope) {
         List<GeoCandidate> candidates = switch (scope.granularity()) {
             case CITY -> buildCityCandidates(scope);
             case DISTRICT -> buildDistrictCandidates(scope);
@@ -218,6 +235,14 @@ public class TurkeyGeoDataService {
                 best.score(),
                 clarificationLabels
         );
+    }
+
+    private String buildMatchCacheKey(String normalizedUtterance, GeoScope scope) {
+        String cityCodes = scope.cityCodes() == null ? "" :
+                scope.cityCodes().stream().sorted().collect(Collectors.joining(","));
+        String districts = scope.districtNames() == null ? "" :
+                scope.districtNames().stream().sorted().collect(Collectors.joining(","));
+        return scope.granularity() + "|" + normalizedUtterance + "|" + cityCodes + "|" + districts;
     }
 
     public Set<String> resolveCityCodesByNames(Collection<String> cityNames) {

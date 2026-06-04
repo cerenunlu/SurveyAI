@@ -25,6 +25,7 @@ import com.yourcompany.surveyai.call.infrastructure.provider.mock.MockVoiceExecu
 import com.yourcompany.surveyai.call.repository.CallAttemptRepository;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.common.domain.entity.Company;
+import com.yourcompany.surveyai.operation.application.support.OperationAutoEntityLexiconService;
 import com.yourcompany.surveyai.response.application.service.SurveyResponseIngestionService;
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
@@ -48,6 +49,12 @@ class ProviderWebhookIngestionServiceImplTest {
     private final SurveyResponseIngestionService surveyResponseIngestionService = mock(SurveyResponseIngestionService.class);
     private final ProviderExecutionObservationService providerExecutionObservationService = mock(ProviderExecutionObservationService.class);
     private final CallJobDispatcher callJobDispatcher = mock(CallJobDispatcher.class);
+    private final OperationAutoEntityLexiconService operationAutoEntityLexiconService = new OperationAutoEntityLexiconService(new ObjectMapper(), null, null) {
+        @Override
+        public java.util.List<String> extractKeywords(String sourcePayloadJson) {
+            return java.util.List.of();
+        }
+    };
     private ProviderWebhookIngestionServiceImpl ingestionService;
 
     @BeforeEach
@@ -62,7 +69,7 @@ class ProviderWebhookIngestionServiceImplTest {
         ingestionService = new ProviderWebhookIngestionServiceImpl(
                 new CallProviderRegistry(java.util.List.of(
                         new MockVoiceExecutionProvider(new ObjectMapper()),
-                        new ElevenLabsVoiceExecutionProvider(new ObjectMapper(), mock(ElevenLabsApiClient.class))
+                        new ElevenLabsVoiceExecutionProvider(new ObjectMapper(), mock(ElevenLabsApiClient.class), operationAutoEntityLexiconService)
                 )),
                 new VoiceProviderConfigurationResolver(properties),
                 callAttemptRepository,
@@ -230,6 +237,51 @@ class ProviderWebhookIngestionServiceImplTest {
 
         assertThat(applied).isEqualTo(1);
         assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.BUSY);
+        assertThat(attempt.getCallJob().getStatus()).isEqualTo(CallJobStatus.FAILED);
+        assertThat(attempt.getOperationContact().getStatus()).isEqualTo(OperationContactStatus.FAILED);
+        verify(surveyResponseIngestionService, never()).ingest(any(), any());
+    }
+
+    @Test
+    void ingest_doesNotPersistSurveyResultForVoicemailTranscriptWebhook() {
+        CallAttempt attempt = buildAttempt();
+        attempt.setProvider(CallProvider.ELEVENLABS);
+        attempt.setProviderCallId("conv_voicemail");
+
+        when(callAttemptRepository.findByIdAndDeletedAtIsNull(attempt.getId()))
+                .thenReturn(Optional.of(attempt));
+
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        Enumeration<String> headerNames = Collections.enumeration(Collections.emptyList());
+        when(request.getHeaderNames()).thenReturn(headerNames);
+
+        int applied = ingestionService.ingest(
+                CallProvider.ELEVENLABS,
+                """
+                {
+                  "type": "post_call_transcription",
+                  "event_timestamp": "2026-04-10T10:00:00Z",
+                  "data": {
+                    "status": "done",
+                    "conversation_initiation_client_data": {
+                      "dynamic_variables": {
+                        "call_attempt_id": "%s",
+                        "call_job_id": "%s",
+                        "idempotency_key": "%s"
+                      }
+                    },
+                    "transcript": [
+                      {"role": "user", "message": "Please leave your message after the tone."},
+                      {"role": "agent", "message": "Merhaba, anket icin ariyorum."}
+                    ]
+                  }
+                }
+                """.formatted(attempt.getId(), attempt.getCallJob().getId(), attempt.getCallJob().getIdempotencyKey()),
+                request
+        );
+
+        assertThat(applied).isEqualTo(1);
+        assertThat(attempt.getStatus()).isEqualTo(CallAttemptStatus.VOICEMAIL);
         assertThat(attempt.getCallJob().getStatus()).isEqualTo(CallJobStatus.FAILED);
         assertThat(attempt.getOperationContact().getStatus()).isEqualTo(OperationContactStatus.FAILED);
         verify(surveyResponseIngestionService, never()).ingest(any(), any());

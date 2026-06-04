@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { SectionCard } from "@/components/ui/SectionCard";
-import { StatCard } from "@/components/ui/StatCard";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { ContactIcon, OperationIcon, PlayIcon, SurveyIcon } from "@/components/ui/Icons";
 import { createOperation, createOperationContacts } from "@/lib/operations";
 import {
   ACCEPTED_OPERATION_CONTACT_FILE_TYPES,
@@ -62,6 +60,7 @@ export default function NewOperationPage() {
   const [importRows, setImportRows] = useState<ImportPreviewRow[]>([]);
   const [importSummary, setImportSummary] = useState<ImportSummary>(createEmptyImportSummary());
   const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   usePageHeaderOverride({
     title: "Yeni Operasyon Tasarimi",
@@ -250,22 +249,8 @@ export default function NewOperationPage() {
       : "Soru ozeti hazir degil";
   const surveyLanguage = selectedSurveyDetail?.languageCode?.toUpperCase() ?? selectedSurvey?.audience ?? "-";
   const surveyStatus = selectedSurveyDetail?.status ?? selectedSurvey?.status ?? "Live";
-  const personStatus =
-    contactMode === "now"
-      ? importSummary.validRows > 0
-        ? `${importSummary.validRows} kisi ilk dalgaya hazir`
-        : selectedFileName
-          ? "Dogrulama sonrasi baglanacak"
-          : "Toplu import dosyasi bekleniyor"
-      : "Kisi listesi sonraki adima birakildi";
   const isSubmitDisabled = isSubmitting || isLoadingSurveys || publishedSurveys.length === 0;
   const isImportVisible = contactMode === "now";
-  const actionLabel =
-    submitPhase === "creating"
-      ? intentLabel(submitIntent, "creating")
-      : submitPhase === "importing"
-        ? "Gecerli kisiler yeni operasyona baglaniyor..."
-        : null;
 
   const preparationItems = useMemo<PreparationItem[]>(
     () => [
@@ -360,34 +345,7 @@ export default function NewOperationPage() {
           <StatusBadge status={readiness.status} label={readiness.label} />
         </div>
 
-        <section className="ops-summary-strip ops-create-summary-strip">
-          <StatCard
-            label="Yayinlanmis anket"
-            value={publishedSurveys.length}
-            detail="Operasyona baglanabilir aktif anket havuzu."
-            icon={<SurveyIcon className="nav-icon" />}
-          />
-          <StatCard
-            label="Secilen sablon"
-            value={selectedSurvey ? surveyQuestionCount : "-"}
-            detail={selectedSurvey ? selectedSurvey.name : "Henuz operasyona baglanacak anket secilmedi."}
-            icon={<OperationIcon className="nav-icon" />}
-          />
-          <StatCard
-            label="Kisi plani"
-            value={contactMode === "now" ? validImportRows.length : "Sonra"}
-            detail={personStatus}
-            icon={<ContactIcon className="nav-icon" />}
-          />
-          <StatCard
-            label="Hazirlik seviyesi"
-            value={readiness.label}
-            detail={readiness.detail}
-            icon={<PlayIcon className="nav-icon" />}
-          />
-        </section>
-
-        <div className="ops-two-column-layout ops-create-layout">
+        <div className="ops-create-centered">
           <div className="ops-create-main">
             <SectionCard eyebrow="Brif" title="Operasyon Kimligi" description="Operasyonu net, izlenebilir ve ekip diline uygun bir cercevede tanimlayin.">
               <div className="survey-form-fields">
@@ -522,7 +480,12 @@ export default function NewOperationPage() {
                   <button
                     type="button"
                     className={contactMode === "now" ? "operation-choice-card is-active" : "operation-choice-card"}
-                    onClick={() => setContactMode("now")}
+                    onClick={() => {
+                      setContactMode("now");
+                      if (!selectedFileName) {
+                        setTimeout(() => fileInputRef.current?.click(), 0);
+                      }
+                    }}
                     aria-pressed={contactMode === "now"}
                   >
                     <strong>Kisileri simdi yukle</strong>
@@ -531,97 +494,105 @@ export default function NewOperationPage() {
                 </div>
 
                 {isImportVisible ? (
-                  <>
-                    <div className="operation-inline-message is-accent">
-                      <strong>Toplu import ilk dalgaya baglanacak</strong>
-                      <span>Burada dogrulanan gecerli kisiler, operasyon olustuktan hemen sonra yeni kayda aktarilir.</span>
+                  <div className="operation-import-compact">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+                      accept={ACCEPTED_OPERATION_CONTACT_FILE_TYPES}
+                      onChange={(event) => void handleFileSelection(event)}
+                    />
+
+                    <div className="operation-import-file-bar">
+                      {selectedFileName ? (
+                        <>
+                          <svg className="import-file-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9 1H3a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6L9 1z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                            <path d="M9 1v5h5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                          </svg>
+                          <span className="import-file-name">{selectedFileName}</span>
+                          <button type="button" className="import-file-change" onClick={() => fileInputRef.current?.click()}>
+                            Degistir
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" className="import-file-select" onClick={() => fileInputRef.current?.click()}>
+                            Dosya sec
+                          </button>
+                          <span className="import-file-hint">.csv veya .xlsx</span>
+                          <button type="button" className="import-template-link" onClick={downloadOperationContactsTemplate}>
+                            Sablon indir
+                          </button>
+                        </>
+                      )}
                     </div>
 
-                    <div className="operation-bulk-import">
-                      <div className="operation-upload-placeholder">
-                        <strong>Toplu kisi yukleme</strong>
-                        <p>CSV veya Excel dosyasi secin. Beklenen kolonlar: `adSoyad` ve `telefonNumarasi`.</p>
+                    {(importSummary.totalRows > 0 || importSummary.ignoredRows > 0) && !importError ? (
+                      <div className="operation-import-stats-inline">
+                        <span><strong>{importSummary.totalRows}</strong> satir</span>
+                        <span className="stat-dot" />
+                        <span className="is-valid-text"><strong>{importSummary.validRows}</strong> gecerli</span>
+                        {importSummary.invalidRows > 0 && (
+                          <>
+                            <span className="stat-dot" />
+                            <span className="is-invalid-text"><strong>{importSummary.invalidRows}</strong> gecersiz</span>
+                          </>
+                        )}
+                        {importSummary.ignoredRows > 0 && (
+                          <>
+                            <span className="stat-dot" />
+                            <span><strong>{importSummary.ignoredRows}</strong> bos</span>
+                          </>
+                        )}
                       </div>
+                    ) : null}
 
-                      <label className="builder-field">
-                        <strong>Dosya secimi</strong>
-                        <input type="file" accept={ACCEPTED_OPERATION_CONTACT_FILE_TYPES} onChange={(event) => void handleFileSelection(event)} />
-                        <span>{selectedFileName ? `Secilen dosya: ${selectedFileName}` : "Desteklenen formatlar: .csv ve .xlsx"}</span>
-                      </label>
-
-                      <div className="operation-bulk-import-actions">
-                        <button type="button" className="button-secondary compact-button" onClick={downloadOperationContactsTemplate}>
-                          Ornek sablon indir
-                        </button>
-                      </div>
-
-                      {(importSummary.totalRows > 0 || importSummary.ignoredRows > 0) && !importError ? (
-                        <div className="operation-import-stats">
-                          <div className="operation-import-stat">
-                            <span>Toplam satir</span>
-                            <strong>{importSummary.totalRows}</strong>
-                          </div>
-                          <div className="operation-import-stat">
-                            <span>Gecerli</span>
-                            <strong>{importSummary.validRows}</strong>
-                          </div>
-                          <div className="operation-import-stat">
-                            <span>Gecersiz</span>
-                            <strong>{importSummary.invalidRows}</strong>
-                          </div>
-                          <div className="operation-import-stat">
-                            <span>Bos gecilen</span>
-                            <strong>{importSummary.ignoredRows}</strong>
-                          </div>
+                    {importRows.length > 0 ? (
+                      <div className="operation-import-preview">
+                        <div className="operation-import-preview-head">
+                          <strong>Onizleme</strong>
+                          <span>Ilk {Math.min(importRows.length, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT)} satir gosteriliyor.</span>
                         </div>
-                      ) : null}
-
-                      {importRows.length > 0 ? (
-                        <div className="operation-import-preview">
-                          <div className="operation-import-preview-head">
-                            <strong>Onizleme</strong>
-                            <span>Ilk {Math.min(importRows.length, OPERATION_CONTACT_IMPORT_PREVIEW_LIMIT)} satir gosteriliyor.</span>
-                          </div>
-                          <div className="operation-import-table-wrap">
-                            <table className="operation-import-table">
-                              <thead>
-                                <tr>
-                                  <th>Satir</th>
-                                  <th>Ad soyad</th>
-                                  <th>Telefon</th>
-                                  <th>Durum</th>
+                        <div className="operation-import-table-wrap">
+                          <table className="operation-import-table">
+                            <thead>
+                              <tr>
+                                <th>Satir</th>
+                                <th>Ad soyad</th>
+                                <th>Telefon</th>
+                                <th>Durum</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {previewRows.map((row) => (
+                                <tr key={row.rowNumber} className={row.isValid ? "is-valid" : "is-invalid"}>
+                                  <td>{row.rowNumber}</td>
+                                  <td>{row.name || "-"}</td>
+                                  <td>{row.phoneNumber || "-"}</td>
+                                  <td>{row.isValid ? "Hazir" : row.reason}</td>
                                 </tr>
-                              </thead>
-                              <tbody>
-                                {previewRows.map((row) => (
-                                  <tr key={row.rowNumber} className={row.isValid ? "is-valid" : "is-invalid"}>
-                                    <td>{row.rowNumber}</td>
-                                    <td>{row.name || "-"}</td>
-                                    <td>{row.phoneNumber || "-"}</td>
-                                    <td>{row.isValid ? "Hazir" : row.reason}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                      ) : null}
+                      </div>
+                    ) : null}
 
-                      {importSummary.invalidRows > 0 && !importError ? (
-                        <div className="operation-inline-message is-danger compact">
-                          <strong>Gecersiz satirlar import edilmeyecek</strong>
-                          <span>Sadece gecerli satirlar yeni operasyona baglanir. Dilerseniz gecersiz satirlari duzeltip tekrar yukleyebilirsiniz.</span>
-                        </div>
-                      ) : null}
+                    {importSummary.invalidRows > 0 && !importError ? (
+                      <div className="operation-inline-message is-danger compact">
+                        <strong>Gecersiz satirlar import edilmeyecek</strong>
+                        <span>Sadece gecerli satirlar yeni operasyona baglanir.</span>
+                      </div>
+                    ) : null}
 
-                      {importError ? (
-                        <div className="operation-inline-message is-danger compact">
-                          <strong>Toplu yukleme sorunu</strong>
-                          <span>{importError}</span>
-                        </div>
-                      ) : null}
-                    </div>
-                  </>
+                    {importError ? (
+                      <div className="operation-inline-message is-danger compact">
+                        <strong>Yukleme hatasi</strong>
+                        <span>{importError}</span>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : (
                   <div className="operation-inline-message">
                     <strong>Kisi listesi daha sonra eklenebilir</strong>
@@ -631,79 +602,15 @@ export default function NewOperationPage() {
               </div>
             </SectionCard>
           </div>
-
-          <aside className="ops-create-side">
-            <SectionCard eyebrow="Analiz" title="Hazirlik Degerlendirmesi" description="Sistem, operasyonu acmadan once ana karar noktalarini burada ozetler." action={<StatusBadge status={readiness.status} label={readiness.label} />}>
-              <div className="ops-create-checklist">
-                {preparationItems.map((item) => (
-                  <div key={item.key} className="ops-create-check-row">
-                    <div className="ops-create-check-copy">
-                      <strong>{item.title}</strong>
-                      <span>{item.detail}</span>
-                    </div>
-                    <StatusBadge status={item.status} label={item.label} />
-                  </div>
-                ))}
-              </div>
-
-              {actionLabel ? (
-                <div className="operation-inline-message is-accent compact">
-                  <strong>Akis isleniyor</strong>
-                  <span>{actionLabel}</span>
-                </div>
-              ) : null}
-
-              {submitError ? (
-                <div className="operation-inline-message is-danger compact">
-                  <strong>Olusturma tamamlanamadi</strong>
-                  <span>{submitError}</span>
-                </div>
-              ) : null}
-            </SectionCard>
-
-            <SectionCard eyebrow="Ozet" title="Operasyon Ozeti" description="Olusturulacak kaydin sahaya nasil cikacagini bu panelden hizla kontrol edin.">
-              <div className="operation-summary-list">
-                <div className="operation-summary-row">
-                  <span>Operasyon adi</span>
-                  <strong>{trimmedOperationName || "Henuz ad verilmedi"}</strong>
-                </div>
-                <div className="operation-summary-row">
-                  <span>Secilen anket</span>
-                  <strong>{selectedSurvey?.name ?? "Henuz anket secilmedi"}</strong>
-                </div>
-                <div className="operation-summary-row">
-                  <span>Durum</span>
-                  <strong>{readiness.label}</strong>
-                </div>
-                <div className="operation-summary-row">
-                  <span>Kisi plani</span>
-                  <strong>{personStatus}</strong>
-                </div>
-              </div>
-
-              <div className="operation-summary-helper ops-create-summary-helper">
-                <strong>Sonraki adim</strong>
-                <p>
-                  {contactMode === "now"
-                    ? "Operasyon once backendde olusturulur, sonra onizlemede gecerli gorunen kisiler ilk dalga olarak otomatik baglanir."
-                    : "Operasyon olusturulduktan sonra kisi yukleme, operasyon detay ekranindaki mevcut akistan devam eder."}
-                </p>
-              </div>
-
-              {operationNote.trim() ? (
-                <div className="ops-create-note">
-                  <strong>Hazirlik notu</strong>
-                  <p>{operationNote}</p>
-                </div>
-              ) : null}
-            </SectionCard>
-          </aside>
         </div>
 
         <div className="operation-action-bar panel-card ops-create-action-bar">
           <Link href="/operations" className="button-secondary compact-button">
             Iptal
           </Link>
+          {submitError ? (
+            <span className="ops-create-action-error">{submitError}</span>
+          ) : null}
           <div className="operation-action-group">
             <button
               type="button"
@@ -734,12 +641,4 @@ export default function NewOperationPage() {
       </div>
     </PageContainer>
   );
-}
-
-function intentLabel(intent: SubmitIntent | null, phase: "creating") {
-  if (phase === "creating") {
-    return intent === "draft" ? "Taslak operasyon backendde olusturuluyor..." : "Operasyon backendde olusturuluyor...";
-  }
-
-  return "Akis isleniyor...";
 }

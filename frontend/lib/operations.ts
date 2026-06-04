@@ -661,6 +661,16 @@ export async function resumeOperation(
   return mapOperationDtoToOperation(operationResponse, surveys);
 }
 
+export async function deleteOperation(
+  operationId: string,
+  companyId?: string,
+): Promise<void> {
+  const resolvedCompanyId = requireCompanyId(companyId);
+  await fetchJson<void>(`${API_BASE_URL}/api/v1/operations/${operationId}?companyId=${resolvedCompanyId}`, {
+    method: "DELETE",
+  }, "operation delete");
+}
+
 export async function fetchOperationContacts(
   operationId: string,
   companyId?: string,

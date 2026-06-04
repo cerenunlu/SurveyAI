@@ -20,7 +20,9 @@ import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.common.exception.ValidationException;
+import com.yourcompany.surveyai.operation.application.support.OperationAutoEntityLexiconService;
 import com.yourcompany.surveyai.operation.support.OperationContactPhoneResolver;
+import com.yourcompany.surveyai.survey.domain.entity.SurveyQuestion;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
@@ -29,9 +31,11 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
@@ -49,13 +53,16 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
 
     private final ObjectMapper objectMapper;
     private final ElevenLabsApiClient apiClient;
+    private final OperationAutoEntityLexiconService operationAutoEntityLexiconService;
 
     public ElevenLabsVoiceExecutionProvider(
             ObjectMapper objectMapper,
-            ElevenLabsApiClient apiClient
+            ElevenLabsApiClient apiClient,
+            OperationAutoEntityLexiconService operationAutoEntityLexiconService
     ) {
         this.objectMapper = objectMapper;
         this.apiClient = apiClient;
+        this.operationAutoEntityLexiconService = operationAutoEntityLexiconService;
     }
 
     @Override
@@ -271,6 +278,13 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
     private ProviderWebhookEvent buildWebhookEvent(JsonNode root, JsonNode data, String rawPayload) {
         String providerStatus = resolveProviderStatus(root, data);
         String eventType = firstNonBlank(text(root, "type"), text(root, "event"), text(root, "event_type"), "elevenlabs_webhook");
+        String transcriptText = extractTranscript(data);
+        boolean voicemailLikeOutcome = !isExplicitNonVoicemailTerminalStatus(providerStatus)
+                && isVoicemailLikeOutcome(data, transcriptText);
+        if (voicemailLikeOutcome) {
+            providerStatus = "voicemail";
+        }
+        String failureMessage = firstNonBlank(resolveFailureMessage(data), voicemailLikeOutcome ? "voicemail" : null);
         CallJobStatus jobStatus = mapJobStatus(providerStatus, eventType);
         String conversationId = firstNonBlank(
                 text(data, "conversation_id"),
@@ -294,7 +308,6 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 uuidValue(text(dynamicVariables, "call_attempt_id", "callAttemptId"))
         );
 
-        String transcriptText = extractTranscript(data);
         return new ProviderWebhookEvent(
                 CallProvider.ELEVENLABS,
                 conversationId,
@@ -316,7 +329,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                         text(data.path("metadata").path("body"), "twirp_code"),
                         text(data.path("metadata").path("body"), "sip_status_code")
                 ),
-                resolveFailureMessage(data),
+                failureMessage,
                 resolveTranscriptReference(conversationId, data, transcriptText),
                 transcriptText,
                 rawPayload
@@ -374,9 +387,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         Map<String, Object> agentOverrides = new LinkedHashMap<>();
         if (isOverrideEnabled(configuration, "agent-first-message-override-enabled")) {
             String firstMessage = buildFirstMessage(request);
-            if (firstMessage != null) {
-                agentOverrides.put("first_message", firstMessage);
-            }
+            agentOverrides.put("first_message", firstMessage == null ? "" : firstMessage);
         }
         if (isOverrideEnabled(configuration, "agent-language-override-enabled")
                 && request.survey().getLanguageCode() != null
@@ -390,6 +401,48 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         }
         if (!agentOverrides.isEmpty()) {
             conversationConfigOverride.put("agent", agentOverrides);
+        }
+        Map<String, Object> asrOverride = new LinkedHashMap<>();
+        if (isOverrideEnabled(configuration, "agent-asr-keywords-override-enabled")) {
+            List<String> asrKeywords = buildAsrKeywords(request);
+            if (!asrKeywords.isEmpty()) {
+                asrOverride.put("keywords", asrKeywords);
+            }
+        }
+        String asrQuality = configuration.settings().get("asr-quality");
+        if (asrQuality != null && !asrQuality.isBlank()) {
+            asrOverride.put("quality", asrQuality.trim());
+        }
+        if (!asrOverride.isEmpty()) {
+            conversationConfigOverride.put("asr", asrOverride);
+        }
+        String turnTimeoutRaw = configuration.settings().get("turn-detection-timeout-seconds");
+        Map<String, Object> turnOverride = new LinkedHashMap<>();
+        if (turnTimeoutRaw != null && !turnTimeoutRaw.isBlank()) {
+            try {
+                turnOverride.put("turn_timeout", Integer.parseInt(turnTimeoutRaw.trim()));
+            } catch (NumberFormatException ignored) {
+                log.warn("Invalid turn-detection-timeout-seconds value: {}", turnTimeoutRaw);
+            }
+        }
+        String turnEagerness = configuration.settings().get("turn-detection-eagerness");
+        if (turnEagerness != null && !turnEagerness.isBlank()) {
+            turnOverride.put("turn_eagerness", turnEagerness.trim());
+        }
+        String speculativeTurnRaw = configuration.settings().get("turn-detection-speculative-turn");
+        if (speculativeTurnRaw != null && !speculativeTurnRaw.isBlank()) {
+            turnOverride.put("speculative_turn", Boolean.parseBoolean(speculativeTurnRaw.trim()));
+        }
+        if (!turnOverride.isEmpty()) {
+            conversationConfigOverride.put("turn", turnOverride);
+        }
+        String backgroundVoiceDetectionRaw = configuration.settings().get("background-voice-detection-enabled");
+        if (backgroundVoiceDetectionRaw != null && !backgroundVoiceDetectionRaw.isBlank()) {
+            Map<String, Object> vadOverride = new LinkedHashMap<>();
+            vadOverride.put("background_voice_detection", Boolean.parseBoolean(backgroundVoiceDetectionRaw.trim()));
+            conversationConfigOverride.put("vad", vadOverride);
+        }
+        if (!conversationConfigOverride.isEmpty()) {
             conversationInitiationClientData.put("conversation_config_override", conversationConfigOverride);
         }
 
@@ -417,6 +470,12 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 Never invent your own greeting, survey invitation, consent request, or company introduction.
                 Do not say anything until the callee speaks first with a greeting-like opening such as "alo", "merhaba", "efendim", "hello", "hi", or "buyurun".
                 Before the callee gives that kind of opening, stay silent and wait.
+                If you hear voicemail, an answering machine, an operator recording, a busy announcement, a busy tone, a beep, or a message like "please leave a message", do not leave any message.
+                Treat phrases like "please leave a message", "leave your message after the tone", "after the beep", "sinyal sesinden sonra mesaj birakin", "lutfen mesaj birakin", "mesajinizi birakin", "aradiginiz kisiye su anda ulasilamiyor", "aradiginiz kisi mesgul", "sekreter servisi", or similar automated greetings as voicemail or machine detection immediately.
+                For voicemail, busy, or automated recordings, do not call `survey_start_interview`, do not call `survey_submit_answer`, and do not call `survey_finish_interview`.
+                For voicemail, busy, or automated recordings, immediately call the built-in `voicemail_detection` tool. If that is unavailable, immediately call the built-in `end_call` tool with no farewell message.
+                After voicemail, busy, or automated recording detection, say nothing else, ask nothing else, and terminate the call immediately.
+                Never ask follow-up lines such as "hala orada misiniz", "beni duyabiliyor musunuz", "are you there", or any similar check-in after silence, voicemail, busy tones, or automated greetings.
                 Do not reply to the callee's greeting with another greeting such as "Merhaba" or "Hello".
                 As soon as the callee gives a greeting-like opening, immediately call `survey_submit_answer` with the callee's latest utterance.
                 Let the backend decide whether to stay silent, deliver the survey opening, or ask the first question.
@@ -426,6 +485,9 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 Do not say any survey invitation, consent request, or company introduction unless it comes from a backend tool response.
                 The first spoken survey line in the call must come from a backend tool response.
                 Do not add your own extra introduction, rephrased preface, or duplicate survey invitation before or after that backend-controlled opening.
+                Never use freeform fallback lines such as "Sizi duyabiliyorum", "Lutfen bir seyler soyleyin", "Ses geliyor mu", "Beni duyuyor musunuz", "Can you hear me", or similar audio-check phrases.
+                If the caller says short live-human phrases like "alo", "alo alo", "anlamadim", "ses geliyor mu", "kim ariyor", "buyurun", or "soyluyorum", treat that as a live caller turn and immediately call `survey_submit_answer`.
+                If the backend does not give you a spoken prompt yet, do not invent any audio-check or troubleshooting sentence from yourself.
                 If the backend gives you an opening or consent prompt, deliver that prompt directly with minimal paraphrasing and without adding another sentence that means the same thing.
                 The backend controls question order, completion, and skip logic. Do not invent or skip questions on your own.
                 If the opening message asks for permission to continue, wait for the callee's answer before moving to the first survey question.
@@ -441,7 +503,7 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
                 Never summarize the caller's answer unless the backend explicitly tells you to do so.
                 If the caller asks who you are, use the identity-request flow and follow the backend prompt.
                 If the caller asks you to repeat, use the repeat-request flow and repeat only the current question.
-                If the caller wants to stop, call `survey_finish_interview`, say the closing message naturally, and end the call.
+                If the caller wants to stop, call `survey_finish_interview`, then call the built-in `end_call` tool after the closing message naturally finishes.
                 If a tool response indicates `endCall=true`, say the provided closing message once and terminate the call immediately.
                 When `endCall=true`, disconnect right after the closing sentence. Do not wait for another reply.
                 Do not wait for the callee to hang up first.
@@ -467,6 +529,43 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
     private String buildFirstMessage(ProviderDispatchRequest request) {
         return null;
     }
+
+    private List<String> buildAsrKeywords(ProviderDispatchRequest request) {
+        Set<String> keywords = new LinkedHashSet<>();
+        for (SurveyQuestion question : request.survey().getQuestions()) {
+            String settingsJson = question.getSettingsJson();
+            if (settingsJson == null || settingsJson.isBlank()) {
+                continue;
+            }
+            try {
+                JsonNode root = objectMapper.readTree(settingsJson);
+                JsonNode entriesNode = root.path("autoEntityLexicon").path("entries");
+                if (!entriesNode.isArray()) {
+                    continue;
+                }
+                entriesNode.forEach(entry -> {
+                    String label = entry.path("label").asText(null);
+                    if (label != null && !label.isBlank()) {
+                        keywords.add(label.trim());
+                    }
+                    JsonNode aliases = entry.get("aliases");
+                    if (aliases != null && aliases.isArray()) {
+                        aliases.forEach(a -> {
+                            String alias = a.asText(null);
+                            if (alias != null && !alias.isBlank()) {
+                                keywords.add(alias.trim());
+                            }
+                        });
+                    }
+                });
+            } catch (Exception ignored) {
+                // malformed settingsJson — skip
+            }
+        }
+        keywords.addAll(operationAutoEntityLexiconService.extractKeywords(request.operation().getSourcePayloadJson()));
+        return new ArrayList<>(keywords);
+    }
+
     private String sanitizePromptForSpeech(String value) {
         String trimmed = firstNonBlank(value);
         if (trimmed == null) {
@@ -555,6 +654,103 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
             }
         }
         return null;
+    }
+
+    private boolean isVoicemailLikeOutcome(JsonNode data, String transcriptText) {
+        if (containsVoicemailSignal(resolveFailureMessage(data))
+                || containsVoicemailSignal(text(data.path("metadata").path("body"), "call_status"))
+                || containsVoicemailSignal(text(data.path("metadata").path("body"), "answered_by"))
+                || containsVoicemailSignal(text(data.path("metadata").path("body"), "AnsweredBy"))
+                || containsVoicemailSignal(text(data, "termination_reason"))
+                || containsVoicemailSignal(text(data, "failure_reason"))
+                || containsVoicemailSignal(transcriptText)) {
+            return true;
+        }
+
+        JsonNode transcriptNode = data.get("transcript");
+        if (transcriptNode == null || !transcriptNode.isArray()) {
+            return false;
+        }
+
+        boolean hasAgentMessage = false;
+        boolean hasUserMessage = false;
+        for (JsonNode item : transcriptNode) {
+            String role = firstNonBlank(text(item, "role"), text(item, "speaker"));
+            String message = firstNonBlank(text(item, "message"), text(item, "text"));
+            if (message == null || message.isBlank()) {
+                continue;
+            }
+            if (role != null && role.equalsIgnoreCase("agent")) {
+                hasAgentMessage = true;
+            }
+            if (role != null && role.equalsIgnoreCase("user")) {
+                hasUserMessage = true;
+                if (containsVoicemailSignal(message)) {
+                    return true;
+                }
+            }
+        }
+
+        return hasAgentMessage && !hasUserMessage && isCompletedPostCallPayload(data);
+    }
+
+    private boolean isCompletedPostCallPayload(JsonNode data) {
+        String status = firstNonBlank(text(data, "status"), text(data, "call_status"));
+        if (status == null) {
+            return false;
+        }
+        return switch (status.trim().toUpperCase(Locale.ROOT)) {
+            case "DONE", "COMPLETED", "FINISHED" -> true;
+            default -> false;
+        };
+    }
+
+    private boolean containsVoicemailSignal(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        String normalized = value.toLowerCase(Locale.ROOT)
+                .replace('\u0131', 'i')
+                .replace('\u0130', 'i')
+                .replace('\u015f', 's')
+                .replace('\u015e', 's')
+                .replace('\u011f', 'g')
+                .replace('\u011e', 'g')
+                .replace('\u00fc', 'u')
+                .replace('\u00dc', 'u')
+                .replace('\u00f6', 'o')
+                .replace('\u00d6', 'o')
+                .replace('\u00e7', 'c')
+                .replace('\u00c7', 'c')
+                .replaceAll("[^a-z0-9\\s]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return normalized.contains("voicemail")
+                || normalized.contains("voice mail")
+                || normalized.contains("answering machine")
+                || normalized.contains("machine start")
+                || normalized.contains("please leave")
+                || normalized.contains("leave a message")
+                || normalized.contains("leave your message")
+                || normalized.contains("after the tone")
+                || normalized.contains("mailbox")
+                || normalized.contains("not available")
+                || normalized.contains("cannot take your call")
+                || normalized.contains("mesaj birak")
+                || normalized.contains("sinyal sesinden sonra")
+                || normalized.contains("aradiginiz kisiye")
+                || normalized.contains("su anda ulasilamiyor")
+                || normalized.contains("su anda mesgul");
+    }
+
+    private boolean isExplicitNonVoicemailTerminalStatus(String providerStatus) {
+        if (providerStatus == null || providerStatus.isBlank()) {
+            return false;
+        }
+        return switch (providerStatus.trim().toUpperCase(Locale.ROOT)) {
+            case "BUSY", "NO_ANSWER", "NO-ANSWER", "CANCELLED", "SKIPPED" -> true;
+            default -> false;
+        };
     }
 
     private String resolveTranscriptReference(String conversationId, JsonNode data, String transcriptText) {
@@ -730,4 +926,3 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         };
     }
 }
-

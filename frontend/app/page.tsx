@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { fetchOperationAnalytics, fetchOperationContacts, fetchCompanyOperations } from "@/lib/operations";
 import { fetchCompanySurveys } from "@/lib/surveys";
+import { ResponseTrendChart, CallVolumeChart } from "@/components/charts/DashboardCharts";
 import type { Operation, OperationAnalytics, OperationContact, Survey } from "@/lib/types";
 
 type DashboardContact = OperationContact & {
@@ -287,7 +288,7 @@ export default function DashboardPage() {
           {responsePerformance.hasData ? (
             <>
               <p className="ops-dashboard-kpi-caption">Ortalama Yanit Orani %{responsePerformance.average}</p>
-              <DashboardLineChart points={responsePerformance.points} percentLabel={responsePerformance.lastPercentLabel} />
+              <ResponseTrendChart points={responsePerformance.points} percentLabel={responsePerformance.lastPercentLabel} />
             </>
           ) : (
             <div className="ops-dashboard-kpi-empty">
@@ -310,7 +311,7 @@ export default function DashboardPage() {
                 </div>
                 <small>{volumeSeries.maxLabel}</small>
               </div>
-              <DashboardVolumeChart points={volumeSeries.points} />
+              <CallVolumeChart points={volumeSeries.points} />
             </>
           ) : (
             <div className="ops-dashboard-kpi-empty">
@@ -458,60 +459,6 @@ export default function DashboardPage() {
         </div>
       </div>
     </PageContainer>
-  );
-}
-
-function DashboardLineChart({
-  points,
-  percentLabel,
-}: {
-  points: Array<{ label: string; value: number }>;
-  percentLabel: string;
-}) {
-  const max = Math.max(...points.map((point) => point.value), 1);
-  const min = Math.min(...points.map((point) => point.value), 0);
-  const span = Math.max(max - min, 1);
-  const path = points
-    .map((point, index) => {
-      const x = 8 + (index / Math.max(points.length - 1, 1)) * 84;
-      const y = 78 - ((point.value - min) / span) * 48;
-      return `${index === 0 ? "M" : "L"} ${x} ${y}`;
-    })
-    .join(" ");
-
-  return (
-    <div className="ops-dashboard-line-chart">
-      <div className="ops-dashboard-line-meta">
-        <span>100</span>
-        <strong>{percentLabel}</strong>
-      </div>
-      <svg viewBox="0 0 100 84" preserveAspectRatio="none" aria-hidden="true">
-        <path className="ops-dashboard-line-grid" d="M 6 66 H 94 M 6 48 H 94 M 6 30 H 94" />
-        <path className="ops-dashboard-line-path" d={path} />
-      </svg>
-      <div className="ops-dashboard-line-labels">
-        {points.map((point) => (
-          <span key={point.label}>{point.label}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DashboardVolumeChart({ points }: { points: Array<{ label: string; value: number }> }) {
-  const max = Math.max(...points.map((point) => point.value), 1);
-
-  return (
-    <div className="ops-dashboard-volume-chart">
-      {points.map((point, index) => (
-        <div key={`${point.label}-${index}`} className="ops-dashboard-volume-column">
-          <div className="ops-dashboard-volume-track">
-            <span style={{ height: `${Math.max((point.value / max) * 100, 10)}%` }} />
-          </div>
-          <small>{point.label}</small>
-        </div>
-      ))}
-    </div>
   );
 }
 
