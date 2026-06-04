@@ -17,6 +17,7 @@ import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.call.repository.CallAttemptRepository;
 import com.yourcompany.surveyai.common.domain.entity.Company;
+import com.yourcompany.surveyai.operation.application.support.OperationAutoEntityLexiconService;
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.response.domain.entity.SurveyAnswer;
@@ -47,12 +48,19 @@ class CallInterviewOrchestrationServiceImplTest {
     private final SurveyAnswerRepository surveyAnswerRepository = mock(SurveyAnswerRepository.class);
     private final SurveyQuestionRepository surveyQuestionRepository = mock(SurveyQuestionRepository.class);
     private final SurveyQuestionOptionRepository surveyQuestionOptionRepository = mock(SurveyQuestionOptionRepository.class);
+    private final OperationAutoEntityLexiconService operationAutoEntityLexiconService = new OperationAutoEntityLexiconService(new ObjectMapper(), null, null) {
+        @Override
+        public List<NamedEntityEntry> extractEntriesForQuestion(String sourcePayloadJson, UUID questionId, String questionCode) {
+            return runtimeEntries;
+        }
+    };
 
     private CallInterviewOrchestrationServiceImpl service;
     private Fixture fixture;
     private final Map<UUID, SurveyResponse> responsesByAttemptId = new LinkedHashMap<>();
     private final Map<UUID, List<SurveyAnswer>> answersByResponseId = new LinkedHashMap<>();
     private final Map<UUID, List<SurveyQuestionOption>> questionOptionsByQuestionId = new LinkedHashMap<>();
+    private List<OperationAutoEntityLexiconService.NamedEntityEntry> runtimeEntries = List.of();
 
     @BeforeEach
     void setUp() {
@@ -64,8 +72,10 @@ class CallInterviewOrchestrationServiceImplTest {
                 surveyQuestionRepository,
                 surveyQuestionOptionRepository,
                 new ObjectMapper(),
-                new TurkeyGeoDataService(new ObjectMapper())
+                new TurkeyGeoDataService(new ObjectMapper()),
+                operationAutoEntityLexiconService
         );
+        runtimeEntries = List.of();
 
         when(callAttemptRepository.findByIdAndDeletedAtIsNull(fixture.callAttempt.getId()))
                 .thenReturn(Optional.of(fixture.callAttempt));
@@ -249,6 +259,35 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(response.question().code()).isEqualTo("satisfied");
         assertThat(response.prompt()).contains("Memnun musunuz?");
         assertThat(response.prompt()).doesNotContain("Kisa bir anketimize katilmak ister miydiniz?");
+    }
+
+    @Test
+    void getCurrentQuestion_returnsOpeningPromptDuringGreetingOrConsentPhase() {
+        fixture.survey.setIntroPrompt("Kisa bir anketimize katilmak ister miydiniz?");
+
+        InterviewOrchestrationResponse greetingPhase = service.getCurrentQuestion(
+                new InterviewSessionRequest(fixture.callAttempt.getId(), null, null)
+        );
+
+        assertThat(greetingPhase.question()).isNull();
+        assertThat(greetingPhase.prompt()).contains("Kisa bir anketimize katilmak ister miydiniz?");
+
+        service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Alo",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        InterviewOrchestrationResponse consentPhase = service.getCurrentQuestion(
+                new InterviewSessionRequest(fixture.callAttempt.getId(), null, null)
+        );
+
+        assertThat(consentPhase.question()).isNull();
+        assertThat(consentPhase.prompt()).contains("Kisa bir anketimize katilmak ister miydiniz?");
     }
     
     @Test
@@ -605,6 +644,39 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(answers).hasSize(1);
         assertThat(answers.getFirst().isValid()).isTrue();
         assertThat(answers.getFirst().getSelectedOption()).isEqualTo(fixture.noOption);
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
+    void submitAnswer_matchesElectionPreferenceFromDirectPartyAnswer() {
+        fixture.yesNoQuestion.setCode("question_3");
+        fixture.yesNoQuestion.setTitle("Milletvekili secimlerinde, genel secimlerde partiye gore mi yoksa milletvekili adaylarina gore mi oy kullaniyorsunuz?");
+
+        SurveyQuestionOption partyOption = buildOption(fixture.yesNoQuestion, 1, "option_1", "Partiye Gore");
+        SurveyQuestionOption candidateOption = buildOption(fixture.yesNoQuestion, 2, "option_2", "Adaylara gore");
+        SurveyQuestionOption bothOption = buildOption(fixture.yesNoQuestion, 3, "option_3", "Her ikisi de");
+        SurveyQuestionOption noOpinionOption = buildOption(fixture.yesNoQuestion, 4, "option_4", "Cevap yok/Fikrim yok");
+        questionOptionsByQuestionId.put(fixture.yesNoQuestion.getId(), List.of(partyOption, candidateOption, bothOption, noOpinionOption));
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Partiye gore.",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isEqualTo(partyOption);
         assertThat(response.question()).isNotNull();
         assertThat(response.question().code()).isEqualTo("why");
     }
@@ -1056,12 +1128,32 @@ class CallInterviewOrchestrationServiceImplTest {
                         fixture.callAttempt.getId(),
                         null,
                         null,
+                        null,
                         null
                 )
         );
 
         assertThat(response.prompt()).isEqualTo("Peki, tesekkur ederim. Iyi gunler dilerim.");
         assertThat(response.closingMessage()).isEqualTo("Peki, tesekkur ederim. Iyi gunler dilerim.");
+    }
+
+    @Test
+    void finishInterview_suppressesClosingPromptWhenRequested() {
+        fixture.survey.setClosingPrompt("[sad] Peki, [slow] tesekkur ederim. [happy] Iyi gunler dilerim.");
+
+        InterviewOrchestrationResponse response = service.finishInterview(
+                new com.yourcompany.surveyai.call.application.dto.request.InterviewFinishRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        null,
+                        true
+                )
+        );
+
+        assertThat(response.endCall()).isTrue();
+        assertThat(response.prompt()).isNull();
+        assertThat(response.closingMessage()).isNull();
     }
 
     @Test
@@ -1544,6 +1636,39 @@ class CallInterviewOrchestrationServiceImplTest {
         assertThat(answers.getFirst().isValid()).isTrue();
         assertThat(answers.getFirst().getRawInputText()).isEqualTo("Sehzadin sorunlariyla ilgilenmelerini bekliyorum.");
         assertThat(answers.getFirst().getAnswerText()).isEqualTo("şehrin sorunlarıyla ilgilenmelerini bekliyorum.");
+        assertThat(response.question()).isNull();
+    }
+
+    @Test
+    void submitAnswer_usesOperationScopedAutoEntityLexiconWhenQuestionSettingsDoNotContainIt() {
+        when(surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(fixture.survey.getId()))
+                .thenReturn(List.of(fixture.openQuestion));
+        fixture.openQuestion.setRequired(true);
+        fixture.openQuestion.setTitle("Desteklediginiz adayi soyler misiniz?");
+        fixture.openQuestion.setSettingsJson("{}");
+        runtimeEntries = List.of(new OperationAutoEntityLexiconService.NamedEntityEntry(
+                "Cemil Tugay",
+                List.of("Cemil Tugay", "Tugay")
+        ));
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Tugay",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getAnswerText()).isEqualTo("Cemil Tugay");
         assertThat(response.question()).isNull();
     }
 

@@ -9,6 +9,8 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface CallJobRepository extends JpaRepository<CallJob, UUID>, JpaSpecificationExecutor<CallJob> {
 
@@ -33,4 +35,7 @@ public interface CallJobRepository extends JpaRepository<CallJob, UUID>, JpaSpec
             Set<CallJobStatus> statuses,
             OffsetDateTime availableAt
     );
+
+    @Query("SELECT j.status, COUNT(j) FROM CallJob j WHERE j.operation.id = :operationId AND j.deletedAt IS NULL GROUP BY j.status")
+    List<Object[]> countGroupedByStatusForOperation(@Param("operationId") UUID operationId);
 }

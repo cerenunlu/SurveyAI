@@ -162,4 +162,8 @@ public class Survey extends CompanyScopedEntity {
     public void setSourcePayloadJson(String sourcePayloadJson) {
         this.sourcePayloadJson = sourcePayloadJson;
     }
+
+    public Set<SurveyQuestion> getQuestions() {
+        return questions;
+    }
 }

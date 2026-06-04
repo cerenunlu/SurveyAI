@@ -78,13 +78,18 @@ public class ElevenLabsInterviewToolController {
             @RequestBody InterviewAnswerRequest request
     ) {
         validateToolSecret(toolSecret);
-        InterviewOrchestrationResponse response = timedToolCall(
-                "answer",
-                request.callAttemptId(),
-                request.providerCallId(),
-                () -> callInterviewOrchestrationService.submitAnswer(request),
-                "signal=" + request.signal()
-        );
+        InterviewOrchestrationResponse response;
+        try {
+            response = timedToolCall(
+                    "answer",
+                    request.callAttemptId(),
+                    request.providerCallId(),
+                    () -> callInterviewOrchestrationService.submitAnswer(request),
+                    "signal=" + request.signal()
+            );
+        } catch (RuntimeException error) {
+            response = recoverCurrentQuestion(request, error);
+        }
         return ResponseEntity.ok(response);
     }
 
@@ -94,13 +99,14 @@ public class ElevenLabsInterviewToolController {
             @RequestBody(required = false) InterviewFinishRequest request
     ) {
         validateToolSecret(toolSecret);
-        InterviewFinishRequest effectiveRequest = request == null ? new InterviewFinishRequest(null, null, null, null) : request;
+        InterviewFinishRequest effectiveRequest = request == null ? new InterviewFinishRequest(null, null, null, null, null) : request;
         InterviewOrchestrationResponse response = timedToolCall(
                 "finish",
                 effectiveRequest.callAttemptId(),
                 effectiveRequest.providerCallId(),
                 () -> callInterviewOrchestrationService.finishInterview(effectiveRequest),
-                "requestedStatus=" + effectiveRequest.requestedStatus()
+                "requestedStatus=" + effectiveRequest.requestedStatus(),
+                "suppressClosingMessage=" + effectiveRequest.suppressClosingMessage()
         );
         return ResponseEntity.ok(response);
     }
@@ -167,6 +173,31 @@ public class ElevenLabsInterviewToolController {
             builder.append(extra);
         }
         return builder.toString();
+    }
+
+    private InterviewOrchestrationResponse recoverCurrentQuestion(InterviewAnswerRequest request, RuntimeException originalError) {
+        log.warn(
+                "ElevenLabs answer tool failed; attempting current-question recovery. callAttemptId={} providerCallId={} signal={} error={}",
+                request.callAttemptId(),
+                request.providerCallId(),
+                request.signal(),
+                originalError.getMessage()
+        );
+        try {
+            return timedToolCall(
+                    "current-question-recovery",
+                    request.callAttemptId(),
+                    request.providerCallId(),
+                    () -> callInterviewOrchestrationService.getCurrentQuestion(
+                            new InterviewSessionRequest(request.callAttemptId(), request.providerCallId(), null)
+                    ),
+                    "recoveryFrom=answer",
+                    "signal=" + request.signal()
+            );
+        } catch (RuntimeException recoveryError) {
+            recoveryError.addSuppressed(originalError);
+            throw recoveryError;
+        }
     }
 
     private void validateToolSecret(String providedSecret) {

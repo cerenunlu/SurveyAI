@@ -7,6 +7,7 @@ public record InterviewFinishRequest(
         UUID callAttemptId,
         String providerCallId,
         String idempotencyKey,
-        SurveyResponseStatus requestedStatus
+        SurveyResponseStatus requestedStatus,
+        Boolean suppressClosingMessage
 ) {
 }

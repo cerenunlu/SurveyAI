@@ -16,9 +16,11 @@ import com.yourcompany.surveyai.call.application.provider.ProviderWebhookRequest
 import com.yourcompany.surveyai.call.configuration.VoiceProviderConfiguration;
 import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
+import com.yourcompany.surveyai.call.domain.enums.CallAttemptStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.domain.enums.CallProvider;
 import com.yourcompany.surveyai.common.domain.entity.Company;
+import com.yourcompany.surveyai.operation.application.support.OperationAutoEntityLexiconService;
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.operation.domain.enums.OperationContactStatus;
@@ -37,11 +39,19 @@ import org.junit.jupiter.api.Test;
 class ElevenLabsVoiceExecutionProviderTest {
 
     private final ElevenLabsApiClient apiClient = mock(ElevenLabsApiClient.class);
+    private final OperationAutoEntityLexiconService operationAutoEntityLexiconService = new OperationAutoEntityLexiconService(new ObjectMapper(), null, null) {
+        @Override
+        public List<String> extractKeywords(String sourcePayloadJson) {
+            return runtimeKeywords;
+        }
+    };
     private ElevenLabsVoiceExecutionProvider provider;
+    private List<String> runtimeKeywords = List.of();
 
     @BeforeEach
     void setUp() {
-        provider = new ElevenLabsVoiceExecutionProvider(new ObjectMapper(), apiClient);
+        runtimeKeywords = List.of();
+        provider = new ElevenLabsVoiceExecutionProvider(new ObjectMapper(), apiClient, operationAutoEntityLexiconService);
     }
 
     @Test
@@ -87,10 +97,22 @@ class ElevenLabsVoiceExecutionProviderTest {
         assertThat(payload).contains(request.survey().getName());
         assertThat(payload).contains("Keep the same warm-neutral professional tone across the whole call.");
         assertThat(payload).contains("Avoid cheerful hype, gloomy sadness, stiff formality, theatrical delivery, or abrupt mood swings.");
-        assertThat(payload).doesNotContain("\"first_message\"");
+        assertThat(payload).contains("\"first_message\":\"\"");
+        assertThat(payload).contains("\"turn_eagerness\":\"normal\"");
+        assertThat(payload).contains("\"speculative_turn\":false");
+        assertThat(payload).contains("\"background_voice_detection\":false");
         assertThat(payload).contains("Do not introduce yourself, describe the survey, or mention the research company unless that wording is coming from a backend prompt.");
         assertThat(payload).contains("Stay silent when the call connects.");
         assertThat(payload).contains("Do not say anything until the callee speaks first with a greeting-like opening");
+        assertThat(payload).contains("If you hear voicemail, an answering machine, an operator recording, a busy announcement, a busy tone, a beep");
+        assertThat(payload).contains("sinyal sesinden sonra mesaj birakin");
+        assertThat(payload).contains("sekreter servisi");
+        assertThat(payload).contains("do not leave any message");
+        assertThat(payload).contains("do not call `survey_finish_interview`");
+        assertThat(payload).contains("immediately call the built-in `voicemail_detection` tool");
+        assertThat(payload).contains("immediately call the built-in `end_call` tool");
+        assertThat(payload).contains("Never ask follow-up lines such as");
+        assertThat(payload).contains("hala orada misiniz");
         assertThat(payload).contains("Do not reply to the callee's greeting with another greeting");
         assertThat(payload).contains("If the opening message asks for permission to continue");
         assertThat(payload).contains("As soon as the callee answers the opening message, immediately call `survey_submit_answer`, even if the answer is very short.");
@@ -99,13 +121,16 @@ class ElevenLabsVoiceExecutionProviderTest {
         assertThat(payload).contains("Do not say any survey invitation, consent request, or company introduction unless it comes from a backend tool response.");
         assertThat(payload).contains("The first spoken survey line in the call must come from a backend tool response.");
         assertThat(payload).contains("Do not add your own extra introduction, rephrased preface, or duplicate survey invitation before or after that backend-controlled opening.");
+        assertThat(payload).contains("Never use freeform fallback lines such as");
+        assertThat(payload).contains("If the caller says short live-human phrases like");
+        assertThat(payload).contains("do not invent any audio-check or troubleshooting sentence from yourself");
         assertThat(payload).doesNotContain("\"contact_name\"");
         assertThat(payload).contains("Never say or imply that you are the callee's assistant");
         assertThat(payload).doesNotContain("Contact:");
     }
 
     @Test
-    void dispatchCallJob_omitsFirstMessageWhenSurveyIntroIsMissing() {
+    void dispatchCallJob_overridesFirstMessageWithSilenceWhenSurveyIntroIsMissing() {
         ProviderDispatchRequest request = buildRequest();
         request.survey().setIntroPrompt(null);
         VoiceProviderConfiguration configuration = configuration(false);
@@ -121,11 +146,11 @@ class ElevenLabsVoiceExecutionProviderTest {
         org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
         String payload = payloadCaptor.getValue();
 
-        assertThat(payload).doesNotContain("\"first_message\"");
+        assertThat(payload).contains("\"first_message\":\"\"");
     }
 
     @Test
-    void dispatchCallJob_doesNotSendFirstMessageEvenWhenSurveyIntroExists() {
+    void dispatchCallJob_overridesFirstMessageWithSilenceEvenWhenSurveyIntroExists() {
         ProviderDispatchRequest request = buildRequest();
         request.survey().setIntroPrompt("[slow] Hello from SurveyAI");
         VoiceProviderConfiguration configuration = configuration(false);
@@ -141,7 +166,7 @@ class ElevenLabsVoiceExecutionProviderTest {
         org.mockito.Mockito.verify(apiClient).startOutboundCall(payloadCaptor.capture(), eq(configuration));
         String payload = payloadCaptor.getValue();
 
-        assertThat(payload).doesNotContain("\"first_message\"");
+        assertThat(payload).contains("\"first_message\":\"\"");
         assertThat(payload).contains("\"survey_intro\":\"Hello from SurveyAI\"");
     }
 
@@ -392,6 +417,69 @@ class ElevenLabsVoiceExecutionProviderTest {
         });
     }
 
+    @Test
+    void parseWebhook_mapsVoicemailGreetingTranscriptToFailedVoicemailEvent() {
+        List<ProviderWebhookEvent> events = provider.parseWebhook(
+                new ProviderWebhookRequest(
+                        CallProvider.ELEVENLABS,
+                        """
+                        {
+                          "type": "post_call_transcription",
+                          "event_timestamp": "2026-04-10T10:00:00Z",
+                          "data": {
+                            "conversation_id": "conv_voicemail",
+                            "status": "done",
+                            "transcript": [
+                              {"role": "user", "message": "Please leave your message after the tone."},
+                              {"role": "agent", "message": "Merhaba, anket için arıyorum."}
+                            ]
+                          }
+                        }
+                        """,
+                        Map.of()
+                ),
+                configuration(false)
+        );
+
+        assertThat(events).singleElement().satisfies(event -> {
+            assertThat(event.providerCallId()).isEqualTo("conv_voicemail");
+            assertThat(event.jobStatus()).isEqualTo(CallJobStatus.FAILED);
+            assertThat(event.attemptStatus()).isEqualTo(CallAttemptStatus.VOICEMAIL);
+            assertThat(event.errorMessage()).isEqualTo("voicemail");
+        });
+    }
+
+    @Test
+    void parseWebhook_mapsAgentOnlyCompletedTranscriptToFailedVoicemailEvent() {
+        List<ProviderWebhookEvent> events = provider.parseWebhook(
+                new ProviderWebhookRequest(
+                        CallProvider.ELEVENLABS,
+                        """
+                        {
+                          "type": "post_call_transcription",
+                          "event_timestamp": "2026-04-10T10:00:00Z",
+                          "data": {
+                            "conversation_id": "conv_agent_only",
+                            "status": "done",
+                            "transcript": [
+                              {"role": "agent", "message": "Merhaba, anket için arıyorum."}
+                            ]
+                          }
+                        }
+                        """,
+                        Map.of()
+                ),
+                configuration(false)
+        );
+
+        assertThat(events).singleElement().satisfies(event -> {
+            assertThat(event.providerCallId()).isEqualTo("conv_agent_only");
+            assertThat(event.jobStatus()).isEqualTo(CallJobStatus.FAILED);
+            assertThat(event.attemptStatus()).isEqualTo(CallAttemptStatus.VOICEMAIL);
+            assertThat(event.errorMessage()).isEqualTo("voicemail");
+        });
+    }
+
     private ProviderDispatchRequest buildRequest() {
         Company company = new Company();
         company.setId(UUID.randomUUID());
@@ -462,7 +550,10 @@ class ElevenLabsVoiceExecutionProviderTest {
                 Map.of(
                         "agent-prompt-override-enabled", "true",
                         "agent-first-message-override-enabled", "true",
-                        "agent-language-override-enabled", "true"
+                        "agent-language-override-enabled", "true",
+                        "turn-detection-eagerness", "normal",
+                        "turn-detection-speculative-turn", "false",
+                        "background-voice-detection-enabled", "false"
                 )
         );
     }

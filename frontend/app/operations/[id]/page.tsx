@@ -2,8 +2,10 @@
 
 import * as XLSX from "xlsx";
 import Link from "next/link";
-import { notFound, useParams, useSearchParams } from "next/navigation";
+import { notFound, useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useNotifications } from "@/lib/notifications";
+import { usePolling } from "@/lib/usePolling";
 import { OperationAnalyticsSection } from "@/components/operations/OperationAnalyticsSection";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { usePageHeaderOverride } from "@/components/layout/PageHeaderContext";
@@ -25,6 +27,7 @@ import {
 import { getAnalyticsKpisCompact, getOperationStatusConfig, getPrimaryAction } from "@/lib/operation-detail";
 import {
   createOperationContacts,
+  deleteOperation,
   fetchOperationAnalytics,
   fetchOperationById,
   fetchOperationCallJobsPage,
@@ -39,7 +42,31 @@ import {
 } from "@/lib/operations";
 import { CallJob, Operation, OperationAnalytics, TableColumn } from "@/lib/types";
 
-type OperationWorkspaceTab = "analysis" | "details" | "jobs";
+type OperationWorkspaceTab = "analysis" | "firstLook" | "details" | "jobs";
+
+type OperationFirstLookQuestionSuggestion = {
+  questionId?: string;
+  questionCode?: string;
+  questionTitle?: string;
+  lexicon?: {
+    type?: string;
+    domain?: string;
+    entries?: Array<{
+      label?: string;
+      aliases?: string[];
+    }>;
+  };
+};
+
+type OperationFirstLookPreview = {
+  generatedAt?: string;
+  operationName?: string;
+  surveyId?: string;
+  surveyName?: string;
+  keywordCount?: number;
+  keywords?: string[];
+  questionSuggestions?: OperationFirstLookQuestionSuggestion[];
+};
 
 const JOB_FILTERS: Array<["All" | CallJob["status"], string]> = [
   ["All", "Tum durumlar"],
@@ -109,9 +136,29 @@ const jobColumns: TableColumn<CallJob>[] = [
   },
 ];
 
+function parseFirstLookPreview(sourcePayloadJson: string | null | undefined): OperationFirstLookPreview | null {
+  if (!sourcePayloadJson?.trim()) {
+    return null;
+  }
+
+  try {
+    const root = JSON.parse(sourcePayloadJson) as {
+      autoEntityLexiconPreview?: OperationFirstLookPreview;
+    };
+    const preview = root.autoEntityLexiconPreview;
+    if (!preview || typeof preview !== "object") {
+      return null;
+    }
+    return preview;
+  } catch {
+    return null;
+  }
+}
+
 export default function OperationDetailPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const operationId = params.id;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hasInitializedTabRef = useRef(false);
@@ -121,9 +168,11 @@ export default function OperationDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [startErrorMessage, setStartErrorMessage] = useState<string | null>(null);
   const [startSuccessMessage, setStartSuccessMessage] = useState<string | null>(null);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
   const [isMissing, setIsMissing] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [importRows, setImportRows] = useState<ImportPreviewRow[]>([]);
@@ -141,6 +190,10 @@ export default function OperationDetailPage() {
   const [isJobsLoading, setIsJobsLoading] = useState(false);
   const [jobsErrorMessage, setJobsErrorMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<OperationWorkspaceTab>("analysis");
+  const prevStatusRef = useRef<string | null>(null);
+
+  const { notify } = useNotifications();
+  const isLive = operation?.status === "Running";
 
   const loadOperationWorkspace = useCallback(async (signal?: AbortSignal) => {
     if (!operationId) {
@@ -220,6 +273,30 @@ export default function OperationDetailPage() {
   }, [operation]);
 
   useEffect(() => {
+    if (!operation) return;
+    const prev = prevStatusRef.current;
+    const next = operation.status;
+    if (prev !== null && prev !== next) {
+      if (next === "Completed") {
+        notify("success", `${operation.name} tamamlandı`, "Tüm aramalar bitti.");
+      } else if (next === "Failed") {
+        notify("error", `${operation.name} başarısız oldu`, "Operasyon hata durumunda.");
+      } else if (next === "Paused") {
+        notify("warning", `${operation.name} duraklatıldı`);
+      } else if (next === "Running" && prev !== "Running") {
+        notify("info", `${operation.name} başladı`, "Aramalar devam ediyor.");
+      }
+    }
+    prevStatusRef.current = next;
+  }, [operation, notify]);
+
+  usePolling(
+    useCallback(() => loadOperationWorkspace(), [loadOperationWorkspace]),
+    30000,
+    isLive,
+  );
+
+  useEffect(() => {
     const timeout = window.setTimeout(() => {
       setJobsPageIndex(0);
       setJobsQuery(jobsQueryInput.trim());
@@ -287,7 +364,8 @@ export default function OperationDetailPage() {
     contactCount,
     contactCount - (contactStatusCounts.Pending ?? 0),
   );
-  const everyoneCalled = contactCount > 0 && attemptedContactCount >= contactCount;
+  const operationIsTerminal =
+    operation?.status === "Completed" || operation?.status === "Failed" || operation?.status === "Cancelled";
 
   const detailKpis = useMemo(() => {
     if (operation && analytics) {
@@ -333,6 +411,14 @@ export default function OperationDetailPage() {
       .join(", ");
   }, [jobsStatusFilters]);
 
+  const firstLookPreview = useMemo(
+    () => parseFirstLookPreview(operation?.sourcePayloadJson),
+    [operation?.sourcePayloadJson],
+  );
+
+  const firstLookSuggestions = firstLookPreview?.questionSuggestions ?? [];
+  const firstLookKeywords = firstLookPreview?.keywords ?? [];
+
   const toggleJobStatusFilter = useCallback((status: CallJob["status"]) => {
     setJobsPageIndex(0);
     setJobsStatusFilters((current) => (
@@ -352,6 +438,14 @@ export default function OperationDetailPage() {
           aria-pressed={activeTab === "analysis"}
         >
           Sonuclar
+        </button>
+        <button
+          type="button"
+          className={["operation-header-tab", activeTab === "firstLook" ? "is-active" : ""].filter(Boolean).join(" ")}
+          onClick={() => setActiveTab("firstLook")}
+          aria-pressed={activeTab === "firstLook"}
+        >
+          Ilk bakis
         </button>
         <button
           type="button"
@@ -465,6 +559,32 @@ export default function OperationDetailPage() {
     }
   }, [operation, operationId, primaryAction.disabled, primaryAction.intent, refreshAfterMutation]);
 
+  const handleDeleteOperation = useCallback(async () => {
+    if (!operationId || !operation || isDeleting) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `"${operation.name}" operasyonunu silmek istediginize emin misiniz? Bu islem geri alinmaz.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      setDeleteErrorMessage(null);
+      await deleteOperation(operationId);
+      notify("success", `${operation.name} silindi`);
+      router.push("/operations");
+      router.refresh();
+    } catch (error) {
+      setDeleteErrorMessage(error instanceof Error ? error.message : "Operasyon silinemedi.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [isDeleting, notify, operation, operationId, router]);
+
   const pageHeader = useMemo(
     () => ({
       title: operation?.name?.trim() || "Operasyon",
@@ -474,7 +594,7 @@ export default function OperationDetailPage() {
   );
 
   const headerPlaybackState = useMemo(() => {
-    if (operation?.status === "Completed" || everyoneCalled) {
+    if (operationIsTerminal) {
       return {
         statusLabel: "Tamamlandi",
         statusClassName: "operation-media-state is-complete",
@@ -535,11 +655,11 @@ export default function OperationDetailPage() {
       actionHint: primaryAction.hint,
       showInlineHint: true,
     };
-  }, [everyoneCalled, isStarting, operation?.status, primaryAction.disabled, primaryAction.hint, primaryAction.label]);
+  }, [isStarting, operation?.status, operationIsTerminal, primaryAction.disabled, primaryAction.hint, primaryAction.label]);
 
   const headerAction = useMemo(() => operation ? (
-    <div className="survey-header-action-cluster">
-      <div className="operation-header-summary-card">
+      <div className="survey-header-action-cluster">
+        <div className="operation-header-summary-card">
         <div className="operation-header-summary-item">
           <span>Hedef</span>
           <strong>{contactCount}</strong>
@@ -557,7 +677,7 @@ export default function OperationDetailPage() {
           <strong>{failedContactCount}</strong>
         </div>
       </div>
-      {!everyoneCalled ? (
+      {!operationIsTerminal ? (
         <div className="survey-header-action-buttons operation-media-controls">
           <div className={headerPlaybackState.statusClassName}>
             <span className={headerPlaybackState.statusIconClassName}>
@@ -582,8 +702,19 @@ export default function OperationDetailPage() {
           ) : null}
         </div>
       ) : null}
+      <div className="survey-header-action-buttons">
+        <button
+          type="button"
+          className="button-secondary compact-button survey-header-button danger-button"
+          onClick={() => void handleDeleteOperation()}
+          disabled={isDeleting}
+          title="Operasyonu sil"
+        >
+          {isDeleting ? "Siliniyor..." : "Operasyonu Sil"}
+        </button>
+      </div>
     </div>
-  ) : null, [attemptedContactCount, contactCount, everyoneCalled, failedContactCount, handlePrimaryHeaderAction, headerPlaybackState, operation, successfulContactCount]);
+  ) : null, [attemptedContactCount, contactCount, failedContactCount, handleDeleteOperation, handlePrimaryHeaderAction, headerPlaybackState, isDeleting, operation, operationIsTerminal, successfulContactCount]);
 
   usePageHeaderOverride({ ...pageHeader, action: headerAction });
 
@@ -726,6 +857,15 @@ export default function OperationDetailPage() {
           </section>
         ) : null}
 
+        {deleteErrorMessage ? (
+          <section className="panel-card">
+            <div className="operation-inline-message is-danger">
+              <strong>Operasyon silinemedi</strong>
+              <span>{deleteErrorMessage}</span>
+            </div>
+          </section>
+        ) : null}
+
         {showCreationSummary ? (
           <section className="panel-card">
             <div className={`operation-inline-message ${importError ? "is-danger" : "is-accent"}`}>
@@ -763,6 +903,111 @@ export default function OperationDetailPage() {
             />
 
           </>
+        ) : activeTab === "firstLook" ? (
+          <section className="panel-card operation-detail-content-stack">
+            <div className="operation-detail-summary-strip">
+              <div className="operation-detail-summary-copy">
+                <div className="operation-detail-hero-meta">
+                  <span className="operation-kicker">Ilk bakis</span>
+                  <StatusBadge
+                    status={firstLookSuggestions.length > 0 ? "Completed" : "Draft"}
+                    label={firstLookSuggestions.length > 0 ? "Hazirlandi" : "Bos"}
+                  />
+                </div>
+                <h2>Operation autoEntityLexicon onizlemesi</h2>
+                <p>
+                  Operation olusturulurken cikarilan lexicon onerileri burada listelenir. Bu alan su an inceleme
+                  amaclidir; duzenleme akisini bir sonraki adimda ekleyebiliriz.
+                </p>
+              </div>
+              <div className="operation-detail-summary-note">
+                <span>Uretim ozetı</span>
+                <strong>{firstLookSuggestions.length} soru icin oneriler hazir</strong>
+                <small>
+                  {firstLookPreview?.generatedAt
+                    ? `Uretim zamani: ${new Date(firstLookPreview.generatedAt).toLocaleString("tr-TR")}`
+                    : "Uretim zamani bilgisi bulunamadi."}
+                </small>
+              </div>
+            </div>
+
+            {firstLookPreview ? (
+              <>
+                <div className="operation-import-stats">
+                  <div className="operation-import-stat"><span>Soru</span><strong>{firstLookSuggestions.length}</strong></div>
+                  <div className="operation-import-stat"><span>Anahtar kelime</span><strong>{firstLookPreview.keywordCount ?? firstLookKeywords.length}</strong></div>
+                  <div className="operation-import-stat"><span>Operasyon</span><strong>{firstLookPreview.operationName ?? operation?.name ?? "-"}</strong></div>
+                  <div className="operation-import-stat"><span>Anket</span><strong>{firstLookPreview.surveyName ?? operation?.survey ?? "-"}</strong></div>
+                </div>
+
+                {firstLookKeywords.length > 0 ? (
+                  <SectionCard
+                    title="ASR anahtar kelimeleri"
+                    description="Provider tarafina keyword olarak gidecek birlesik liste."
+                  >
+                    <div className="operation-first-look-chip-grid">
+                      {firstLookKeywords.map((keyword) => (
+                        <span key={keyword} className="operation-first-look-chip">{keyword}</span>
+                      ))}
+                    </div>
+                  </SectionCard>
+                ) : null}
+
+                <SectionCard
+                  title="Soru bazli oneriler"
+                  description="Her soru icin cikarilan named entity lexicon girisleri burada gorunur."
+                >
+                  {firstLookSuggestions.length === 0 ? (
+                    <div className="operation-empty-state">
+                      <strong>Gosterilecek lexicon onerisi yok</strong>
+                      <p>Bu operation icin autoEntityLexicon onizlemesi uretilmedi ya da bos geldi.</p>
+                    </div>
+                  ) : (
+                    <div className="operation-first-look-list">
+                      {firstLookSuggestions.map((suggestion, index) => {
+                        const entries = suggestion.lexicon?.entries ?? [];
+                        return (
+                          <article key={`${suggestion.questionId ?? suggestion.questionCode ?? index}`} className="operation-first-look-card">
+                            <div className="operation-first-look-card-head">
+                              <div>
+                                <strong>{suggestion.questionTitle ?? suggestion.questionCode ?? `Soru ${index + 1}`}</strong>
+                                <span>{suggestion.questionCode ?? "Kod yok"}</span>
+                              </div>
+                              <span className="operation-first-look-pill">
+                                {suggestion.lexicon?.domain ?? suggestion.lexicon?.type ?? "named_entity"}
+                              </span>
+                            </div>
+
+                            {entries.length === 0 ? (
+                              <p className="operation-first-look-empty">Bu soru icin entity girisi bulunamadi.</p>
+                            ) : (
+                              <div className="operation-first-look-entries">
+                                {entries.map((entry) => (
+                                  <div key={`${suggestion.questionCode ?? "q"}-${entry.label ?? "entry"}`} className="operation-first-look-entry">
+                                    <strong>{entry.label ?? "Etiket yok"}</strong>
+                                    <div className="operation-first-look-chip-grid">
+                                      {(entry.aliases ?? []).map((alias) => (
+                                        <span key={`${entry.label ?? "entry"}-${alias}`} className="operation-first-look-chip is-soft">{alias}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </SectionCard>
+              </>
+            ) : (
+              <div className="operation-empty-state">
+                <strong>Ilk bakis verisi bulunamadi</strong>
+                <p>Bu operation icin `sourcePayloadJson` icinde `autoEntityLexiconPreview` bulunmuyor.</p>
+              </div>
+            )}
+          </section>
         ) : activeTab === "jobs" ? (
           <section className="panel-card operation-detail-content-stack operation-jobs-panel">
             <div className="operation-list-toolbar operation-list-toolbar-compact">
@@ -886,6 +1131,12 @@ export default function OperationDetailPage() {
                 <div className="operation-detail-hero-meta">
                   <span className="operation-kicker">Operasyon Durumu</span>
                   <StatusBadge status={operation?.status ?? "Draft"} label={statusConfig.badge.label} />
+                  {isLive ? (
+                    <span className="live-indicator" aria-label="Canlı">
+                      <span className="live-dot" />
+                      Canlı
+                    </span>
+                  ) : null}
                 </div>
                 <h2>{statusConfig.title}</h2>
                 <p>{statusConfig.summary}</p>
@@ -1132,4 +1383,3 @@ function getCallJobsEmptyState(
     description: "Bu operasyon için henüz görüntülenecek bir kayıt bulunmuyor.",
   };
 }
-

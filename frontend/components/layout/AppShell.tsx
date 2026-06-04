@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getNavigationItems } from "@/components/layout/navigation";
 import { PageHeaderProvider, useResolvedPageHeader } from "@/components/layout/PageHeaderContext";
 import { ArrowLeftIcon, ArrowRightIcon, BellIcon, CollapseIcon, MenuIcon, SearchIcon } from "@/components/ui/Icons";
 import { useAuth } from "@/lib/auth";
+import { useNotifications } from "@/lib/notifications";
 import { useLanguage, useTranslations } from "@/lib/i18n/LanguageContext";
 import type { Language } from "@/lib/i18n";
 
@@ -50,6 +51,21 @@ function AppShellFrame({ children }: { children: ReactNode }) {
     setIsUserMenuOpen(false);
     setIsMobileNavOpen(false);
   }, [pathname]);
+
+  const { unreadCount, notifications, markAllSeen, clearNotifications } = useNotifications();
+  const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
+  const bellWrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isNotificationPanelOpen) return;
+    function handleClickOutside(event: MouseEvent) {
+      if (bellWrapperRef.current && !bellWrapperRef.current.contains(event.target as Node)) {
+        setIsNotificationPanelOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isNotificationPanelOpen]);
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
@@ -263,6 +279,55 @@ function AppShellFrame({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="sidebar-bottom">
+            <div className="sidebar-bell-wrapper" ref={bellWrapperRef}>
+              <button
+                type="button"
+                className={["sidebar-bell-button", isNotificationPanelOpen ? "is-active" : ""].filter(Boolean).join(" ")}
+                aria-label="Bildirimler"
+                onClick={() => {
+                  setIsNotificationPanelOpen((v) => !v);
+                  if (!isNotificationPanelOpen) markAllSeen();
+                }}
+              >
+                <span className="sidebar-bell-icon-wrap">
+                  <BellIcon className="nav-icon" />
+                  {unreadCount > 0 ? (
+                    <span className="sidebar-bell-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
+                  ) : null}
+                </span>
+                {!isSidebarCollapsed ? <span className="sidebar-bell-label">Bildirimler</span> : null}
+              </button>
+
+              {isNotificationPanelOpen ? (
+                <>
+                  <div className="notification-panel sidebar-notification-panel">
+                    <div className="notification-panel-head">
+                      <strong>Bildirimler</strong>
+                      {notifications.length > 0 ? (
+                        <button type="button" className="notification-clear-btn" onClick={clearNotifications}>
+                          Temizle
+                        </button>
+                      ) : null}
+                    </div>
+                    {notifications.length === 0 ? (
+                      <div className="notification-empty">Bildirim yok</div>
+                    ) : (
+                      <div className="notification-list">
+                        {notifications.map((n) => (
+                          <div key={n.id} className={`notification-item notification-item-${n.type}`}>
+                            <div className="notification-item-body">
+                              <strong>{n.message}</strong>
+                              {n.detail ? <span>{n.detail}</span> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
+            </div>
+
             <div className="topbar-account-menu sidebar-account-menu">
               <button
                 type="button"
@@ -297,13 +362,6 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                   <strong>{currentUser.company.name}</strong>
                   <span>Mevcut calisma alani</span>
                 </div>
-                <button type="button" className="button-secondary compact-button topbar-account-notification">
-                  <span className="topbar-account-notification-copy">
-                    <BellIcon className="nav-icon" />
-                    <span>Bildirimler</span>
-                  </span>
-                  <span className="notification-indicator" />
-                </button>
                 <button
                   type="button"
                   className="button-secondary compact-button"

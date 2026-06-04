@@ -3,9 +3,11 @@ package com.yourcompany.surveyai.operation.application.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.auth.application.RequestAuthContext;
+import com.yourcompany.surveyai.call.domain.entity.CallAttempt;
 import com.yourcompany.surveyai.call.domain.entity.CallJob;
 import com.yourcompany.surveyai.call.domain.enums.CallJobStatus;
 import com.yourcompany.surveyai.call.application.service.CallJobDispatcher;
+import com.yourcompany.surveyai.call.repository.CallAttemptRepository;
 import com.yourcompany.surveyai.call.repository.CallJobRepository;
 import com.yourcompany.surveyai.operation.application.dto.request.CreateOperationRequest;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationAnalyticsBreakdownItemDto;
@@ -22,6 +24,7 @@ import com.yourcompany.surveyai.operation.application.dto.response.OperationExec
 import com.yourcompany.surveyai.operation.application.dto.response.OperationReadinessDto;
 import com.yourcompany.surveyai.operation.application.dto.response.OperationResponseDto;
 import com.yourcompany.surveyai.operation.application.service.OperationService;
+import com.yourcompany.surveyai.operation.application.support.OperationAutoEntityLexiconService;
 import com.yourcompany.surveyai.operation.domain.entity.Operation;
 import com.yourcompany.surveyai.operation.domain.entity.OperationContact;
 import com.yourcompany.surveyai.operation.domain.enums.OperationSourceType;
@@ -188,6 +191,7 @@ public class OperationServiceImpl implements OperationService {
 
     private final OperationRepository operationRepository;
     private final OperationContactRepository operationContactRepository;
+    private final CallAttemptRepository callAttemptRepository;
     private final CallJobRepository callJobRepository;
     private final CompanyRepository companyRepository;
     private final SurveyRepository surveyRepository;
@@ -200,10 +204,12 @@ public class OperationServiceImpl implements OperationService {
     private final RequestAuthContext requestAuthContext;
     private final Validator validator;
     private final ObjectMapper objectMapper;
+    private final OperationAutoEntityLexiconService operationAutoEntityLexiconService;
 
     public OperationServiceImpl(
             OperationRepository operationRepository,
             OperationContactRepository operationContactRepository,
+            CallAttemptRepository callAttemptRepository,
             CallJobRepository callJobRepository,
             CompanyRepository companyRepository,
             SurveyRepository surveyRepository,
@@ -215,10 +221,12 @@ public class OperationServiceImpl implements OperationService {
             CallJobDispatcher callJobDispatcher,
             RequestAuthContext requestAuthContext,
             Validator validator,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            OperationAutoEntityLexiconService operationAutoEntityLexiconService
     ) {
         this.operationRepository = operationRepository;
         this.operationContactRepository = operationContactRepository;
+        this.callAttemptRepository = callAttemptRepository;
         this.callJobRepository = callJobRepository;
         this.companyRepository = companyRepository;
         this.surveyRepository = surveyRepository;
@@ -231,6 +239,7 @@ public class OperationServiceImpl implements OperationService {
         this.requestAuthContext = requestAuthContext;
         this.validator = validator;
         this.objectMapper = objectMapper;
+        this.operationAutoEntityLexiconService = operationAutoEntityLexiconService;
     }
 
     @Override
@@ -256,7 +265,7 @@ public class OperationServiceImpl implements OperationService {
         operation.setName(request.getName().trim());
         operation.setStatus(OperationStatus.DRAFT);
         operation.setSourceType(OperationSourceType.STANDARD);
-        operation.setSourcePayloadJson(null);
+        operation.setSourcePayloadJson(buildOperationSourcePayload(survey, request.getName().trim()));
         operation.setScheduledAt(request.getScheduledAt());
         operation.setCreatedBy(createdBy);
 
@@ -371,12 +380,76 @@ public class OperationServiceImpl implements OperationService {
     }
 
     @Override
+    @Transactional
+    public void deleteOperation(UUID companyId, UUID operationId) {
+        Operation operation = getOperation(companyId, operationId);
+
+        boolean hasOpenCallJobs = callJobRepository.existsByOperation_IdAndStatusInAndDeletedAtIsNull(
+                operationId,
+                OPEN_CALL_JOB_STATUSES
+        );
+        if (operation.getStatus() == OperationStatus.RUNNING && hasOpenCallJobs) {
+            throw new ValidationException("Yurutulen operasyon silinemez. Once duraklatin.");
+        }
+
+        OffsetDateTime deletedAt = OffsetDateTime.now();
+
+        List<CallJob> callJobs = callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId);
+        for (CallJob callJob : callJobs) {
+            List<CallAttempt> attempts = callAttemptRepository.findAllByCallJob_IdOrderByCreatedAtDesc(callJob.getId());
+            for (CallAttempt attempt : attempts) {
+                if (attempt.getDeletedAt() == null) {
+                    attempt.setDeletedAt(deletedAt);
+                    callAttemptRepository.save(attempt);
+                }
+            }
+            callJob.setDeletedAt(deletedAt);
+            callJobRepository.save(callJob);
+        }
+
+        List<SurveyResponse> responses = surveyResponseRepository.findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId);
+        List<UUID> responseIds = responses.stream().map(SurveyResponse::getId).toList();
+        if (!responseIds.isEmpty()) {
+            for (SurveyAnswer answer : surveyAnswerRepository.findAllBySurveyResponse_IdInAndDeletedAtIsNull(responseIds)) {
+                answer.setDeletedAt(deletedAt);
+                surveyAnswerRepository.save(answer);
+            }
+        }
+        for (SurveyResponse response : responses) {
+            response.setDeletedAt(deletedAt);
+            surveyResponseRepository.save(response);
+        }
+
+        for (OperationContact contact : operationContactRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId)) {
+            contact.setDeletedAt(deletedAt);
+            operationContactRepository.save(contact);
+        }
+
+        operation.setDeletedAt(deletedAt);
+        operationRepository.save(operation);
+    }
+
+    @Override
     public OperationAnalyticsResponseDto getOperationAnalytics(UUID companyId, UUID operationId) {
         Operation operation = getOperation(companyId, operationId);
         long totalContacts = countContacts(operation);
         syncLifecycleState(operation, totalContacts);
 
-        List<CallJob> callJobs = callJobRepository.findAllByOperation_IdAndDeletedAtIsNull(operationId);
+        Map<CallJobStatus, Long> jobCountsByStatus = callJobRepository
+                .countGroupedByStatusForOperation(operationId)
+                .stream()
+                .collect(Collectors.toMap(row -> (CallJobStatus) row[0], row -> (Long) row[1]));
+        long totalJobs = jobCountsByStatus.values().stream().mapToLong(Long::longValue).sum();
+        long queuedJobs = jobCountsByStatus.getOrDefault(CallJobStatus.PENDING, 0L)
+                + jobCountsByStatus.getOrDefault(CallJobStatus.QUEUED, 0L)
+                + jobCountsByStatus.getOrDefault(CallJobStatus.RETRY, 0L);
+        long inProgressJobs = jobCountsByStatus.getOrDefault(CallJobStatus.IN_PROGRESS, 0L);
+        long completedCallJobs = jobCountsByStatus.getOrDefault(CallJobStatus.COMPLETED, 0L);
+        long failedCallJobs = jobCountsByStatus.getOrDefault(CallJobStatus.FAILED, 0L)
+                + jobCountsByStatus.getOrDefault(CallJobStatus.DEAD_LETTER, 0L);
+        long skippedCallJobs = jobCountsByStatus.getOrDefault(CallJobStatus.CANCELLED, 0L);
+        long totalCallsAttempted = totalJobs - queuedJobs;
+
         List<SurveyResponse> responses = surveyResponseRepository
                 .findAllByOperation_IdAndDeletedAtIsNullOrderByCreatedAtDesc(operationId);
         List<SurveyQuestion> questions = surveyQuestionRepository
@@ -419,20 +492,6 @@ public class OperationServiceImpl implements OperationService {
                 .collect(Collectors.toSet());
         long respondedContacts = respondedContactIds.size();
 
-        long queuedJobs = callJobs.stream().filter(job -> EnumSet.of(
-                CallJobStatus.PENDING,
-                CallJobStatus.QUEUED,
-                CallJobStatus.RETRY
-        ).contains(job.getStatus())).count();
-        long inProgressJobs = callJobs.stream().filter(job -> job.getStatus() == CallJobStatus.IN_PROGRESS).count();
-        long completedCallJobs = callJobs.stream().filter(job -> job.getStatus() == CallJobStatus.COMPLETED).count();
-        long failedCallJobs = callJobs.stream().filter(job -> EnumSet.of(
-                CallJobStatus.FAILED,
-                CallJobStatus.DEAD_LETTER
-        ).contains(job.getStatus())).count();
-        long skippedCallJobs = callJobs.stream().filter(job -> job.getStatus() == CallJobStatus.CANCELLED).count();
-        long totalCallsAttempted = callJobs.size() - queuedJobs;
-
         long completedResponses = countDistinctResponseContactsByStatus(responses, usableResponseIds, SurveyResponseStatus.COMPLETED);
         long partialResponses = countDistinctResponseContactsByStatus(responses, usableResponseIds, SurveyResponseStatus.PARTIAL);
         long abandonedResponses = countDistinctResponseContactsByStatus(responses, usableResponseIds, SurveyResponseStatus.ABANDONED);
@@ -454,11 +513,11 @@ public class OperationServiceImpl implements OperationService {
         );
 
         List<OperationAnalyticsBreakdownItemDto> outcomeBreakdown = List.of(
-                new OperationAnalyticsBreakdownItemDto("queued", "Kuyrukta", queuedJobs, percentage(queuedJobs, callJobs.size())),
-                new OperationAnalyticsBreakdownItemDto("inProgress", "Yurutuluyor", inProgressJobs, percentage(inProgressJobs, callJobs.size())),
-                new OperationAnalyticsBreakdownItemDto("completed", "Tamamlandi", completedCallJobs, percentage(completedCallJobs, callJobs.size())),
-                new OperationAnalyticsBreakdownItemDto("failed", "Basarisiz", failedCallJobs, percentage(failedCallJobs, callJobs.size())),
-                new OperationAnalyticsBreakdownItemDto("skipped", "Atlandi", skippedCallJobs, percentage(skippedCallJobs, callJobs.size()))
+                new OperationAnalyticsBreakdownItemDto("queued", "Kuyrukta", queuedJobs, percentage(queuedJobs, totalJobs)),
+                new OperationAnalyticsBreakdownItemDto("inProgress", "Yurutuluyor", inProgressJobs, percentage(inProgressJobs, totalJobs)),
+                new OperationAnalyticsBreakdownItemDto("completed", "Tamamlandi", completedCallJobs, percentage(completedCallJobs, totalJobs)),
+                new OperationAnalyticsBreakdownItemDto("failed", "Basarisiz", failedCallJobs, percentage(failedCallJobs, totalJobs)),
+                new OperationAnalyticsBreakdownItemDto("skipped", "Atlandi", skippedCallJobs, percentage(skippedCallJobs, totalJobs))
         );
 
         List<OperationAnalyticsQuestionSummaryDto> questionSummaries = questions.stream()
@@ -521,7 +580,7 @@ public class OperationServiceImpl implements OperationService {
                 "Generated analytics for operation {}: contacts={}, jobs={}, responses={}, completedResponses={}",
                 operationId,
                 totalContacts,
-                callJobs.size(),
+                totalJobs,
                 responses.size(),
                 completedResponses
         );
@@ -529,8 +588,8 @@ public class OperationServiceImpl implements OperationService {
         return new OperationAnalyticsResponseDto(
                 operation.getId(),
                 totalContacts,
-                callJobs.size(),
-                callJobs.size(),
+                totalJobs,
+                totalJobs,
                 totalCallsAttempted,
                 completedCallJobs,
                 queuedJobs,
@@ -589,6 +648,27 @@ public class OperationServiceImpl implements OperationService {
     private Operation getOperation(UUID companyId, UUID operationId) {
         return operationRepository.findByIdAndCompany_IdAndDeletedAtIsNull(operationId, companyId)
                 .orElseThrow(() -> new NotFoundException("Operation not found for company: " + operationId));
+    }
+
+    private String buildOperationSourcePayload(Survey survey, String operationName) {
+        List<SurveyQuestion> questions = surveyQuestionRepository.findAllBySurvey_IdAndDeletedAtIsNullOrderByQuestionOrderAsc(survey.getId());
+        Map<UUID, List<SurveyQuestionOption>> optionsByQuestionId = new LinkedHashMap<>();
+        if (!questions.isEmpty()) {
+            List<UUID> questionIds = questions.stream().map(SurveyQuestion::getId).toList();
+            surveyQuestionOptionRepository
+                    .findAllBySurveyQuestion_IdInAndDeletedAtIsNullOrderBySurveyQuestion_IdAscOptionOrderAsc(questionIds)
+                    .forEach(option -> optionsByQuestionId
+                            .computeIfAbsent(option.getSurveyQuestion().getId(), ignored -> new ArrayList<>())
+                            .add(option));
+        }
+
+        return operationAutoEntityLexiconService.buildSourcePayloadJson(
+                survey,
+                operationName,
+                questions,
+                optionsByQuestionId,
+                null
+        );
     }
 
     private long countContacts(Operation operation) {
@@ -1648,9 +1728,7 @@ public class OperationServiceImpl implements OperationService {
             return false;
         }
 
-        if (response.getStatus() == SurveyResponseStatus.COMPLETED
-                || response.getStatus() == SurveyResponseStatus.PARTIAL
-                || response.getStatus() == SurveyResponseStatus.INVALID) {
+        if (response.getStatus() == SurveyResponseStatus.COMPLETED) {
             return true;
         }
 

@@ -20,5 +20,7 @@ public interface OperationService {
 
     OperationResponseDto resumeOperation(UUID companyId, UUID operationId);
 
+    void deleteOperation(UUID companyId, UUID operationId);
+
     OperationAnalyticsResponseDto getOperationAnalytics(UUID companyId, UUID operationId);
 }
