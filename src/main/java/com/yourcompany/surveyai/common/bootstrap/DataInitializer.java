@@ -23,18 +23,16 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
+@ConditionalOnProperty(prefix = "surveyai.seed", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class DataInitializer implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
-    private static final String COMPANY_SLUG = "acme-research";
-    private static final String USER_EMAIL = "owner@acme-research.test";
-    private static final UUID COMPANY_ID = UUID.nameUUIDFromBytes(
-            ("company:" + COMPANY_SLUG).getBytes(StandardCharsets.UTF_8)
-    );
 
     private final CompanyRepository companyRepository;
     private final AppUserRepository appUserRepository;
@@ -42,6 +40,10 @@ public class DataInitializer implements CommandLineRunner {
     private final SurveyQuestionRepository surveyQuestionRepository;
     private final SurveyQuestionOptionRepository surveyQuestionOptionRepository;
     private final PasswordHashService passwordHashService;
+    private final String companySlug;
+    private final String companyName;
+    private final String ownerEmail;
+    private final String ownerPassword;
 
     public DataInitializer(
             CompanyRepository companyRepository,
@@ -49,7 +51,11 @@ public class DataInitializer implements CommandLineRunner {
             SurveyRepository surveyRepository,
             SurveyQuestionRepository surveyQuestionRepository,
             SurveyQuestionOptionRepository surveyQuestionOptionRepository,
-            PasswordHashService passwordHashService
+            PasswordHashService passwordHashService,
+            @Value("${surveyai.seed.company-slug:acme-research}") String companySlug,
+            @Value("${surveyai.seed.company-name:Acme Research}") String companyName,
+            @Value("${surveyai.seed.owner-email:owner@acme-research.test}") String ownerEmail,
+            @Value("${surveyai.seed.owner-password:change-me-123}") String ownerPassword
     ) {
         this.companyRepository = companyRepository;
         this.appUserRepository = appUserRepository;
@@ -57,21 +63,25 @@ public class DataInitializer implements CommandLineRunner {
         this.surveyQuestionRepository = surveyQuestionRepository;
         this.surveyQuestionOptionRepository = surveyQuestionOptionRepository;
         this.passwordHashService = passwordHashService;
+        this.companySlug = companySlug;
+        this.companyName = companyName;
+        this.ownerEmail = ownerEmail;
+        this.ownerPassword = ownerPassword;
     }
 
     @Override
     @Transactional
     public void run(String... args) {
-        Optional<Company> existingCompany = companyRepository.findBySlugAndDeletedAtIsNull(COMPANY_SLUG);
+        Optional<Company> existingCompany = companyRepository.findBySlugAndDeletedAtIsNull(companySlug);
         if (existingCompany.isPresent()) {
-            log.info("Seed data already present for companySlug={}", COMPANY_SLUG);
+            log.info("Seed data already present for companySlug={}", companySlug);
             return;
         }
 
         Company company = new Company();
-        company.setId(COMPANY_ID);
-        company.setName("Acme Research");
-        company.setSlug(COMPANY_SLUG);
+        company.setId(UUID.nameUUIDFromBytes(("company:" + companySlug).getBytes(StandardCharsets.UTF_8)));
+        company.setName(companyName);
+        company.setSlug(companySlug);
         company.setStatus(CompanyStatus.ACTIVE);
         company.setTimezone("Europe/Istanbul");
         company.setMetadataJson(Map.of("seeded", true));
@@ -79,8 +89,8 @@ public class DataInitializer implements CommandLineRunner {
 
         AppUser user = new AppUser();
         user.setCompany(company);
-        user.setEmail(USER_EMAIL);
-        user.setPasswordHash(passwordHashService.hash("change-me-123"));
+        user.setEmail(ownerEmail);
+        user.setPasswordHash(passwordHashService.hash(ownerPassword));
         user.setFirstName("Seed");
         user.setLastName("Owner");
         user.setRole(AppUserRole.OWNER);
@@ -146,7 +156,7 @@ public class DataInitializer implements CommandLineRunner {
         surveyQuestionRepository.save(q3);
 
         log.info("Seed data created: companyId={}, userId={}, surveyId={}", company.getId(), user.getId(), survey.getId());
-        log.info("Seed data details: companySlug={}, userEmail={}, password={}", COMPANY_SLUG, USER_EMAIL, "change-me-123");
+        log.info("Seed data details: companySlug={}, userEmail={}", companySlug, ownerEmail);
     }
 
     private void saveOption(

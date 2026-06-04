@@ -3,3 +3,7 @@
 target
 frontend/node_modules
 frontend/.next
+frontend/.next-dev
+*.dump
+.env
+.env.*

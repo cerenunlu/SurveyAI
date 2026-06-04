@@ -24,6 +24,7 @@ frontend/pnpm-debug.log*
 # Logs / runtime
 logs/
 *.log
+*.dump
 *.pid
 *.seed
 *.pid.lock

@@ -1,0 +1,13 @@
+spring:
+  jpa:
+    properties:
+      hibernate:
+        format_sql: false
+
+surveyai:
+  auth:
+    cookie:
+      secure: ${SURVEYAI_AUTH_COOKIE_SECURE:true}
+      same-site: ${SURVEYAI_AUTH_COOKIE_SAME_SITE:None}
+  seed:
+    enabled: ${SURVEYAI_SEED_ENABLED:false}

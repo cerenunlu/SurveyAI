@@ -25,6 +25,24 @@ const DEV_DUPLICATE_PHONE_STORAGE_KEY = "surveyai.dev.allowDuplicateOperationCon
 
 const PHONE_NUMBER_PATTERN = /^[1-9]\d{7,14}$/;
 
+export async function readOperationContactImportRows(file: File): Promise<unknown[][]> {
+  const fileName = file.name.toLocaleLowerCase("tr-TR");
+
+  if (fileName.endsWith(".csv")) {
+    return parseCsvRows(await file.text());
+  }
+
+  if (!fileName.endsWith(".xlsx")) {
+    throw new Error("Desteklenen dosya formatlari: .csv ve .xlsx");
+  }
+
+  const { readSheet } = await import("read-excel-file/browser");
+  const rows = await readSheet(file);
+  return rows
+    .map((row) => row.map((cell) => cell ?? ""))
+    .filter((row) => row.some((cell) => normalizeCellValue(cell)));
+}
+
 export function createEmptyImportSummary(): ImportSummary {
   return {
     totalRows: 0,
@@ -278,4 +296,73 @@ function isDuplicatePhoneNumbersAllowedForDev(): boolean {
 function resolveColumnIndex(headerRow: unknown[], aliases: string[]): number {
   const normalizedAliases = new Set(aliases.map((alias) => normalizeHeader(alias)));
   return headerRow.findIndex((cell) => normalizedAliases.has(normalizeHeader(cell)));
+}
+
+function parseCsvRows(content: string): string[][] {
+  const delimiter = detectCsvDelimiter(content);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const nextChar = content[index + 1];
+
+    if (char === "\"") {
+      if (inQuotes && nextChar === "\"") {
+        field += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (!inQuotes && char === delimiter) {
+      row.push(field);
+      field = "";
+      continue;
+    }
+
+    if (!inQuotes && (char === "\n" || char === "\r")) {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      if (char === "\r" && nextChar === "\n") {
+        index += 1;
+      }
+      continue;
+    }
+
+    field += char;
+  }
+
+  if (field || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows
+    .map((currentRow, rowIndex) => (
+      rowIndex === 0 && currentRow.length > 0
+        ? [currentRow[0].replace(/^\uFEFF/, ""), ...currentRow.slice(1)]
+        : currentRow
+    ))
+    .filter((currentRow) => currentRow.some((cell) => normalizeCellValue(cell)));
+}
+
+function detectCsvDelimiter(content: string): "," | ";" | "\t" {
+  const firstDataLine = content.split(/\r?\n/).find((line) => line.trim()) ?? "";
+  const candidates: Array<"," | ";" | "\t"> = [",", ";", "\t"];
+  return candidates.reduce((bestDelimiter, delimiter) => (
+    countOccurrences(firstDataLine, delimiter) > countOccurrences(firstDataLine, bestDelimiter)
+      ? delimiter
+      : bestDelimiter
+  ), ",");
+}
+
+function countOccurrences(value: string, needle: string): number {
+  return value.split(needle).length - 1;
 }

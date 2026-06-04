@@ -22,6 +22,7 @@ import com.yourcompany.surveyai.common.domain.entity.Company;
 import com.yourcompany.surveyai.common.domain.enums.AppUserRole;
 import com.yourcompany.surveyai.common.domain.enums.AppUserStatus;
 import com.yourcompany.surveyai.common.domain.enums.CompanyStatus;
+import com.yourcompany.surveyai.operation.application.service.ImportedSurveyOperationService;
 import com.yourcompany.surveyai.survey.application.dto.response.SurveyResponseDto;
 import com.yourcompany.surveyai.survey.application.service.GoogleFormsImportService;
 import com.yourcompany.surveyai.survey.application.service.SurveyService;
@@ -57,6 +58,9 @@ class SurveyCorsIntegrationTest {
 
     @MockBean
     private GoogleFormsImportService googleFormsImportService;
+
+    @MockBean
+    private ImportedSurveyOperationService importedSurveyOperationService;
 
     @Autowired
     private TestAuthService authService;

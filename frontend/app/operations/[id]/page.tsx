@@ -1,6 +1,5 @@
 "use client";
 
-import * as XLSX from "xlsx";
 import Link from "next/link";
 import { notFound, useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
@@ -19,6 +18,7 @@ import {
   createEmptyImportSummary,
   downloadOperationContactsTemplate,
   normalizePhoneNumber,
+  readOperationContactImportRows,
   type ImportPreviewRow,
   type ImportSummary,
 } from "@/lib/operation-contact-import";
@@ -604,20 +604,7 @@ export default function OperationDetailPage() {
       const existingPhoneNumbers = existingContacts
         .map((contact) => normalizePhoneNumber(contact.phoneNumber))
         .filter(Boolean);
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      const firstSheetName = workbook.SheetNames[0];
-
-      if (!firstSheetName) {
-        throw new Error("Dosyada okunabilir bir sayfa bulunamadi.");
-      }
-
-      const firstSheet = workbook.Sheets[firstSheetName];
-      const rows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, {
-        header: 1,
-        raw: false,
-        defval: "",
-        blankrows: false,
-      });
+      const rows = await readOperationContactImportRows(file);
       const result = buildPreviewRows(rows, { existingPhoneNumbers });
 
       setImportRows(result.previewRows);
