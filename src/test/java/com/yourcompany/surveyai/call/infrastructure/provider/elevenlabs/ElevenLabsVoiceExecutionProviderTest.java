@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yourcompany.surveyai.call.configuration.VoiceProviderMode;
 import com.yourcompany.surveyai.call.application.provider.ProviderDispatchRequest;
@@ -134,7 +135,7 @@ class ElevenLabsVoiceExecutionProviderTest {
     }
 
     @Test
-    void dispatchCallJob_includesInternalCorrelationMetadataInLivePayload() {
+    void dispatchCallJob_includesInternalCorrelationMetadataInLivePayload() throws Exception {
         ProviderDispatchRequest request = buildRequest();
         VoiceProviderConfiguration configuration = configuration(false);
         when(apiClient.startOutboundCall(any(), eq(configuration))).thenReturn("""
@@ -156,39 +157,43 @@ class ElevenLabsVoiceExecutionProviderTest {
         assertThat(payload).contains("survey_submit_answer");
         assertThat(payload).contains(request.operation().getName());
         assertThat(payload).contains(request.survey().getName());
-        assertThat(payload).contains("calling on behalf of Ayna Arastirma");
-        assertThat(payload).contains("SurveyAI is only the backend platform");
-        assertThat(payload).contains("Keep the same warm-neutral professional tone across the whole call.");
-        assertThat(payload).contains("Avoid cheerful hype, gloomy sadness, stiff formality, theatrical delivery, or abrupt mood swings.");
+        JsonNode root = new ObjectMapper().readTree(payload);
+        String prompt = root.path("conversation_initiation_client_data")
+                .path("conversation_config_override")
+                .path("agent")
+                .path("prompt")
+                .path("prompt")
+                .asText();
+
+        assertThat(prompt).hasSizeLessThan(4_000);
+        assertThat(prompt).contains("live phone survey interviewer for Ayna Arastirma");
+        assertThat(prompt).contains("SurveyAI is only the backend platform");
+        assertThat(prompt).contains("source of truth for flow, prompts, retries, skip logic, and completion");
+        assertThat(prompt).contains("Sound warm, calm, natural, and concise");
         assertThat(payload).contains("\"first_message\":\"\"");
         assertThat(payload).contains("\"turn_eagerness\":\"normal\"");
         assertThat(payload).contains("\"speculative_turn\":false");
         assertThat(payload).contains("\"background_voice_detection\":false");
-        assertThat(payload).contains("Do not introduce yourself, describe the survey, or mention the research company unless that wording is coming from a backend prompt.");
-        assertThat(payload).contains("Stay silent when the call connects.");
-        assertThat(payload).contains("Do not say anything until the callee speaks first with a greeting-like opening");
-        assertThat(payload).contains("If you hear voicemail, an answering machine, an operator recording, a busy announcement, a busy tone, a beep");
-        assertThat(payload).contains("sinyal sesinden sonra mesaj birakin");
-        assertThat(payload).contains("sekreter servisi");
-        assertThat(payload).contains("do not leave any message");
-        assertThat(payload).contains("do not call `survey_finish_interview`");
-        assertThat(payload).contains("immediately call the built-in `voicemail_detection` tool");
-        assertThat(payload).contains("immediately call the built-in `end_call` tool");
-        assertThat(payload).contains("Never ask follow-up lines such as");
-        assertThat(payload).contains("hala orada misiniz");
-        assertThat(payload).contains("Do not reply to the callee's greeting with another greeting");
-        assertThat(payload).contains("If the opening message asks for permission to continue");
-        assertThat(payload).contains("As soon as the callee answers the opening message, immediately call `survey_submit_answer`, even if the answer is very short.");
-        assertThat(payload).contains("As soon as the callee gives a greeting-like opening, immediately call `survey_submit_answer` with the callee's latest utterance.");
-        assertThat(payload).contains("If the backend tool returns no prompt, stay silent and wait for the callee to speak again.");
-        assertThat(payload).contains("Do not say any survey invitation, consent request, or company introduction unless it comes from a backend tool response.");
-        assertThat(payload).contains("The first spoken survey line in the call must come from a backend tool response.");
-        assertThat(payload).contains("Do not add your own extra introduction, rephrased preface, or duplicate survey invitation before or after that backend-controlled opening.");
-        assertThat(payload).contains("Never use freeform fallback lines such as");
-        assertThat(payload).contains("If the caller says short live-human phrases like");
-        assertThat(payload).contains("do not invent any audio-check or troubleshooting sentence from yourself");
+        assertThat(prompt).contains("Stay silent when the call connects. Do not greet first.");
+        assertThat(prompt).contains("On the first live-human utterance, immediately call `survey_submit_answer` with signal `ANSWER`");
+        assertThat(prompt).contains("The first spoken survey line must be a non-empty backend prompt from a tool response.");
+        assertThat(prompt).contains("If the backend returns no prompt, stay silent and wait for the callee to speak again.");
+        assertThat(prompt).contains("If the opening asks permission to continue");
+        assertThat(prompt).contains("sinyal sesinden sonra mesaj birakin");
+        assertThat(prompt).contains("sekreter servisi");
+        assertThat(prompt).contains("do not leave a message");
+        assertThat(prompt).contains("do not call `survey_start_interview`, `survey_submit_answer`, or `survey_finish_interview`");
+        assertThat(prompt).contains("Immediately call built-in `voicemail_detection`");
+        assertThat(prompt).contains("call built-in `end_call` with no farewell");
+        assertThat(prompt).contains("Never ask audio-check lines like");
+        assertThat(prompt).contains("hala orada misiniz");
+        assertThat(prompt).contains("After every caller turn, immediately call `survey_submit_answer`");
+        assertThat(prompt).contains("Use signal `ANSWER` normally, `REPEAT_REQUEST`");
+        assertThat(prompt).contains("Never invent, skip, summarize, or reorder questions.");
+        assertThat(prompt).contains("If `endCall=true`, say the provided closing message once");
+        assertThat(prompt).contains("Never say bracketed emotion tags");
         assertThat(payload).doesNotContain("\"contact_name\"");
-        assertThat(payload).contains("Never say or imply that you are the callee's assistant");
+        assertThat(prompt).contains("Never say or imply that you are the callee's assistant");
         assertThat(payload).doesNotContain("Contact:");
     }
 
