@@ -58,7 +58,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
     private static final Pattern VOICE_DIRECTION_PATTERN = Pattern.compile("\\[(?:[a-zA-Z_\\-]{2,20})]|\\((?:[a-zA-Z_\\-]{2,20})\\)");
     private static final Set<String> SEMANTIC_FILLER_TOKENS = Set.of(
             "evet", "hayir", "onu", "bunu", "bana", "gibi", "yani", "sanirim", "galiba", "biraz", "pek", "cok", "fazla",
-            "he", "she", "him", "her", "it", "that", "this", "ya", "ve", "ama", "fakat"
+            "eee", "ee", "hmm", "hmmm", "he", "she", "him", "her", "it", "that", "this", "ya", "ve", "ama", "fakat"
     );
     private static final String CONSENT_STATE_KEY = "openingConsentState";
     private static final String CONSENT_PROMPT_DELIVERED_KEY = "openingConsentPromptDelivered";
@@ -1610,6 +1610,11 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return ageBucketMatch;
         }
 
+        SurveyQuestionOption educationMatch = matchEducationLevelOption(question, options, raw);
+        if (educationMatch != null) {
+            return educationMatch;
+        }
+
         return matchElectionPreferenceOption(options, raw);
     }
 
@@ -1671,6 +1676,76 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return age >= 65;
         }
         return false;
+    }
+
+    private SurveyQuestionOption matchEducationLevelOption(
+            SurveyQuestion question,
+            List<SurveyQuestionOption> options,
+            String raw
+    ) {
+        if (!isEducationLikeQuestion(question, options)) {
+            return null;
+        }
+
+        String normalized = normalize(raw);
+        if (normalized.isBlank()) {
+            return null;
+        }
+
+        if (containsAnyPhrase(normalized, "okur yazar degil", "okuma yazma bilmiyorum", "okuma yazmam yok", "oyd")) {
+            return findEducationOption(options, "okur yazar degil", "yazar degil", "oyd");
+        }
+        if (containsAnyPhrase(normalized, "yuksek lisans", "master", "mastir", "lisansustu", "postgraduate")) {
+            return findEducationOption(options, "yuksek lisans", "lisansustu", "master");
+        }
+        if (containsAnyPhrase(normalized, "universite", "lisans", "fakulte", "university", "bachelor")) {
+            return findEducationOption(options, "universite", "lisans", "university", "bachelor");
+        }
+        if (containsAnyPhrase(normalized, "lise", "high school")) {
+            return findEducationOption(options, "lise", "high school");
+        }
+        if (containsAnyPhrase(normalized, "ortaokul", "orta okul", "middle school")) {
+            return findEducationOption(options, "ortaokul", "orta okul", "middle school");
+        }
+        if (containsAnyPhrase(normalized, "ilkokul", "ilk okul", "primary school", "elementary")) {
+            return findEducationOption(options, "ilkokul", "ilk okul", "primary", "elementary");
+        }
+        if (containsAnyPhrase(normalized, "okur yazar", "okuma yazma")) {
+            return findEducationOption(options, "okur yazar");
+        }
+        return null;
+    }
+
+    private boolean isEducationLikeQuestion(SurveyQuestion question, List<SurveyQuestionOption> options) {
+        String normalizedCode = normalize(question.getCode());
+        String normalizedTitle = normalize(question.getTitle());
+        if (normalizedCode.contains("education")
+                || normalizedCode.contains("egitim")
+                || normalizedCode.contains("ogrenim")
+                || normalizedTitle.contains("education")
+                || normalizedTitle.contains("egitim")
+                || normalizedTitle.contains("ogrenim")) {
+            return true;
+        }
+        long educationOptionCount = options.stream()
+                .map(option -> normalize(option.getLabel()))
+                .filter(label -> containsAnyPhrase(label, "ilkokul", "ortaokul", "lise", "universite", "lisans", "okur yazar"))
+                .count();
+        return educationOptionCount >= 3;
+    }
+
+    private SurveyQuestionOption findEducationOption(List<SurveyQuestionOption> options, String... tokens) {
+        for (String token : tokens) {
+            String normalizedToken = normalize(token);
+            SurveyQuestionOption matched = options.stream()
+                    .filter(option -> normalize(option.getLabel() + " " + option.getValue()).contains(normalizedToken))
+                    .findFirst()
+                    .orElse(null);
+            if (matched != null) {
+                return matched;
+            }
+        }
+        return null;
     }
 
     private SurveyQuestionOption matchElectionPreferenceOption(List<SurveyQuestionOption> options, String raw) {
@@ -2434,7 +2509,7 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             return matrixPrompt;
         }
         StringBuilder builder = new StringBuilder();
-        appendPromptSentence(builder, question.getTitle());
+        appendPromptSentence(builder, stripInlineChoiceListFromPrompt(question, options));
         if (question.getDescription() != null && !question.getDescription().isBlank()) {
             appendPromptSentence(builder, question.getDescription());
         }
@@ -2453,6 +2528,48 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
             }
         }
         return normalizePromptPacing(builder.toString());
+    }
+
+    private String stripInlineChoiceListFromPrompt(SurveyQuestion question, List<SurveyQuestionOption> options) {
+        String title = trimToNull(question.getTitle());
+        if (title == null || options == null || options.size() < 3) {
+            return question.getTitle();
+        }
+        if (question.getQuestionType() != QuestionType.SINGLE_CHOICE && question.getQuestionType() != QuestionType.MULTI_CHOICE) {
+            return title;
+        }
+
+        int questionMarkIndex = title.indexOf('?');
+        if (questionMarkIndex <= 0 || questionMarkIndex >= title.length() - 1) {
+            return title;
+        }
+
+        String suffix = title.substring(questionMarkIndex + 1);
+        if (countInlineChoiceMatches(suffix, options) < 3) {
+            return title;
+        }
+        return title.substring(0, questionMarkIndex + 1).trim();
+    }
+
+    private long countInlineChoiceMatches(String text, List<SurveyQuestionOption> options) {
+        String normalizedText = normalize(text);
+        return options.stream()
+                .map(SurveyQuestionOption::getLabel)
+                .filter(label -> inlineChoiceLabelMatches(normalizedText, label))
+                .count();
+    }
+
+    private boolean inlineChoiceLabelMatches(String normalizedText, String label) {
+        String normalizedLabel = normalize(label);
+        if (normalizedLabel.isBlank()) {
+            return false;
+        }
+        if (normalizedText.contains(normalizedLabel)) {
+            return true;
+        }
+        return semanticTokens(normalizedLabel).stream()
+                .filter(token -> token.length() >= 3)
+                .anyMatch(normalizedText::contains);
     }
 
     private String buildMatrixQuestionPrompt(

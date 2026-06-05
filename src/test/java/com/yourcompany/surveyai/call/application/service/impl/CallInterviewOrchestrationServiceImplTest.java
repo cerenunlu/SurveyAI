@@ -682,6 +682,69 @@ class CallInterviewOrchestrationServiceImplTest {
     }
 
     @Test
+    void startInterview_stripsInlineChoiceEnumerationFromSpokenPrompt() {
+        fixture.yesNoQuestion.setCode("education_level");
+        fixture.yesNoQuestion.setTitle("Ogrenim durumunuz nedir? Ilkokul, ortaokul, lise, universite, yuksek lisans veya okur yazar degil misiniz?");
+
+        SurveyQuestionOption primary = buildOption(fixture.yesNoQuestion, 1, "option_1", "Ilkokul");
+        SurveyQuestionOption middle = buildOption(fixture.yesNoQuestion, 2, "option_2", "Ortaokul");
+        SurveyQuestionOption high = buildOption(fixture.yesNoQuestion, 3, "option_3", "Lise");
+        SurveyQuestionOption university = buildOption(fixture.yesNoQuestion, 4, "option_4", "Universite / Lisans");
+        SurveyQuestionOption master = buildOption(fixture.yesNoQuestion, 5, "option_5", "Yuksek Lisans");
+        SurveyQuestionOption illiterate = buildOption(fixture.yesNoQuestion, 6, "option_6", "Okur Yazar Degil");
+        questionOptionsByQuestionId.put(fixture.yesNoQuestion.getId(), List.of(primary, middle, high, university, master, illiterate));
+
+        InterviewOrchestrationResponse response = service.startInterview(
+                new InterviewSessionRequest(fixture.callAttempt.getId(), null, null)
+        );
+
+        assertThat(response.prompt()).contains("Ogrenim durumunuz nedir?");
+        assertThat(response.prompt())
+                .doesNotContain("Ilkokul")
+                .doesNotContain("ortaokul")
+                .doesNotContain("yuksek lisans")
+                .doesNotContain("okur yazar degil");
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().options()).hasSize(6);
+    }
+
+    @Test
+    void submitAnswer_matchesShortEducationLevelUtterance() {
+        fixture.yesNoQuestion.setCode("education_level");
+        fixture.yesNoQuestion.setTitle("Ogrenim durumunuz nedir?");
+
+        SurveyQuestionOption primary = buildOption(fixture.yesNoQuestion, 1, "option_1", "Ilkokul");
+        SurveyQuestionOption middle = buildOption(fixture.yesNoQuestion, 2, "option_2", "Ortaokul");
+        SurveyQuestionOption high = buildOption(fixture.yesNoQuestion, 3, "option_3", "Lise");
+        SurveyQuestionOption university = buildOption(fixture.yesNoQuestion, 4, "option_4", "Universite / Lisans");
+        SurveyQuestionOption master = buildOption(fixture.yesNoQuestion, 5, "option_5", "Yuksek Lisans");
+        SurveyQuestionOption illiterate = buildOption(fixture.yesNoQuestion, 6, "option_6", "Okur Yazar Degil");
+        questionOptionsByQuestionId.put(fixture.yesNoQuestion.getId(), List.of(primary, middle, high, university, master, illiterate));
+
+        service.startInterview(new InterviewSessionRequest(fixture.callAttempt.getId(), null, null));
+
+        InterviewOrchestrationResponse response = service.submitAnswer(
+                new InterviewAnswerRequest(
+                        fixture.callAttempt.getId(),
+                        null,
+                        null,
+                        "Eee, universite.",
+                        InterviewConversationSignal.ANSWER
+                )
+        );
+
+        SurveyResponse savedResponse = responsesByAttemptId.get(fixture.callAttempt.getId());
+        List<SurveyAnswer> answers = answersByResponseId.get(savedResponse.getId());
+
+        assertThat(answers).hasSize(1);
+        assertThat(answers.getFirst().isValid()).isTrue();
+        assertThat(answers.getFirst().getSelectedOption()).isEqualTo(university);
+        assertThat(response.prompt()).doesNotContain("Hangisi daha");
+        assertThat(response.question()).isNotNull();
+        assertThat(response.question().code()).isEqualTo("why");
+    }
+
+    @Test
     void submitAnswer_matchesPoliticalCandidateUsingGeneratedAliases() {
         fixture.yesNoQuestion.setCode("aday_tercihi");
         fixture.yesNoQuestion.setTitle("Bu pazar secim olsa hangi adaya oy verirsiniz?");
