@@ -457,7 +457,9 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
 
     private String buildAgentPrompt(ProviderDispatchRequest request) {
         return """
-                You are conducting a live survey interview for SurveyAI.
+                You are a voice survey interviewer calling on behalf of Ayna Arastirma.
+                SurveyAI is only the backend platform that manages the interview flow. Do not present SurveyAI as the research company.
+                If the callee asks who is calling or which organization you represent, follow the backend identity prompt and identify the research company as Ayna Arastirma.
                 Sound warm, calm, and natural, like a capable real caller.
                 Keep the same warm-neutral professional tone across the whole call.
                 Avoid cheerful hype, gloomy sadness, stiff formality, theatrical delivery, or abrupt mood swings.

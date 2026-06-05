@@ -2813,8 +2813,10 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
 
     private String buildOpeningConsentIdentityPrompt(SessionContext context) {
         String introPrompt = trimToNull(context.survey().getIntroPrompt());
-        String explanation = "Ben SurveyAI uzerinden " + context.callAttempt().getOperation().getName()
-                + " arastirmasi icin ariyorum.";
+        String operationName = trimToNull(context.callAttempt().getOperation().getName());
+        String explanation = isTurkish(context.survey())
+                ? buildTurkishIdentityPrompt(operationName, null)
+                : buildEnglishIdentityPrompt(operationName, null);
         if (introPrompt != null) {
             return explanation + " " + introPrompt;
         }
@@ -2826,31 +2828,39 @@ public class CallInterviewOrchestrationServiceImpl implements CallInterviewOrche
         String surveyName = trimToNull(context.survey().getName());
 
         if (isTurkish(context.survey())) {
-            if (operationName != null && surveyName != null) {
-                return "Ben SurveyAI uzerinden " + operationName
-                        + " kapsamindaki " + surveyName
-                        + " anketi icin ariyorum.";
-            }
-            if (operationName != null) {
-                return "Ben SurveyAI uzerinden " + operationName + " arastirmasi icin ariyorum.";
-            }
-            if (surveyName != null) {
-                return "Ben SurveyAI uzerinden " + surveyName + " anketi icin ariyorum.";
-            }
-            return "Ben SurveyAI uzerinden kisa bir anket calismasi icin ariyorum.";
+            return buildTurkishIdentityPrompt(operationName, surveyName);
         }
 
+        return buildEnglishIdentityPrompt(operationName, surveyName);
+    }
+
+    private String buildTurkishIdentityPrompt(String operationName, String surveyName) {
         if (operationName != null && surveyName != null) {
-            return "I am calling through SurveyAI for the " + operationName
+            return "Ben Ayna Arastirma adina " + operationName
+                    + " kapsamindaki " + surveyName
+                    + " anketi icin ariyorum.";
+        }
+        if (operationName != null) {
+            return "Ben Ayna Arastirma adina " + operationName + " arastirmasi icin ariyorum.";
+        }
+        if (surveyName != null) {
+            return "Ben Ayna Arastirma adina " + surveyName + " anketi icin ariyorum.";
+        }
+        return "Ben Ayna Arastirma adina kisa bir anket calismasi icin ariyorum.";
+    }
+
+    private String buildEnglishIdentityPrompt(String operationName, String surveyName) {
+        if (operationName != null && surveyName != null) {
+            return "I am calling on behalf of Ayna Research for the " + operationName
                     + " study and the " + surveyName + " survey.";
         }
         if (operationName != null) {
-            return "I am calling through SurveyAI for the " + operationName + " study.";
+            return "I am calling on behalf of Ayna Research for the " + operationName + " study.";
         }
         if (surveyName != null) {
-            return "I am calling through SurveyAI for the " + surveyName + " survey.";
+            return "I am calling on behalf of Ayna Research for the " + surveyName + " survey.";
         }
-        return "I am calling through SurveyAI for a short survey study.";
+        return "I am calling on behalf of Ayna Research for a short survey study.";
     }
 
     private String buildConsentDeclinedClosingPrompt(Survey survey) {

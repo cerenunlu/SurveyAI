@@ -95,6 +95,8 @@ class ElevenLabsVoiceExecutionProviderTest {
         assertThat(payload).contains("survey_submit_answer");
         assertThat(payload).contains(request.operation().getName());
         assertThat(payload).contains(request.survey().getName());
+        assertThat(payload).contains("calling on behalf of Ayna Arastirma");
+        assertThat(payload).contains("SurveyAI is only the backend platform");
         assertThat(payload).contains("Keep the same warm-neutral professional tone across the whole call.");
         assertThat(payload).contains("Avoid cheerful hype, gloomy sadness, stiff formality, theatrical delivery, or abrupt mood swings.");
         assertThat(payload).contains("\"first_message\":\"\"");

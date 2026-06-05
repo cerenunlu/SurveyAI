@@ -172,7 +172,7 @@ class CallInterviewOrchestrationServiceImplTest {
 
         assertThat(response.question()).isNotNull();
         assertThat(response.question().code()).isEqualTo("satisfied");
-        assertThat(response.prompt()).contains("SurveyAI");
+        assertThat(response.prompt()).contains("Ayna");
         assertThat(response.prompt()).contains("April CSAT Wave");
         assertThat(response.prompt()).contains("CSAT");
         assertThat(response.prompt()).contains("Memnun musunuz?");
