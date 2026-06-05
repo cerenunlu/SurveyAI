@@ -73,6 +73,67 @@ class ElevenLabsVoiceExecutionProviderTest {
     }
 
     @Test
+    void validateConfiguration_rejectsBlankLiveCredentials() {
+        VoiceProviderConfiguration blankApiKey = new VoiceProviderConfiguration(
+                CallProvider.ELEVENLABS,
+                true,
+                VoiceProviderMode.LIVE,
+                " ",
+                "agent-123",
+                "pn-123",
+                "webhook-secret",
+                "https://api.elevenlabs.io",
+                false,
+                300L,
+                Map.of()
+        );
+        VoiceProviderConfiguration blankAgentId = new VoiceProviderConfiguration(
+                CallProvider.ELEVENLABS,
+                true,
+                VoiceProviderMode.LIVE,
+                "api-key",
+                " ",
+                "pn-123",
+                "webhook-secret",
+                "https://api.elevenlabs.io",
+                false,
+                300L,
+                Map.of()
+        );
+        VoiceProviderConfiguration blankPhoneNumberId = new VoiceProviderConfiguration(
+                CallProvider.ELEVENLABS,
+                true,
+                VoiceProviderMode.LIVE,
+                "api-key",
+                "agent-123",
+                " ",
+                "webhook-secret",
+                "https://api.elevenlabs.io",
+                false,
+                300L,
+                Map.of()
+        );
+        VoiceProviderConfiguration blankBaseUrl = new VoiceProviderConfiguration(
+                CallProvider.ELEVENLABS,
+                true,
+                VoiceProviderMode.LIVE,
+                "api-key",
+                "agent-123",
+                "pn-123",
+                "webhook-secret",
+                " ",
+                false,
+                300L,
+                Map.of()
+        );
+
+        assertThat(provider.validateConfiguration(blankApiKey).valid()).isFalse();
+        assertThat(provider.validateConfiguration(blankAgentId).valid()).isFalse();
+        assertThat(provider.validateConfiguration(blankPhoneNumberId).valid()).isFalse();
+        assertThat(provider.validateConfiguration(blankBaseUrl).valid()).isFalse();
+    }
+
+    @Test
     void dispatchCallJob_includesInternalCorrelationMetadataInLivePayload() {
         ProviderDispatchRequest request = buildRequest();
         VoiceProviderConfiguration configuration = configuration(false);

@@ -209,16 +209,16 @@ public class ElevenLabsVoiceExecutionProvider implements VoiceExecutionProvider 
         if (configuration.mode() == null) {
             return ProviderConfigurationValidationResult.failure("ElevenLabs mode is required");
         }
-        if (configuration.liveMode() && configuration.apiKey() == null) {
+        if (configuration.liveMode() && !hasText(configuration.apiKey())) {
             return ProviderConfigurationValidationResult.failure("ElevenLabs API key is required");
         }
-        if (configuration.agentId() == null) {
+        if (!hasText(configuration.agentId())) {
             return ProviderConfigurationValidationResult.failure("ElevenLabs agent id is required");
         }
-        if (configuration.liveMode() && configuration.phoneNumberId() == null) {
+        if (configuration.liveMode() && !hasText(configuration.phoneNumberId())) {
             return ProviderConfigurationValidationResult.failure("ElevenLabs phone number id is required");
         }
-        if (configuration.baseUrl() == null) {
+        if (!hasText(configuration.baseUrl())) {
             return ProviderConfigurationValidationResult.failure("ElevenLabs base url is required");
         }
         return ProviderConfigurationValidationResult.success();

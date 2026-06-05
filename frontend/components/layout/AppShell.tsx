@@ -32,8 +32,8 @@ function AppShellFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [mobileNavState, setMobileNavState] = useState<{ pathname: string; open: boolean }>({ pathname, open: false });
+  const [userMenuState, setUserMenuState] = useState<{ pathname: string; open: boolean }>({ pathname, open: false });
   const [searchQuery, setSearchQuery] = useState("");
   const { language, setLanguage } = useLanguage();
   const { status, currentUser, logout } = useAuth();
@@ -46,11 +46,8 @@ function AppShellFrame({ children }: { children: ReactNode }) {
   const isSurveysRoute = pathname === "/surveys" || pathname.startsWith("/surveys/");
   const isOperationsRoute = pathname === "/operations" || pathname.startsWith("/operations/");
   const shouldShowBackButton = !isDashboardHome;
-
-  useEffect(() => {
-    setIsUserMenuOpen(false);
-    setIsMobileNavOpen(false);
-  }, [pathname]);
+  const isMobileNavOpen = mobileNavState.pathname === pathname && mobileNavState.open;
+  const isUserMenuOpen = userMenuState.pathname === pathname && userMenuState.open;
 
   const { unreadCount, notifications, markAllSeen, clearNotifications } = useNotifications();
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
@@ -67,23 +64,18 @@ function AppShellFrame({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isNotificationPanelOpen]);
 
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
-      navigationItems
-        .filter((item) => item.children?.length)
-        .map((item) => [item.href, pathname.startsWith(item.href)]),
-    ),
+  const [expandedSectionState, setExpandedSectionState] = useState<{ pathname: string; values: Record<string, boolean> }>(
+    { pathname, values: {} },
   );
+  const expandedSections = expandedSectionState.pathname === pathname ? expandedSectionState.values : {};
 
-  useEffect(() => {
-    setExpandedSections(() =>
-      Object.fromEntries(
-        navigationItems
-          .filter((item) => item.children?.length)
-          .map((item) => [item.href, pathname.startsWith(item.href)]),
-      ),
-    );
-  }, [navigationItems, pathname]);
+  const setMobileNavOpenForPath = (open: boolean) => setMobileNavState({ pathname, open });
+  const setUserMenuOpenForPath = (open: boolean) => setUserMenuState({ pathname, open });
+  const toggleUserMenuForPath = () =>
+    setUserMenuState((current) => ({
+      pathname,
+      open: current.pathname === pathname ? !current.open : true,
+    }));
 
   useEffect(() => {
     if (status === "unauthenticated" && !isAuthRoute) {
@@ -161,7 +153,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
   return (
     <div className={["app-shell", isSidebarCollapsed ? "is-sidebar-collapsed" : ""].filter(Boolean).join(" ")}>
       {isMobileNavOpen ? (
-        <button className="mobile-overlay" aria-label={t("shell.sidebar.closeNavigation")} onClick={() => setIsMobileNavOpen(false)} />
+        <button className="mobile-overlay" aria-label={t("shell.sidebar.closeNavigation")} onClick={() => setMobileNavOpenForPath(false)} />
       ) : null}
 
       <aside
@@ -222,10 +214,16 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                       type="button"
                       className={["nav-item", "nav-item-button", isActive ? "is-active" : ""].filter(Boolean).join(" ")}
                       onClick={() =>
-                        setExpandedSections((current) => ({
-                          ...current,
-                          [item.href]: !isExpanded,
-                        }))
+                        setExpandedSectionState((current) => {
+                          const values = current.pathname === pathname ? current.values : {};
+                          return {
+                            pathname,
+                            values: {
+                              ...values,
+                              [item.href]: !isExpanded,
+                            },
+                          };
+                        })
                       }
                     >
                       {item.icon}
@@ -243,7 +241,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                     <Link
                       className={["nav-item", isActive ? "is-active" : ""].filter(Boolean).join(" ")}
                       href={item.href}
-                      onClick={() => setIsMobileNavOpen(false)}
+                      onClick={() => setMobileNavOpenForPath(false)}
                     >
                       {item.icon}
                       {!isSidebarCollapsed ? (
@@ -264,7 +262,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                             key={child.href}
                             className={["nav-subitem", isChildActive ? "is-active" : ""].filter(Boolean).join(" ")}
                             href={child.href}
-                            onClick={() => setIsMobileNavOpen(false)}
+                            onClick={() => setMobileNavOpenForPath(false)}
                           >
                             <span className="nav-subitem-label">{child.label}</span>
                             {child.description ? <span className="nav-subitem-description">{child.description}</span> : null}
@@ -333,7 +331,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                 type="button"
                 className="topbar-account sidebar-account"
                 aria-expanded={isUserMenuOpen}
-                onClick={() => setIsUserMenuOpen((value) => !value)}
+                onClick={toggleUserMenuForPath}
               >
                 <span className="topbar-account-avatar">{currentUser.user.fullName.slice(0, 1).toUpperCase()}</span>
                 {!isSidebarCollapsed ? (
@@ -366,7 +364,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                   type="button"
                   className="button-secondary compact-button"
                   onClick={() => {
-                    setIsUserMenuOpen(false);
+                    setUserMenuOpenForPath(false);
                     void handleLogout();
                   }}
                 >
@@ -411,7 +409,7 @@ function AppShellFrame({ children }: { children: ReactNode }) {
                   <ArrowLeftIcon className="nav-icon" />
                 </button>
               ) : null}
-              <button className="mobile-menu-button mobile-only" onClick={() => setIsMobileNavOpen(true)}>
+              <button className="mobile-menu-button mobile-only" onClick={() => setMobileNavOpenForPath(true)}>
                 <MenuIcon className="nav-icon" />
                 Gezinme
               </button>
